@@ -20,6 +20,15 @@ Cherry Gateway exposes one local API endpoint on the user's computer. Clients us
 - 深灰紫色桌面界面，支持中文与英文 / Dark-gray and purple desktop UI with Chinese and English
 - 托盘、开机启动、关闭窗口进入托盘 / Tray, auto-start, and close-to-tray options
 
+## 快速下载 / Quick download
+
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-gateway-desktop/releases/download/v0.4.3/Cherry-Gateway-0.4.3.exe)
+- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-gateway-desktop/releases/latest)
+
+安装包 SHA-256：`c3dc6869d54e6ba02869650dcab9b6731f19a9afde2c986f1465696b596ed59e`
+
+Installer SHA-256: `c3dc6869d54e6ba02869650dcab9b6731f19a9afde2c986f1465696b596ed59e`
+
 ## 技术栈 / Stack
 
 - Electron
@@ -69,9 +78,6 @@ renderer/       React + TypeScript UI / React + TypeScript interface
 
 测试人员执行稿：
 `产品文档/测试人员完整说明.txt`
-
-用户使用说明：
-`产品文档/使用说明.txt`
 
 问题清单和最新状态：
 `产品文档/UI小功能测评问题清单.txt`
