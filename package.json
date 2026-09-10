@@ -1,0 +1,50 @@
+{
+  "name": "cherry-gateway-desktop",
+  "version": "0.4.3",
+  "description": "Cherry 多线路本地网关桌面控制台",
+  "main": "electron/main.js",
+  "author": "BFTwarrior",
+  "license": "MIT",
+  "scripts": {
+    "renderer:build": "vite build",
+    "check": "tsc --noEmit",
+    "start": "npm run renderer:build && electron .",
+    "dist": "npm run check && npm run renderer:build && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^38.1.0",
+    "electron-builder": "^26.0.12",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "build": {
+    "appId": "com.bftwarrior.cherry-gateway",
+    "productName": "Cherry 多线路网关",
+    "files": [
+      "electron/**/*",
+      "gateway/**/*",
+      "renderer/dist/**/*"
+    ],
+    "electronDist": "node_modules/electron/dist",
+    "win": {
+      "target": "nsis",
+      "icon": "electron/assets/app.ico",
+      "signExecutable": false,
+      "artifactName": "Cherry-多线路网关-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

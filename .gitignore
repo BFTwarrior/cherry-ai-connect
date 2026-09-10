@@ -1,0 +1,26 @@
+# Dependencies and generated build output
+node_modules/
+dist/
+renderer/dist/
+dist-upload-check/
+
+# Local logs and temporary files
+*.log
+*.tmp
+*.temp
+
+# Local configuration and runtime data
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+data/
+gateway-data/
+
+# Local credentials and certificates
+*.key
+*.pem
+*.p12
+*.pfx
