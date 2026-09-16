@@ -68,13 +68,63 @@ Packaged runtime data lives in the `data` folder beside the installed app. Insta
 
 **Do not accidentally delete, move, rename, or overwrite `data`. Deleting the app folder also deletes caches, routes, client keys, lifetime analytics, and unsynced data. Sync or back up the full folder first if the records must be kept.**
 
-## GitHub 云同步 / GitHub cloud sync
+## GitHub 云同步指南 / GitHub cloud sync guide
 
 当前版本使用用户创建的 GitHub 访问令牌连接一个专用私有仓库，并在固定的 `cherry-sync` Release 中保存不可变、压缩和校验过的附件。默认每 30 分钟检查一次；开启、关闭、启动、退出、手动同步和安全配置变化会额外触发同步。
 
 如果两台设备修改了不同版本的线路配置，程序进入冲突状态并要求用户选择“保留本机”或“恢复云端”，不会静默覆盖上游 Key。使用事件按唯一编号去重，永久统计使用分设备计数器合并。
 
-The release candidate uses a user-created GitHub access token, one private repository, and one fixed `cherry-sync` Release. Immutable compressed assets are verified before the manifest is committed. Automatic checks run every 30 minutes and on major lifecycle events.
+### 这两个仓库不是一回事 / These are two different repositories
+
+- `BFTwarrior/cherry-ai-connect` 是公开源码和安装包仓库。README、源码和 Release 说明放这里。
+- `cherry-ai-connect-sync` 是用户自己创建的私有同步仓库，只保存加密后的同步附件。
+- 修改公开源码仓库的 README 不会影响云同步，因为程序同步使用设置页中填写的私有仓库名称。
+- 不要把公开源码仓库当作同步仓库；程序发现同步仓库是公开的，会主动停止同步。
+- 如果你给同步仓库改名，必须同时修改软件设置中的“私有仓库名称”，并重新连接。
+
+The public repository contains source code and installers. The separate private repository, whose default name is `cherry-ai-connect-sync`, stores encrypted sync assets. Editing this README does not affect sync. Never use the public source repository as the sync repository.
+
+### 创建 GitHub 令牌 / Create the GitHub token
+
+打开 [GitHub Fine-grained token settings](https://github.com/settings/personal-access-tokens)，选择 `Generate new token`。建议按下面设置：
+
+| GitHub 项目 | 应如何设置 |
+| --- | --- |
+| Token name | `Cherry AI Connect Sync` |
+| Description | `用于 Cherry AI 连接中心云同步` |
+| Resource owner | 选择自己的 GitHub 账号 |
+| Expiration | 建议 180 天或 1 年；无过期最省操作，但风险更高 |
+| Repository access | `Only select repositories` |
+| Selected repositories | 只选择私有同步仓库，例如 `cherry-ai-connect-sync` |
+| Repository permissions → Contents | `Read and write` |
+| Repository permissions → Metadata | `Read-only`，通常自动保留 |
+
+不需要勾选 Actions、Issues、Pull requests、Administration、Secrets 或其他权限。不要选择 `All repositories`。GitHub 官方建议优先使用细粒度令牌，并限制到单个仓库和最低权限。[官方令牌说明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens)
+
+创建成功后，完整令牌只显示一次：
+
+1. 立即复制完整令牌，不要把它发到聊天或上传到仓库。
+2. 回到 Cherry AI 连接中心“设置 → GitHub 云同步”。
+3. 粘贴到“GitHub 访问令牌”。
+4. “私有仓库名称”填写与 GitHub 完全一致的同步仓库名。
+5. 设置至少 8 位的备份加密密码，并再次确认。
+6. 点击“连接 GitHub 并开启同步”，确认状态变为已连接或同步成功。
+
+### 查看有效期与更换令牌 / Check expiration and replace a token
+
+在 [GitHub 令牌管理页](https://github.com/settings/personal-access-tokens) 可以查看令牌名称、有效期、权限和状态，但不能再次查看完整令牌。令牌过期、被删除或权限不足时，只影响云同步，本地线路和本地 AI 请求仍可继续使用。
+
+更换步骤：
+
+1. 在 GitHub 创建一个新令牌，参数按上表设置。
+2. 将新令牌粘贴到软件的“GitHub 访问令牌”字段。
+3. 保持原来的私有仓库名称和备份加密密码不变。
+4. 点击“连接 GitHub 并开启同步”，再点击“立即同步”验证成功。
+5. 确认同步成功后，再回 GitHub 删除旧令牌。
+
+错误对照：`401` 表示令牌过期、被撤销或无效；`403` 通常是权限、仓库公开或限流；`404` 通常是仓库名称填写错误。遇到令牌问题不要删除 `data` 文件夹，先更换令牌并重新连接。
+
+The English flow is the same: use a fine-grained token, select only the private sync repository, grant `Contents: Read and write`, copy the token once, paste it into the app, and verify a successful sync before revoking the old token.
 
 Configuration conflicts require an explicit local-or-cloud choice. Usage events deduplicate by ID, and lifetime totals merge through per-device counters.
 
