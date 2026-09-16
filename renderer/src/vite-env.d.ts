@@ -15,6 +15,50 @@ interface GatewayInfo {
   restartedAt?: string;
 }
 
+interface UpdateCheckResult {
+  ok: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseUrl: string;
+  publishedAt: string;
+  checkedAt: string;
+}
+
+interface CloudSyncStatus {
+  enabled: boolean;
+  connected: boolean;
+  provider: "github";
+  owner: string;
+  repository: string;
+  repositoryPrivate: boolean;
+  account: { id: string; login: string; avatarUrl?: string } | null;
+  state: "DISABLED" | "IDLE" | "DIRTY" | "SYNCING" | "PENDING_NETWORK" | "AUTH_REQUIRED" | "CONFLICT" | "ERROR_RECOVERABLE" | "ERROR_FATAL";
+  datasetId: string;
+  generation: number;
+  pendingCount: number;
+  lastSyncAt: string;
+  lastAttemptAt: string;
+  nextSyncAt: string;
+  errorCode: string;
+  error: string;
+  warning: string;
+  intervalMinutes: number;
+  vault: { initialized: boolean; unlocked: boolean; datasetId?: string; keyEpoch?: number; vaultRevision?: number; error?: string };
+}
+
+interface GitHubConnectResult {
+  ok: boolean;
+  recoveryCode: string;
+  status: CloudSyncStatus;
+}
+
+interface SyncConflictResult {
+  ok: boolean;
+  recoveryCode: string;
+  status: CloudSyncStatus;
+}
+
 interface Window {
   desktop?: {
     openDataFolder: () => Promise<unknown>;
@@ -22,6 +66,16 @@ interface Window {
     setSettings: (patch: Partial<DesktopSettings>) => Promise<DesktopSettings>;
     getGatewayInfo: () => Promise<GatewayInfo>;
     resetGateway: () => Promise<{ ok: boolean } & GatewayInfo>;
+    checkForUpdates: () => Promise<UpdateCheckResult>;
+    getSyncStatus: () => Promise<CloudSyncStatus>;
+    connectGitHub: (value: { token: string; repository: string; password: string }) => Promise<GitHubConnectResult>;
+    syncNow: () => Promise<CloudSyncStatus>;
+    setSyncEnabled: (enabled: boolean) => Promise<CloudSyncStatus>;
+    unlockSyncVault: (value: { password?: string; recoveryCode?: string }) => Promise<{ ok: boolean; status: CloudSyncStatus }>;
+    resolveSyncConflict: (value: { choice: "local" | "remote"; password?: string; recoveryCode?: string }) => Promise<SyncConflictResult>;
+    disconnectGitHub: () => Promise<CloudSyncStatus>;
+    onSyncStatus: (listener: (status: CloudSyncStatus) => void) => () => void;
+    openExternal: (url: string) => Promise<unknown>;
     showWindow: () => void;
     hideWindow: () => void;
     quit: () => void;

@@ -10,6 +10,20 @@ contextBridge.exposeInMainWorld("desktop", {
   setSettings: (patch) => ipcRenderer.invoke("set-desktop-settings", patch),
   getGatewayInfo: () => ipcRenderer.invoke("get-gateway-info"),
   resetGateway: () => ipcRenderer.invoke("reset-gateway"),
+  checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  getSyncStatus: () => ipcRenderer.invoke("get-sync-status"),
+  connectGitHub: (value) => ipcRenderer.invoke("github-connect", value),
+  syncNow: () => ipcRenderer.invoke("sync-now"),
+  setSyncEnabled: (enabled) => ipcRenderer.invoke("set-sync-enabled", enabled),
+  unlockSyncVault: (value) => ipcRenderer.invoke("unlock-sync-vault", value),
+  resolveSyncConflict: (value) => ipcRenderer.invoke("resolve-sync-conflict", value),
+  disconnectGitHub: () => ipcRenderer.invoke("disconnect-github"),
+  onSyncStatus: (listener) => {
+    const handler = (_event, value) => listener(value);
+    ipcRenderer.on("sync-status", handler);
+    return () => ipcRenderer.removeListener("sync-status", handler);
+  },
+  openExternal: (url) => ipcRenderer.invoke("open-external", url),
   showWindow: () => ipcRenderer.send("show-window"),
   hideWindow: () => ipcRenderer.send("hide-window"),
   quit: () => ipcRenderer.send("quit-app"),

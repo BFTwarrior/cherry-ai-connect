@@ -18,6 +18,7 @@ dist-upload-check/
 *.sqlite3
 data/
 gateway-data/
+.runtime-data/
 
 # Local credentials and certificates
 *.key

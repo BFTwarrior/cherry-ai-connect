@@ -2,24 +2,67 @@
  * 中文：Electron 主进程负责创建桌面窗口、托盘、开机启动和本地网关生命周期。
  * English: The Electron main process owns the desktop window, tray, auto-start, and local gateway lifecycle.
  */
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard, safeStorage, powerMonitor } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
-const net = require("node:net");
+const https = require("node:https");
 const { execFile } = require("node:child_process");
 const { promisify } = require("node:util");
 const { pathToFileURL } = require("node:url");
+const { chooseGatewayPort } = require("./port-selector");
+const { resolveRuntimePaths } = require("./runtime-paths");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
-const RANDOM_PORT_MIN = 27891;
-const RANDOM_PORT_MAX = 27991;
+const RELEASE_API = "https://api.github.com/repos/BFTwarrior/cherry-gateway-desktop/releases/latest";
+const RELEASE_PAGE_PREFIX = "https://github.com/BFTwarrior/cherry-gateway-desktop/";
+const RELEASE_LATEST_PAGE = `${RELEASE_PAGE_PREFIX}releases/latest`;
 
 let gatewayModule;
 let mainWindow;
 let tray;
 let quitting = false;
+let shutdownComplete = false;
 let currentGatewayPort = DEFAULT_GATEWAY_PORT;
+let syncManager;
+let majorSyncTimer;
+
+// 中文：正式版把运行数据放在安装目录旁，用户选择 D 盘后不会把主要缓存留在 C 盘。
+// English: Packaged builds keep runtime data beside the installation so a D-drive install stays on D.
+const legacyUserDataRoot = app.getPath("userData");
+const { runtimeDataRoot, browserCacheRoot, gatewayDataRoot } = resolveRuntimePaths({
+  isPackaged: app.isPackaged,
+  executablePath: process.execPath,
+  moduleDirectory: __dirname,
+});
+fs.mkdirSync(runtimeDataRoot, { recursive: true });
+app.setPath("userData", runtimeDataRoot);
+app.setPath("sessionData", browserCacheRoot);
+
+function copyDirectoryIfMissing(source, destination) {
+  if (!fs.existsSync(source) || fs.existsSync(destination)) return false;
+  fs.cpSync(source, destination, { recursive: true, errorOnExist: true });
+  return true;
+}
+
+// 中文：首次升级只复制必要数据，不自动删除旧目录，避免迁移异常造成不可恢复的数据丢失。
+// English: First upgrade copies essential data but never auto-deletes the legacy folder.
+function migrateLegacyDataOnce() {
+  if (path.resolve(legacyUserDataRoot) === path.resolve(runtimeDataRoot)) return;
+  const marker = path.join(runtimeDataRoot, ".legacy-data-checked");
+  if (fs.existsSync(marker)) return;
+  try {
+    const legacySettings = path.join(legacyUserDataRoot, "desktop-settings.json");
+    const nextSettings = path.join(runtimeDataRoot, "desktop-settings.json");
+    if (fs.existsSync(legacySettings) && !fs.existsSync(nextSettings)) fs.copyFileSync(legacySettings, nextSettings);
+    copyDirectoryIfMissing(path.join(legacyUserDataRoot, "gateway-data"), gatewayDataRoot);
+    fs.writeFileSync(marker, JSON.stringify({ checkedAt: new Date().toISOString(), legacyUserDataRoot }, null, 2), "utf8");
+  } catch (error) {
+    console.warn("旧数据迁移未完成，将在下次启动重试：", error?.message || error);
+  }
+}
+
+migrateLegacyDataOnce();
 const singleInstance = app.requestSingleInstanceLock();
 
 app.setAppUserModelId("com.bftwarrior.cherry-gateway");
@@ -33,7 +76,10 @@ function readDesktopSettings() {
 function writeDesktopSettings(value) {
   const next = { ...defaultDesktopSettings, ...value };
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
-  fs.writeFileSync(settingsFile(), JSON.stringify(next, null, 2), "utf8");
+  const temporary = `${settingsFile()}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(next, null, 2), "utf8");
+  try { fs.renameSync(temporary, settingsFile()); }
+  catch (error) { try { fs.copyFileSync(temporary, settingsFile()); fs.unlinkSync(temporary); } catch { throw error; } }
   return next;
 }
 function configureAutoLaunch(enabled) {
@@ -46,42 +92,130 @@ function gatewayInfo() {
   return { port: currentGatewayPort, origin, apiBase: `${origin}/v1` };
 }
 
-function isPortAvailable(port) {
-  return new Promise((resolve) => {
-    const probe = net.createServer();
-    const finish = (available) => {
-      probe.removeAllListeners();
-      try { probe.close(); } catch { /* probe was never listening */ }
-      resolve(available);
-    };
-    probe.once("error", () => finish(false));
-    probe.once("listening", () => probe.close(() => resolve(true)));
-    probe.listen(port, "127.0.0.1");
+function protectLocalSecret(value) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows 安全存储当前不可用，无法安全保存 GitHub 凭证");
+  return safeStorage.encryptString(String(value));
+}
+
+function unprotectLocalSecret(value) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("Windows 安全存储当前不可用，无法读取 GitHub 凭证");
+  return safeStorage.decryptString(Buffer.from(value));
+}
+
+function syncSource() {
+  return {
+    getSyncSnapshot: () => gatewayModule.getSyncSnapshot(),
+    mergeRemoteUsage: (payload) => gatewayModule.mergeRemoteUsage(payload),
+    markSyncEvents: (ids) => gatewayModule.markSyncEvents(ids),
+    recordSyncRun: (payload) => gatewayModule.recordSyncRun(payload),
+    canAdoptSyncDataset: () => gatewayModule.canAdoptSyncDataset(),
+    adoptSyncDataset: (datasetId) => gatewayModule.adoptSyncDataset(datasetId),
+    replaceConfigFromSync: (publicConfig, secureConfig) => gatewayModule.replaceConfigFromSync(publicConfig, secureConfig),
+    bumpConfigRevisionForSync: () => gatewayModule.bumpConfigRevisionForSync(),
+  };
+}
+
+async function initializeSyncManager() {
+  if (syncManager) return syncManager;
+  const syncPath = app.isPackaged
+    ? path.join(process.resourcesPath, "app.asar", "sync", "sync-manager.mjs")
+    : path.join(__dirname, "..", "sync", "sync-manager.mjs");
+  const { SyncManager } = await import(pathToFileURL(syncPath).href);
+  syncManager = new SyncManager({
+    dataDir: gatewayDataRoot,
+    source: syncSource(),
+    protect: protectLocalSecret,
+    unprotect: unprotectLocalSecret,
+    notify: (status) => {
+      mainWindow?.webContents.send("sync-status", status);
+      refreshTrayMenu();
+    },
+  });
+  gatewayModule.setSyncChangeHandler?.((reason) => {
+    if (!syncManager?.status().enabled) return;
+    if (majorSyncTimer) clearTimeout(majorSyncTimer);
+    majorSyncTimer = setTimeout(() => { void syncManager.syncNow(reason).catch(() => {}); }, 1500);
+  });
+  return syncManager;
+}
+
+function versionParts(value) {
+  return String(value || "0.0.0").replace(/^v/i, "").split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function isNewerVersion(candidate, current) {
+  const left = versionParts(candidate);
+  const right = versionParts(current);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    if ((left[index] || 0) !== (right[index] || 0)) return (left[index] || 0) > (right[index] || 0);
+  }
+  return false;
+}
+
+function releaseResult(latestVersion, releaseUrl, publishedAt = "") {
+  const currentVersion = app.getVersion();
+  return {
+    ok: true,
+    currentVersion,
+    latestVersion,
+    updateAvailable: isNewerVersion(latestVersion, currentVersion),
+    releaseUrl,
+    publishedAt,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+function fetchLatestReleaseFromApi() {
+  return new Promise((resolve, reject) => {
+    const request = https.get(RELEASE_API, {
+      headers: { accept: "application/vnd.github+json", "user-agent": "Cherry-Gateway-Desktop" },
+      timeout: 12000,
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        try {
+          const data = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(data?.message || `GitHub HTTP ${response.statusCode}`);
+          const latestVersion = String(data.tag_name || "").replace(/^v/i, "");
+          if (!latestVersion) throw new Error("未读取到 GitHub Release 版本号");
+          resolve(releaseResult(latestVersion, String(data.html_url || RELEASE_LATEST_PAGE), String(data.published_at || "")));
+        } catch (error) { reject(error); }
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("检查更新超时，请稍后重试")));
+    request.on("error", reject);
   });
 }
 
-function shuffledPorts(preferred, exclude) {
-  const values = [];
-  const safePreferred = Number(preferred);
-  if (Number.isInteger(safePreferred) && safePreferred >= RANDOM_PORT_MIN && safePreferred <= RANDOM_PORT_MAX && safePreferred !== exclude) values.push(safePreferred);
-  for (let port = RANDOM_PORT_MIN; port <= RANDOM_PORT_MAX; port += 1) {
-    if (port !== safePreferred && port !== exclude) values.push(port);
-  }
-  for (let index = values.length - 1; index > 0; index -= 1) {
-    const swap = Math.floor(Math.random() * (index + 1));
-    [values[index], values[swap]] = [values[swap], values[index]];
-  }
-  return values;
+// 中文：匿名 GitHub API 被限流时，从 releases/latest 的官方跳转地址读取版本。
+// English: If the anonymous GitHub API is rate-limited, read the tag from the official releases/latest redirect.
+function fetchLatestReleaseFromRedirect() {
+  return new Promise((resolve, reject) => {
+    const request = https.get(RELEASE_LATEST_PAGE, {
+      headers: { "user-agent": "Cherry-Gateway-Desktop" },
+      timeout: 12000,
+    }, (response) => {
+      const location = String(response.headers.location || "");
+      const releaseUrl = location ? new URL(location, RELEASE_LATEST_PAGE).toString() : "";
+      const tag = releaseUrl.startsWith(RELEASE_PAGE_PREFIX)
+        ? decodeURIComponent(new URL(releaseUrl).pathname.split("/releases/tag/")[1] || "")
+        : "";
+      response.resume();
+      if (response.statusCode >= 300 && response.statusCode < 400 && tag) {
+        resolve(releaseResult(tag.replace(/^v/i, ""), releaseUrl));
+      } else {
+        reject(new Error(`GitHub Release 检查失败（HTTP ${response.statusCode || 0}）`));
+      }
+    });
+    request.on("timeout", () => request.destroy(new Error("检查更新超时，请稍后重试")));
+    request.on("error", reject);
+  });
 }
 
-async function chooseGatewayPort(preferred, { exclude, randomize = false } = {}) {
-  const candidates = shuffledPorts(preferred, exclude);
-  if (!randomize && candidates.length && candidates[0] !== preferred) candidates.unshift(Number(preferred));
-  for (const port of candidates) {
-    if (port === exclude) continue;
-    if (await isPortAvailable(port)) return port;
-  }
-  throw new Error("没有找到可用的本地网关端口（27891-27991）");
+async function fetchLatestRelease() {
+  try { return await fetchLatestReleaseFromApi(); }
+  catch { return fetchLatestReleaseFromRedirect(); }
 }
 
 function trayImage() {
@@ -98,9 +232,17 @@ function refreshTrayMenu() {
   if (!tray) return;
   const settings = readDesktopSettings();
   const english = settings.language === "en";
+  const syncStatus = syncManager?.status();
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: english ? "Show Cherry Gateway" : "显示 Cherry 网关", click: () => mainWindow?.show() },
+    { label: english ? "Show Cherry AI Connect" : "显示 Cherry AI 连接中心", click: () => mainWindow?.show() },
     { label: english ? "Hide to tray" : "隐藏到托盘", click: () => mainWindow?.hide() },
+    { type: "separator" },
+    { label: english ? "Copy local API URL" : "复制本地 API 地址", click: () => clipboard.writeText(gatewayInfo().apiBase) },
+    {
+      label: syncStatus?.enabled ? (english ? "Pause automatic sync" : "暂停自动同步") : (english ? "Resume automatic sync" : "恢复自动同步"),
+      enabled: Boolean(syncStatus?.connected),
+      click: () => { if (syncManager) void syncManager.setEnabled(!syncManager.status().enabled).catch(() => {}); },
+    },
     { type: "separator" },
     { label: english ? "Start with Windows" : "开机启动", type: "checkbox", checked: settings.autoLaunch, click: (item) => updateDesktopSettings({ autoLaunch: item.checked }) },
     { type: "separator" },
@@ -111,7 +253,7 @@ function refreshTrayMenu() {
 function createTray() {
   if (tray) return;
   tray = new Tray(trayImage());
-  tray.setToolTip("Cherry 多线路网关");
+  tray.setToolTip("Cherry AI 连接中心");
   tray.on("click", () => mainWindow?.show());
   tray.on("double-click", () => mainWindow?.show());
   refreshTrayMenu();
@@ -148,7 +290,7 @@ async function cleanupLegacyGatewayProcesses() {
 
 async function startGateway(portOverride) {
   await cleanupLegacyGatewayProcesses();
-  const dataDir = path.join(app.getPath("userData"), "gateway-data");
+  const dataDir = gatewayDataRoot;
   process.env.GATEWAY_DATA_DIR = dataDir;
   process.env.GATEWAY_EMBEDDED = "1";
   const gatewayPath = app.isPackaged
@@ -186,7 +328,7 @@ function createWindow() {
     minHeight: 700,
     show: !(process.argv.includes("--hidden") || settings.startMinimized),
     backgroundColor: "#0d0d12",
-    title: "Cherry 多线路网关",
+    title: "Cherry AI 连接中心",
     icon: path.join(__dirname, "assets", "app.ico"),
     autoHideMenuBar: true,
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
@@ -198,11 +340,28 @@ function createWindow() {
   });
 }
 
-ipcMain.handle("open-data-folder", () => shell.openPath(path.join(app.getPath("userData"), "gateway-data")));
+ipcMain.handle("open-data-folder", () => shell.openPath(gatewayDataRoot));
 ipcMain.handle("get-desktop-settings", () => ({ ...readDesktopSettings(), loginItem: app.getLoginItemSettings().openAtLogin }));
 ipcMain.handle("set-desktop-settings", (_event, patch) => updateDesktopSettings(patch || {}));
 ipcMain.handle("get-gateway-info", () => gatewayInfo());
 ipcMain.handle("reset-gateway", async () => resetGateway());
+ipcMain.handle("check-for-updates", async () => fetchLatestRelease());
+ipcMain.handle("get-sync-status", async () => (await initializeSyncManager()).status());
+ipcMain.handle("github-connect", async (_event, value) => (await initializeSyncManager()).connect({
+  token: String(value?.token || ""),
+  repository: String(value?.repository || "cherry-ai-connect-sync"),
+  password: String(value?.password || ""),
+}));
+ipcMain.handle("sync-now", async () => (await initializeSyncManager()).syncNow("manual"));
+ipcMain.handle("set-sync-enabled", async (_event, enabled) => (await initializeSyncManager()).setEnabled(Boolean(enabled)));
+ipcMain.handle("unlock-sync-vault", async (_event, value) => (await initializeSyncManager()).unlockVault({ password: String(value?.password || ""), recoveryCode: String(value?.recoveryCode || "") }));
+ipcMain.handle("resolve-sync-conflict", async (_event, value) => (await initializeSyncManager()).resolveConflict({ choice: String(value?.choice || ""), password: String(value?.password || ""), recoveryCode: String(value?.recoveryCode || "") }));
+ipcMain.handle("disconnect-github", async () => (await initializeSyncManager()).disconnect());
+ipcMain.handle("open-external", (_event, value) => {
+  const target = String(value || "");
+  if (!target.startsWith("https://github.com/")) throw new Error("只允许打开 GitHub HTTPS 页面");
+  return shell.openExternal(target);
+});
 ipcMain.on("show-window", () => mainWindow?.show());
 ipcMain.on("hide-window", () => mainWindow?.hide());
 ipcMain.on("quit-app", () => { quitting = true; app.quit(); });
@@ -214,10 +373,23 @@ else {
     const settings = readDesktopSettings();
     configureAutoLaunch(settings.autoLaunch);
     await startGateway();
+    await initializeSyncManager();
     createTray();
     createWindow();
+    void syncManager.startup();
+    powerMonitor.on("resume", () => { void syncManager?.resume().catch(() => {}); });
     app.on("activate", () => { if (!mainWindow) createWindow(); else mainWindow.show(); });
   }).catch((error) => { console.error(error); app.quit(); });
-  app.on("before-quit", () => { quitting = true; void stopGateway(); });
+  app.on("before-quit", (event) => {
+    quitting = true;
+    if (shutdownComplete) return;
+    event.preventDefault();
+    if (majorSyncTimer) clearTimeout(majorSyncTimer);
+    Promise.resolve(syncManager?.shutdown(5000))
+      .catch(() => {})
+      .then(() => stopGateway())
+      .catch(() => {})
+      .finally(() => { shutdownComplete = true; app.quit(); });
+  });
   app.on("window-all-closed", () => { if (process.platform !== "darwin" && (quitting || !readDesktopSettings().closeToTray)) app.quit(); });
 }

@@ -3,13 +3,16 @@
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { UsageView } from "./UsageView";
+import { UpdateCard } from "./UpdateCard";
+import { CloudSyncCard } from "./CloudSyncCard";
 
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "0.4.3";
+const VERSION = "1.00";
 
-type View = "overview" | "providers" | "models" | "keys" | "settings";
+type View = "overview" | "providers" | "models" | "keys" | "usage" | "settings";
 type Language = "zh" | "en";
 type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max";
 type SyncStatus = "ok" | "error" | "never";
@@ -34,6 +37,7 @@ type Provider = {
 type ClientKey = {
   id: string;
   name: string;
+  nameCustomized: boolean;
   providerId: string;
   providerName: string;
   reasoningLevel: ReasoningLevel;
@@ -113,6 +117,7 @@ const iconPaths: Record<string, ReactNode> = {
   arrow: <><path d="M5 12h13" /><path d="m13 6 6 6-6 6" /></>,
   external: <><path d="M14 5h5v5" /><path d="m19 5-8 8" /><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 10v6M12 7.5v.1" /></>,
+  chart: <><path d="M4 19V5" /><path d="M4 19h16" /><path d="m7 15 4-5 3 3 5-7" /></>,
 };
 
 function Icon({ name, size = 17 }: { name: string; size?: number }) {
@@ -179,6 +184,34 @@ function initials(name: string) {
   return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2)).toUpperCase() || "CG";
 }
 
+function ClientKeyForm({ clientKey, providers, defaultLevel, language, onSubmit, actions }: { clientKey?: ClientKey; providers: Provider[]; defaultLevel: ReasoningLevel; language: Language; onSubmit: (event: FormEvent<HTMLFormElement>) => void; actions: ReactNode }) {
+  const tr = (zh: string, en: string) => language === "zh" ? zh : en;
+  const initialProviderId = clientKey?.providerId || providers[0]?.id || "";
+  const initialProvider = providers.find((provider) => provider.id === initialProviderId);
+  const [providerId, setProviderId] = useState(initialProviderId);
+  const [nameCustomized, setNameCustomized] = useState(clientKey?.nameCustomized === true);
+  const [name, setName] = useState(clientKey?.name || initialProvider?.name || "");
+
+  const changeProvider = (nextProviderId: string) => {
+    setProviderId(nextProviderId);
+    if (!nameCustomized) setName(providers.find((provider) => provider.id === nextProviderId)?.name || "");
+  };
+
+  const changeName = (nextName: string) => {
+    setName(nextName);
+    const routeName = providers.find((provider) => provider.id === providerId)?.name || "";
+    if (nextName !== routeName) setNameCustomized(true);
+  };
+
+  return <form onSubmit={onSubmit}>
+    <label className="field-label">{tr("Key 名称", "Key name")}<input className="field-control" name="name" value={name} onChange={(event) => changeName(event.target.value)} placeholder={tr("默认跟随线路名称", "Follows the route name by default")} required /><input type="hidden" name="nameCustomized" value={nameCustomized ? "true" : "false"} /><small className={`field-help name-sync-state ${nameCustomized ? "custom" : "synced"}`}>{nameCustomized ? tr("已使用自定义名称；以后切换或重命名线路时不再自动修改。", "Custom name locked; route changes will no longer rename this key.") : tr("名称正跟随绑定线路；手动修改后将停止自动同步。", "Name follows the bound route until you customize it.")}</small></label>
+    <label className="field-label">{tr("绑定中转站线路", "Bind upstream route")}<select className="field-control" name="providerId" value={providerId} onChange={(event) => changeProvider(event.target.value)} disabled={!providers.length} required><option value="">{tr("请选择线路", "Select a route")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id} · {provider.id}</option>)}</select></label>
+    <label className="field-label">{tr("思考强度", "Reasoning level")}<select className="field-control" name="reasoningLevel" defaultValue={clientKey?.reasoningLevel || defaultLevel || "high"}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select><small className="field-help">{tr("保存后会随每次请求发送给上游，不是只改界面标签。", "This is sent upstream with every request; it is not a visual-only label.")}</small></label>
+    {!providers.length && <div className="form-warning"><Icon name="route" size={14} />{tr("请先添加一条中转站线路，再生成客户端 Key。", "Add an upstream route before creating a client key.")}</div>}
+    {actions}
+  </form>;
+}
+
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("cherry-language") as Language) || "zh");
   const [view, setView] = useState<View>("overview");
@@ -206,7 +239,6 @@ export default function App() {
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState("all");
   const [modelQuery, setModelQuery] = useState("");
-  const hasLoadedOnce = useRef(false);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const copy = useCopy();
 
@@ -258,21 +290,8 @@ export default function App() {
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    let restarted = false;
-    let resetPort: number | undefined;
-    if (!silent && hasLoadedOnce.current && window.desktop?.resetGateway) {
-      setGatewayResetting(true);
-      try {
-        const result = await window.desktop.resetGateway();
-        restarted = result.ok;
-        resetPort = result.port;
-        applyGatewayInfo(result);
-      } catch (error) {
-        showToast(`网关重置失败 / Gateway restart failed：${error instanceof Error ? error.message : String(error)}`, "error");
-      }
-    }
     try {
-      if (!hasLoadedOnce.current && window.desktop?.getGatewayInfo) applyGatewayInfo(await window.desktop.getGatewayInfo());
+      if (window.desktop?.getGatewayInfo) applyGatewayInfo(await window.desktop.getGatewayInfo());
       const [providerData, keyData, settingsData, statusData, desktopData] = await Promise.all([
         request<{ providers: Provider[] }>("/admin/api/providers"),
         request<{ keys: ClientKey[] }>("/admin/api/client-keys"),
@@ -292,13 +311,10 @@ export default function App() {
         setDesktop((current) => ({ ...current, ...desktopData }));
         if (!localStorage.getItem("cherry-language") && desktopData.language) setLanguage(desktopData.language);
       }
-      if (restarted) showToast(`网关已重置，已切换到随机端口 ${resetPort || gatewayPort} / Gateway reset; switched to random port ${resetPort || gatewayPort}`, "success");
     } catch (error) {
       if (!silent) showToast(error instanceof Error ? error.message : String(error), "error");
     } finally {
-      if (!silent) setGatewayResetting(false);
       if (!silent) setLoading(false);
-      hasLoadedOnce.current = true;
     }
   }, [applyGatewayInfo, showToast]);
 
@@ -340,7 +356,7 @@ export default function App() {
       const target = event.target as HTMLElement | null;
       if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
       if (event.altKey || (isMac ? !event.metaKey : !event.ctrlKey)) return;
-      const nextView: Record<string, View> = { "1": "overview", "2": "providers", "3": "models", "4": "keys" };
+      const nextView: Record<string, View> = { "1": "overview", "2": "providers", "3": "models", "4": "keys", "5": "usage" };
       if (!nextView[event.key]) return;
       event.preventDefault();
       navigate(nextView[event.key]);
@@ -385,15 +401,26 @@ export default function App() {
   const handleResetGateway = async () => {
     if (loading || gatewayResetting) return;
     const confirmed = await requestConfirmation({
-      title: tr("重置网关", "Reset gateway"),
-      message: tr("旧的本地 API 地址会失效，网关将切换到一个随机端口；线路、模型和客户端 Key 会保留。", "The old local API address will stop working and the gateway will switch to a random port. Routes, models, and client keys will be kept."),
+      title: tr("重置连接服务", "Reset connection service"),
+      message: tr("旧的本地 API 地址会失效，连接服务将切换到一个随机端口；线路、模型和客户端 Key 会保留。", "The old local API address will stop working and the connection service will switch to a random port. Routes, models, and client keys will be kept."),
       confirmLabel: tr("重置并随机端口", "Reset and randomize"),
       cancelLabel: tr("取消", "Cancel"),
       tone: "warning",
       icon: "refresh",
     });
     if (!confirmed) return;
-    await load();
+    setGatewayResetting(true);
+    try {
+      if (!window.desktop?.resetGateway) throw new Error(tr("当前环境不支持重置连接服务", "This environment cannot reset the connection service"));
+      const result = await window.desktop.resetGateway();
+      applyGatewayInfo(result);
+      await load(true);
+      showToast(tr(`连接服务已重置，已切换到随机端口 ${result.port}`, `Connection service reset; switched to random port ${result.port}`), "success");
+    } catch (error) {
+      showToast(`${tr("连接服务重置失败", "Connection service reset failed")}：${error instanceof Error ? error.message : String(error)}`, "error");
+    } finally {
+      setGatewayResetting(false);
+    }
   };
 
   const syncProvider = async (id: string, quiet = false) => {
@@ -471,7 +498,7 @@ export default function App() {
     const form = new FormData(event.currentTarget);
     const isEditing = modal?.kind === "key" && Boolean(modal.key);
     const currentKey = modal?.kind === "key" ? modal.key : undefined;
-    const payload = { name: String(form.get("name") || "").trim(), providerId: String(form.get("providerId") || ""), reasoningLevel: String(form.get("reasoningLevel") || "high") };
+    const payload = { name: String(form.get("name") || "").trim(), nameCustomized: form.get("nameCustomized") === "true", providerId: String(form.get("providerId") || ""), reasoningLevel: String(form.get("reasoningLevel") || "high") };
     try {
       if (isEditing && currentKey) {
         await request(`/admin/api/client-keys/${encodeURIComponent(currentKey.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
@@ -663,6 +690,7 @@ export default function App() {
     providers: ["中转站线路", "Upstream routes"],
     models: ["模型目录", "Model catalog"],
     keys: ["客户端 Key", "Client keys"],
+    usage: ["使用统计", "Usage analytics"],
     settings: ["设置", "Settings"],
   };
 
@@ -671,6 +699,7 @@ export default function App() {
       case "providers": return <ProvidersView />;
       case "models": return <ModelsView />;
       case "keys": return <KeysView />;
+      case "usage": return <UsageView language={language} gatewayOrigin={apiBase.replace(/\/v1\/?$/, "")} />;
       case "settings": return <SettingsView />;
       default: return <OverviewView />;
     }
@@ -722,8 +751,8 @@ export default function App() {
     const boundRoutes = keys.filter((key) => key.enabled).map((key) => ({ key, provider: providerById(key.providerId) })).filter((item) => item.provider);
     return <>
       <section className="welcome-panel">
-        <div className="welcome-copy"><div className="eyebrow accent"><span className="live-pulse" />{tr("本地控制中心", "LOCAL CONTROL CENTER")}</div><h2>{tr("把上游线路，变成", "One local gateway for your ")}<em>{tr("一个好用的本地网关", "upstream routes")}</em></h2><p>{tr("在这里管理中转站、模型目录和客户端 Key。上游密钥只留在本机，Cherry 只需要连接一个本地地址。", "Manage routes, model catalogs, and client keys here. Upstream secrets stay on this PC while Cherry connects to one local endpoint.")}</p><div className="welcome-actions"><button className="button button-primary" onClick={nextStep.action}><Icon name={nextStep.icon} size={15} />{nextStep.label}</button></div></div>
-        <div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core-orb"><Icon name="route" size={34} /></div><span className="visual-caption">{tr("本地网关", "LOCAL RELAY")}</span><strong>127.0.0.1</strong><small>PORT {gatewayPort}</small></div>
+      <div className="welcome-copy"><div className="eyebrow accent"><span className="live-pulse" />{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h2>{tr("把上游线路，变成", "One secure connection center for your ")}<em>{tr("一个好用的 AI 连接中心", "AI routes")}</em></h2><p>{tr("在这里管理中转站、模型目录和客户端 Key。上游密钥只留在本机，Cherry 只需要连接一个本地地址。", "Manage routes, model catalogs, and client keys here. Upstream secrets stay on this PC while Cherry connects to one local endpoint.")}</p><div className="welcome-actions"><button className="button button-primary" onClick={nextStep.action}><Icon name={nextStep.icon} size={15} />{nextStep.label}</button></div></div>
+        <div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core-orb"><Icon name="route" size={34} /></div><span className="visual-caption">{tr("本地连接", "LOCAL CONNECT")}</span><strong>127.0.0.1</strong><small>PORT {gatewayPort}</small></div>
       </section>
       <div className="metric-grid"><Metric icon="route" tone="purple" value={String(providers.length)} label={tr("中转站线路", "Upstream routes")} note={tr("可绑定客户端 Key", "Ready for key binding")} /><Metric icon="layers" tone="blue" value={String(totalModels)} label={tr("已同步模型", "Synced models")} note={tr("来自上游目录", "From upstream catalogs")} /><Metric icon="key" tone="green" value={String(activeKeys)} label={tr("有效客户端 Key", "Active client keys")} note={tr("仅显示本地凭证", "Local credentials only")} /><Metric icon="spark" tone="amber" value={levelLabel(settings.forcedLevel)} label={tr("默认思考强度", "Default reasoning")} note={tr("真实写入转发请求", "Written into requests")} /></div>
       <div className="overview-columns"><section className="panel checklist-panel"><PanelHeading kicker={tr("QUICK START", "QUICK START")} title={tr("四步完成配置", "Finish setup in four steps")} action={<span className="progress-label">{checklist.filter((item) => item.done).length}/4</span>} /><div className="checklist">{checklist.map((item) => <button className={`checklist-row ${item.done ? "done" : ""}`} key={item.label} onClick={item.action}><span className="check-circle"><Icon name="check" size={12} /></span><span>{item.label}</span><span className="checklist-action-label">{item.done ? tr("查看", "View") : tr("执行", "Run")}</span><Icon name="arrow" size={15} /></button>)}</div><div className={`checklist-hint status-${lastClientRequestStatus}`}>{lastClientRequestStatus === "ok" ? <><Icon name="check" size={13} />{tr(`最近一次转发成功${lastClientRequestModel ? ` · ${lastClientRequestModel}` : ""} · ${formatDate(lastClientRequestAt, language)}`, `Last forwarded request succeeded${lastClientRequestModel ? ` · ${lastClientRequestModel}` : ""} · ${formatDate(lastClientRequestAt, language)}`)}</> : lastClientRequestStatus === "pending" ? <><Icon name="refresh" size={13} />{tr("正在等待上游响应…", "Waiting for the upstream response…")}</> : lastClientRequestStatus === "error" ? <><Icon name="shield" size={13} />{tr("最近一次客户端请求失败，请检查线路状态。", "The latest client request failed; check the route status.")}</> : <><Icon name="info" size={13} />{tr("尚未检测到成功的客户端转发；完成一次 Cherry 请求后这里会变为已完成。", "No successful client request yet; this step completes after Cherry makes one request.")}</>}</div></section><section className="panel default-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section></div>
@@ -746,20 +775,109 @@ export default function App() {
   }
 
    function KeysView() {
-     return <section className="page-view"><PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this gateway.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} /><div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div><div className="key-toolbar"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div>{keys.length ? <div className="key-list">{keys.map((key) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"}`} key={key.id}><div className="key-card-head"><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div><div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div><div className="key-card-actions"><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div></article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}</section>;
+     return <section className="page-view"><PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this local connection service.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} /><div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div><div className="key-toolbar"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div>{keys.length ? <div className="key-list">{keys.map((key) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"}`} key={key.id}><div className="key-card-head"><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div><div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div><div className="key-card-actions"><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div></article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}</section>;
    }
 
-   function SettingsView() {
-     return <section className="page-view"><PageIntro kicker={tr("设置", "PREFERENCES")} description={tr("控制请求策略、桌面行为和界面语言；所有设置修改后立即生效。", "Control request policy, desktop behavior, and language; every change applies immediately.")} action={undefined} /><div className="settings-layout"><article className="settings-card"><SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} /><div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。", "Saved immediately; existing keys keep their own level.")}</small></div><select name="forcedLevel" value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></div><button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${settings.forcedLevel.toUpperCase()} 应用到 ${keys.length} 个已有 Key`, `Apply ${settings.forcedLevel.toUpperCase()} to ${keys.length} existing key(s)`)}</button><div className="settings-note"><Icon name="key" size={14} /><span>{tr("线路不再作为设置项：每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Route selection is not a preference: every client key must bind to exactly one upstream route when created.")}</span></div></article><article className="settings-card"><SettingsHeading icon="monitor" title={tr("桌面行为", "Desktop behavior")} description={tr("网关会随桌面程序一起运行，并可在托盘中保持后台工作。", "The gateway runs with the desktop app and can stay in the tray.")} /><SettingCheck name="autoLaunch" checked={desktop.autoLaunch} onChange={(checked) => void updateDesktopSetting({ autoLaunch: checked })} title={tr("开机自动启动", "Start with Windows")} description={tr("登录 Windows 后自动运行网关。", "Start the gateway when you sign in to Windows.")} /><SettingCheck name="startMinimized" checked={desktop.startMinimized} onChange={(checked) => void updateDesktopSetting({ startMinimized: checked })} title={tr("启动后隐藏到托盘", "Start hidden in tray")} description={tr("开机启动时不弹出主窗口。", "Do not show the main window on startup.")} /><SettingCheck name="closeToTray" checked={desktop.closeToTray} onChange={(checked) => void updateDesktopSetting({ closeToTray: checked })} title={tr("关闭窗口时隐藏到托盘", "Close to tray")} description={tr("点击右上角关闭只隐藏窗口，网关继续工作。", "Closing the window hides it while the gateway keeps working.")} /></article><article className="settings-card compact-settings"><SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} /><div className="language-options"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")}>简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")}>English</button></div></article><article className="settings-card compact-settings"><SettingsHeading icon="shield" title={tr("安全与连接", "Security & connection")} description={tr("上游密钥使用本机加密保存；Cherry 只连接下面的本地地址。", "Upstream keys are encrypted locally; Cherry only connects to this local address.")} /><div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div><div className="connection-note"><Icon name="refresh" size={13} /><span>{tr("“重置网关”会停止旧监听器并切换到新的随机端口，用来避开端口冲突；线路、模型和客户端 Key 都会保留。", "Reset gateway stops the old listener and switches to a random port to avoid conflicts; routes, models, and client keys are preserved.")}</span></div><button type="button" className="button button-secondary full-width" onClick={openDataFolder}><Icon name="folder" size={15} />{tr("打开数据目录", "Open data folder")}</button></article></div></section>;
-   }
+  function SettingsView() {
+    return <section className="page-view">
+      <PageIntro kicker={tr("设置", "PREFERENCES")} description={tr("控制请求策略、桌面行为、更新和界面语言；所有设置修改后立即生效。", "Control request policy, desktop behavior, updates, and language; changes apply immediately.")} action={undefined} />
+      <div className="settings-layout">
+        <article className="settings-card">
+          <SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} />
+          <div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。", "Saved immediately; existing keys keep their own level.")}</small></div><select name="forcedLevel" value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></div>
+          <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${settings.forcedLevel.toUpperCase()} 应用到 ${keys.length} 个已有 Key`, `Apply ${settings.forcedLevel.toUpperCase()} to ${keys.length} existing key(s)`)}</button>
+          <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
+        </article>
+        <article className="settings-card">
+          <SettingsHeading icon="monitor" title={tr("桌面行为", "Desktop behavior")} description={tr("连接服务会随桌面程序一起运行，并可在托盘中保持后台工作。", "The connection service runs with the desktop app and can stay in the tray.")} />
+          <SettingCheck name="autoLaunch" checked={desktop.autoLaunch} onChange={(checked) => void updateDesktopSetting({ autoLaunch: checked })} title={tr("开机自动启动", "Start with Windows")} description={tr("登录 Windows 后自动运行连接服务。", "Start the connection service when you sign in to Windows.")} />
+          <SettingCheck name="startMinimized" checked={desktop.startMinimized} onChange={(checked) => void updateDesktopSetting({ startMinimized: checked })} title={tr("启动后隐藏到托盘", "Start hidden in tray")} description={tr("开机启动时不弹出主窗口。", "Do not show the main window on startup.")} />
+          <SettingCheck name="closeToTray" checked={desktop.closeToTray} onChange={(checked) => void updateDesktopSetting({ closeToTray: checked })} title={tr("关闭窗口时隐藏到托盘", "Close to tray")} description={tr("点击右上角关闭只隐藏窗口，连接服务继续工作。", "Closing the window hides it while the connection service keeps working.")} />
+        </article>
+        <article className="settings-card compact-settings">
+          <SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} />
+          <div className="language-options"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")}>简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")}>English</button></div>
+        </article>
+        <article className="settings-card compact-settings">
+          <SettingsHeading icon="shield" title={tr("安全与连接", "Security & connection")} description={tr("上游密钥使用本机加密保存；Cherry 只连接下面的本地地址。", "Upstream keys are encrypted locally; Cherry only connects to this local address.")} />
+          <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
+          <div className="connection-note"><Icon name="refresh" size={13} /><span>{tr("“重置连接服务”会停止旧监听器并切换到新的随机端口，用来避开端口冲突；线路、模型、统计和客户端 Key 都会保留。", "Resetting the connection service switches to a random port to avoid conflicts; routes, models, analytics, and client keys are preserved.")}</span></div>
+          <button type="button" className="button button-secondary full-width" onClick={openDataFolder}><Icon name="folder" size={15} />{tr("打开数据目录", "Open data folder")}</button>
+          <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版的数据与缓存统一保存在安装目录下的 data 文件夹；安装到 D 盘时不会把主要缓存留在 C 盘。", "Packaged data and caches live in the data folder beside the app. Installing on drive D keeps the main cache off drive C.")}</span></div>
+          <div className="settings-note warning-note"><Icon name="shield" size={14} /><span>{tr("请勿误删、移动或覆盖 data 及其中的记录文件。删除整个软件文件夹会同时删除缓存、线路、客户端 Key、永久统计和未同步数据。", "Do not accidentally delete, move, or overwrite data or its record files. Deleting the app folder also removes caches, routes, client keys, lifetime analytics, and unsynced data.")}</span></div>
+        </article>
+        <CloudSyncCard language={language} requestConfirmation={requestConfirmation} />
+        <UpdateCard language={language} currentVersion={VERSION} />
+      </div>
+    </section>;
+  }
 
   function Modal() {
     if (!modal) return null;
     const close = () => setModal(null);
-    return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}><div className="modal" role="dialog" aria-modal="true"><button className="modal-close" onClick={close} aria-label={tr("关闭", "Close")}>×</button>{modal.kind === "provider" && <><div className="modal-icon"><Icon name="route" size={19} /></div><div className="modal-kicker">{modal.provider ? tr("EDIT UPSTREAM ROUTE", "EDIT UPSTREAM ROUTE") : tr("NEW UPSTREAM ROUTE", "NEW UPSTREAM ROUTE")}</div><h2>{modal.provider ? tr("编辑中转站线路", "Edit upstream route") : tr("添加中转站线路", "Add upstream route")}</h2><p>{tr("保存后会立即检测 /v1/models；上游 Key 只会加密保存在本机。", "Saving will test /v1/models. The upstream key is encrypted and kept on this PC.")}</p><form onSubmit={handleProviderSubmit}><Field label={tr("线路代号", "Route ID")} name="id" defaultValue={modal.provider?.id || ""} placeholder="router-luna" readOnly={Boolean(modal.provider)} required /><Field label={tr("线路名称", "Route name")} name="name" defaultValue={modal.provider?.name || ""} placeholder={tr("例如 我的 Luna 线路", "e.g. My Luna route")} required /><Field label="API URL" name="baseUrl" type="url" defaultValue={modal.provider?.baseUrl || ""} placeholder="https://example.com" required /><Field label={modal.provider ? tr("中转站 Key（留空保持不变）", "Upstream key (blank keeps it)") : tr("中转站 Key", "Upstream key")} name="apiKey" type="password" placeholder="sk-..." /><div className="form-tip"><Icon name="shield" size={14} />{tr("模型不手填，检测成功后自动读取。", "Models are read automatically after a successful test.")}</div><ModalActions cancel={tr("取消", "Cancel")} submit={modal.provider ? tr("保存并同步", "Save & sync") : tr("添加并同步", "Add & sync")} /></form></>}{modal.kind === "key" && <><div className="modal-icon"><Icon name="key" size={19} /></div><div className="modal-kicker">{modal.key ? tr("EDIT CLIENT KEY", "EDIT CLIENT KEY") : tr("NEW CLIENT KEY", "NEW CLIENT KEY")}</div><h2>{modal.key ? tr("编辑客户端 Key", "Edit client key") : tr("生成客户端 Key", "Create client key")}</h2><p>{tr("客户端 Key 是给 Cherry 使用的外壳；它只绑定一条中转站线路。", "This client key is the shell Cherry uses and binds to one upstream route.")}</p><form onSubmit={handleKeySubmit}><Field label={tr("Key 名称", "Key name")} name="name" defaultValue={modal.key?.name || tr("Cherry 客户端", "Cherry client")} placeholder={tr("例如 Cherry 主账号", "e.g. Cherry primary")} required /><label className="field-label">{tr("绑定中转站线路", "Bind upstream route")}<select className="field-control" name="providerId" defaultValue={modal.key?.providerId || providers[0]?.id || ""} disabled={!providers.length} required><option value="">{tr("请选择线路", "Select a route")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id} · {provider.id}</option>)}</select></label><label className="field-label">{tr("思考强度", "Reasoning level")}<select className="field-control" name="reasoningLevel" defaultValue={modal.key?.reasoningLevel || settings.forcedLevel || "high"}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select><small className="field-help">{tr("保存后会随每次请求发送给上游，不是只改界面标签。", "This is sent upstream with every request; it is not a visual-only label.")}</small></label>{!providers.length && <div className="form-warning"><Icon name="route" size={14} />{tr("请先添加一条中转站线路，再生成客户端 Key。", "Add an upstream route before creating a client key.")}</div>}<ModalActions cancel={tr("取消", "Cancel")} submit={modal.key ? tr("保存修改", "Save changes") : tr("生成 Key", "Create key")} disabled={!providers.length} /></form></>}{modal.kind === "key-result" && <><div className="modal-icon success-icon"><Icon name="check" size={20} /></div><div className="modal-kicker">{tr("CLIENT KEY READY", "CLIENT KEY READY")}</div><h2>{tr("客户端 Key 已准备好", "Client key ready")}</h2><p>{tr("它已在本机加密保存；此窗口关闭后，仍可在客户端 Key 卡片中随时复制。上游中转站 Key 不会显示。", "It is encrypted on this PC and can still be copied from the client key card after this window closes. Upstream keys are never shown.")}</p><div className="secret-box"><code>{modal.secret}</code><button className="icon-text-button" onClick={() => void copySecret(modal.secret)}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div><div className="copy-feedback" role="status"><Icon name={secretCopied ? "check" : "shield"} size={13} />{secretCopied ? tr("已复制；本地 API 地址可在上方或卡片中复制。", "Copied; the local API URL is available above or on the card.") : tr("可以现在复制，也可以关闭窗口后从卡片复制。", "Copy is not confirmed; you can select the key and press Ctrl+C manually.")}</div><div className="copy-guide"><span>1</span>{tr(`API 地址：${apiBase}`, `API URL: ${apiBase}`)}</div><div className="copy-guide"><span>2</span>{tr("API Key：粘贴上面的客户端 Key", "API key: paste the client key above")}</div><div className="form-actions"><button className="button button-primary" onClick={close}>{tr("我已保存，完成", "I've saved it")}</button></div></>}</div></div>;
+    return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
+      <div className="modal" role="dialog" aria-modal="true">
+        <button className="modal-close" onClick={close} aria-label={tr("关闭", "Close")}>×</button>
+        {modal.kind === "provider" && <>
+          <div className="modal-icon"><Icon name="route" size={19} /></div>
+          <div className="modal-kicker">{modal.provider ? tr("EDIT UPSTREAM ROUTE", "EDIT UPSTREAM ROUTE") : tr("NEW UPSTREAM ROUTE", "NEW UPSTREAM ROUTE")}</div>
+          <h2>{modal.provider ? tr("编辑中转站线路", "Edit upstream route") : tr("添加中转站线路", "Add upstream route")}</h2>
+          <p>{tr("保存后会立即检测 /v1/models；上游 Key 只会加密保存在本机。", "Saving will test /v1/models. The upstream key is encrypted and kept on this PC.")}</p>
+          <form onSubmit={handleProviderSubmit}>
+            <Field label={tr("线路代号", "Route ID")} name="id" defaultValue={modal.provider?.id || ""} placeholder="router-luna" readOnly={Boolean(modal.provider)} required />
+            <Field label={tr("线路名称", "Route name")} name="name" defaultValue={modal.provider?.name || ""} placeholder={tr("例如 我的 Luna 线路", "e.g. My Luna route")} required />
+            <Field label="API URL" name="baseUrl" type="url" defaultValue={modal.provider?.baseUrl || ""} placeholder="https://example.com" required />
+            <Field label={modal.provider ? tr("中转站 Key（留空保持不变）", "Upstream key (blank keeps it)") : tr("中转站 Key", "Upstream key")} name="apiKey" type="password" placeholder="sk-..." />
+            <div className="form-tip"><Icon name="shield" size={14} />{tr("模型不手填，检测成功后自动读取。", "Models are read automatically after a successful test.")}</div>
+            <ModalActions cancel={tr("取消", "Cancel")} submit={modal.provider ? tr("保存并同步", "Save & sync") : tr("添加并同步", "Add & sync")} />
+          </form>
+        </>}
+        {modal.kind === "key" && <>
+          <div className="modal-icon"><Icon name="key" size={19} /></div>
+          <div className="modal-kicker">{modal.key ? tr("EDIT CLIENT KEY", "EDIT CLIENT KEY") : tr("NEW CLIENT KEY", "NEW CLIENT KEY")}</div>
+          <h2>{modal.key ? tr("编辑客户端 Key", "Edit client key") : tr("生成客户端 Key", "Create client key")}</h2>
+          <p>{tr("默认使用所绑定的线路名称；只有手动改名后才会停止同步。", "The key follows its route name until you customize it manually.")}</p>
+          <ClientKeyForm clientKey={modal.key} providers={providers} defaultLevel={settings.forcedLevel} language={language} onSubmit={handleKeySubmit} actions={<ModalActions cancel={tr("取消", "Cancel")} submit={modal.key ? tr("保存修改", "Save changes") : tr("生成 Key", "Create key")} disabled={!providers.length} />} />
+        </>}
+        {modal.kind === "key-result" && <>
+          <div className="modal-icon success-icon"><Icon name="check" size={20} /></div>
+          <div className="modal-kicker">{tr("CLIENT KEY READY", "CLIENT KEY READY")}</div>
+          <h2>{tr("客户端 Key 已准备好", "Client key ready")}</h2>
+          <p>{tr("它已在本机加密保存；关闭窗口后仍可从客户端 Key 卡片复制。上游中转站 Key 不会显示。", "It is encrypted locally and remains copyable from the client-key card. Upstream keys are never shown.")}</p>
+          <div className="secret-box"><code>{modal.secret}</code><button className="icon-text-button" onClick={() => void copySecret(modal.secret)}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
+          <div className="copy-feedback" role="status"><Icon name={secretCopied ? "check" : "shield"} size={13} />{secretCopied ? tr("已复制；本地 API 地址可在上方或卡片中复制。", "Copied; the local API URL is available above or on the card.") : tr("可以现在复制，也可以关闭窗口后从卡片复制。", "Copy now or later from the client-key card.")}</div>
+          <div className="copy-guide"><span>1</span>{tr(`API 地址：${apiBase}`, `API URL: ${apiBase}`)}</div>
+          <div className="copy-guide"><span>2</span>{tr("API Key：粘贴上面的客户端 Key", "API key: paste the client key above")}</div>
+          <div className="form-actions"><button className="button button-primary" onClick={close}>{tr("我已保存，完成", "I've saved it")}</button></div>
+        </>}
+      </div>
+    </div>;
   }
 
-  return <div className={`app-shell locale-${language}`}><aside className="sidebar"><div className="brand"><div className="brand-mark"><Icon name="spark" size={18} /></div><div><strong>Cherry</strong><small>GATEWAY</small></div><span className="brand-tag">{language === "zh" ? "本地" : "LOCAL"}</span></div><div className="workspace-card"><span className="workspace-icon"><Icon name="route" size={15} /></span><div><strong>{tr("本地网关", "Local gateway")}</strong><small>Cherry Relay</small></div><Icon name="arrow" size={13} /></div><div className="nav-label">{tr("工作台", "WORKSPACE")}</div><NavItem icon="grid" label={tr("总览", "Overview")} active={view === "overview"} onClick={() => navigate("overview")} shortcut={isMac ? "⌘1" : "Ctrl+1"} /><NavItem icon="route" label={tr("中转站线路", "Routes")} active={view === "providers"} onClick={() => navigate("providers")} shortcut={isMac ? "⌘2" : "Ctrl+2"} /><NavItem icon="layers" label={tr("模型目录", "Models")} active={view === "models"} onClick={() => navigate("models")} shortcut={isMac ? "⌘3" : "Ctrl+3"} /><NavItem icon="key" label={tr("客户端 Key", "Client keys")} active={view === "keys"} onClick={() => navigate("keys")} shortcut={isMac ? "⌘4" : "Ctrl+4"} /><div className="nav-label nav-spaced">{tr("系统", "SYSTEM")}</div><NavItem icon="settings" label={tr("设置", "Settings")} active={view === "settings"} onClick={() => navigate("settings")} /><div className="sidebar-grow" /><div className="sidebar-status"><div className="status-line"><span className={`status-dot ${gatewayResetting ? "is-restarting" : ""}`} /><strong>{gatewayResetting ? tr("网关重启中…", "Gateway restarting…") : tr("网关在线", "Gateway online")}</strong><span>{gatewayResetting ? "…" : gatewayPort}</span></div><div className="sidebar-status-meta"><small>{lastClientRequestStatus === "ok" ? tr("最近一次转发成功", "Last request succeeded") : lastClientRequestStatus === "error" ? tr("最近一次转发失败", "Last request failed") : gatewayResetting ? tr("正在重启网关", "Gateway restarting") : tr("等待客户端请求", "Waiting for a client request")}</small><small>{tr("上游 Key 仅保存在本机", "Upstream keys stay local")}</small></div></div><div className="sidebar-footer"><span>Cherry Gateway</span><span>{VERSION}</span></div></aside><main className="main-scroll"><header className="topbar"><div><div className="top-eyebrow">{tr("本地控制中心", "LOCAL CONTROL CENTER")}</div><h1>{tr(pageTitle[view][0], pageTitle[view][1])}</h1></div><div className="top-actions"><button type="button" className={`endpoint-pill endpoint-copy-button ${gatewayResetting ? "is-restarting" : ""}`} onClick={() => void copyApiAddress()} disabled={gatewayResetting} aria-live="polite" title={tr("复制本地 API 地址", "Copy local API address")}><span className="status-dot" />{gatewayResetting ? tr("网关重启中…", "Gateway restarting…") : `127.0.0.1:${gatewayPort}`}<Icon name="copy" size={13} /></button><label className={`reasoning-control ${reasoningUpdating ? "is-updating" : ""}`} title={tr("修改默认思考强度；已有客户端 Key 保持独立设置", "Change the default reasoning level; existing client keys keep their own setting")}><Icon name="spark" size={14} /><span>{tr("默认思考", "Default")}</span><select value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} aria-label={tr("默认思考强度", "Default reasoning level")}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></label><button className="top-reset-button" onClick={() => void handleResetGateway()} disabled={loading || gatewayResetting} title={tr("重置网关并随机端口；旧 API 地址会失效", "Reset gateway and randomize port; the old API address will stop working")} aria-label={tr("重置网关并随机端口", "Reset gateway and randomize port")}><Icon name="refresh" size={15} /><span>{tr("重置网关", "Reset gateway")}</span></button><button className="language-pill" onClick={() => void changeLanguage(language === "zh" ? "en" : "zh")} title={tr("切换语言", "Switch language")}>{language === "zh" ? "EN" : "中"}</button></div></header><div className="content-wrap">{renderView()}</div></main><Modal /><ConfirmDialog />{toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}</div>;
+  return <div className={`app-shell locale-${language}`}>
+    <aside className="sidebar">
+      <div className="brand"><div className="brand-mark"><Icon name="spark" size={18} /></div><div><strong>Cherry</strong><small>CONNECT</small></div><span className="brand-tag">{language === "zh" ? "本地" : "LOCAL"}</span></div>
+      <div className="workspace-card"><span className="workspace-icon"><Icon name="route" size={15} /></span><div><strong>{tr("连接中心", "Connection center")}</strong><small>Cherry AI Connect</small></div><Icon name="arrow" size={13} /></div>
+      <div className="nav-label">{tr("工作台", "WORKSPACE")}</div>
+      <NavItem icon="grid" label={tr("总览", "Overview")} active={view === "overview"} onClick={() => navigate("overview")} shortcut={isMac ? "⌘1" : "Ctrl+1"} />
+      <NavItem icon="route" label={tr("中转站线路", "Routes")} active={view === "providers"} onClick={() => navigate("providers")} shortcut={isMac ? "⌘2" : "Ctrl+2"} />
+      <NavItem icon="layers" label={tr("模型目录", "Models")} active={view === "models"} onClick={() => navigate("models")} shortcut={isMac ? "⌘3" : "Ctrl+3"} />
+      <NavItem icon="key" label={tr("客户端 Key", "Client keys")} active={view === "keys"} onClick={() => navigate("keys")} shortcut={isMac ? "⌘4" : "Ctrl+4"} />
+      <NavItem icon="chart" label={tr("使用统计", "Usage")} active={view === "usage"} onClick={() => navigate("usage")} shortcut={isMac ? "⌘5" : "Ctrl+5"} />
+      <div className="nav-label nav-spaced">{tr("系统", "SYSTEM")}</div>
+      <NavItem icon="settings" label={tr("设置", "Settings")} active={view === "settings"} onClick={() => navigate("settings")} />
+      <div className="sidebar-grow" />
+      <div className="sidebar-status"><div className="status-line"><span className={`status-dot ${gatewayResetting ? "is-restarting" : ""}`} /><strong>{gatewayResetting ? tr("连接服务重启中…", "Connection service restarting…") : tr("连接服务在线", "Connection service online")}</strong><span>{gatewayResetting ? "…" : gatewayPort}</span></div><div className="sidebar-status-meta"><small>{lastClientRequestStatus === "ok" ? tr("最近一次转发成功", "Last request succeeded") : lastClientRequestStatus === "error" ? tr("最近一次转发失败", "Last request failed") : gatewayResetting ? tr("正在重启连接服务", "Connection service restarting") : tr("等待客户端请求", "Waiting for a client request")}</small><small>{tr("上游 Key 仅保存在本机", "Upstream keys stay local")}</small></div></div>
+      <div className="sidebar-footer"><span>Cherry AI 连接中心</span><span>{VERSION}</span></div>
+    </aside>
+    <main className="main-scroll">
+      <header className="topbar"><div><div className="top-eyebrow">{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h1>{tr(pageTitle[view][0], pageTitle[view][1])}</h1></div><div className="top-actions"><button type="button" className={`endpoint-pill endpoint-copy-button ${gatewayResetting ? "is-restarting" : ""}`} onClick={() => void copyApiAddress()} disabled={gatewayResetting} aria-live="polite" title={tr("复制本地 API 地址", "Copy local API address")}><span className="status-dot" />{gatewayResetting ? tr("连接服务重启中…", "Connection service restarting…") : `127.0.0.1:${gatewayPort}`}<Icon name="copy" size={13} /></button><label className={`reasoning-control ${reasoningUpdating ? "is-updating" : ""}`} title={tr("修改默认思考强度；已有客户端 Key 保持独立设置", "Change the default reasoning level; existing client keys keep their own setting")}><Icon name="spark" size={14} /><span>{tr("默认思考", "Default")}</span><select value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} aria-label={tr("默认思考强度", "Default reasoning level")}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></label><button className="top-reset-button" onClick={() => void handleResetGateway()} disabled={loading || gatewayResetting} title={tr("重置连接服务并随机端口；旧 API 地址会失效", "Reset connection service and randomize port; the old API address will stop working")} aria-label={tr("重置连接服务并随机端口", "Reset connection service and randomize port")}><Icon name="refresh" size={15} /><span>{tr("重置连接服务", "Reset connection service")}</span></button><button className="language-pill" onClick={() => void changeLanguage(language === "zh" ? "en" : "zh")} title={tr("切换语言", "Switch language")}>{language === "zh" ? "EN" : "中"}</button></div></header>
+      <div className="content-wrap">{renderView()}</div>
+    </main>
+    <Modal />
+    <ConfirmDialog />
+    {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
+  </div>;
 
   function Metric({ icon, tone, value, label, note }: { icon: string; tone: string; value: string; label: string; note: string }) { return <div className="metric-card"><span className={`metric-icon ${tone}`}><Icon name={icon} size={17} /></span><span><small>{label}</small><strong>{value}</strong><em>{note}</em></span></div>; }
   function PanelHeading({ kicker, title, description, action }: { kicker: string; title: string; description?: string; action?: ReactNode }) { return <div className="panel-heading"><div><div className="section-kicker">{kicker}</div><h3>{title}</h3>{description && <p>{description}</p>}</div>{action}</div>; }

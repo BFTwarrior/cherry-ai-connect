@@ -1,31 +1,33 @@
 {
   "name": "cherry-gateway-desktop",
-  "version": "0.4.3",
-  "description": "Cherry 多线路本地网关桌面控制台",
+  "version": "1.0.0",
+  "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
   "license": "MIT",
   "scripts": {
     "renderer:build": "vite build",
     "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs tests/*.test.cjs",
     "start": "npm run renderer:build && electron .",
-    "dist": "npm run check && npm run renderer:build && electron-builder --win nsis"
+    "dist": "node scripts/prepare-dist.mjs && npm run check && npm run renderer:build && electron-builder --win nsis"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
-    "electron": "^38.1.0",
+    "electron": "^44.4.0",
     "electron-builder": "^26.0.12",
     "typescript": "^7.0.2",
     "vite": "^8.2.2"
   },
   "build": {
     "appId": "com.bftwarrior.cherry-gateway",
-    "productName": "Cherry 多线路网关",
+    "productName": "Cherry AI 连接中心",
     "files": [
       "electron/**/*",
       "gateway/**/*",
+      "sync/**/*",
       "renderer/dist/**/*"
     ],
     "electronDist": "node_modules/electron/dist",
@@ -33,7 +35,7 @@
       "target": "nsis",
       "icon": "electron/assets/app.ico",
       "signExecutable": false,
-      "artifactName": "Cherry-多线路网关-${version}.${ext}"
+      "artifactName": "Cherry-AI-Connect-Setup-1.00.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -44,6 +46,7 @@
     }
   },
   "dependencies": {
+    "@noble/hashes": "^2.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   }

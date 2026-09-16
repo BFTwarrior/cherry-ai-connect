@@ -1,0 +1,20 @@
+/**
+ * 中文：集中计算运行数据路径，确保正式版数据跟随安装位置而不是固定写入 C 盘。
+ * English: Resolve runtime data paths beside the packaged app instead of pinning them to drive C.
+ */
+const path = require("node:path");
+
+function resolveRuntimePaths({ isPackaged, executablePath, moduleDirectory }) {
+  const applicationRoot = isPackaged
+    ? path.dirname(path.resolve(executablePath))
+    : path.resolve(moduleDirectory, "..");
+  const runtimeDataRoot = path.join(applicationRoot, isPackaged ? "data" : ".runtime-data");
+  return {
+    applicationRoot,
+    runtimeDataRoot,
+    browserCacheRoot: path.join(runtimeDataRoot, "browser-cache"),
+    gatewayDataRoot: path.join(runtimeDataRoot, "gateway-data"),
+  };
+}
+
+module.exports = { resolveRuntimePaths };
