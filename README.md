@@ -25,8 +25,9 @@ Version `1.00` is in release-candidate validation. Source, automated tests, and 
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- 1.00 候选安装包暂保存在本地 `dist/Cherry-AI-Connect-Setup-1.00.exe`，完成最终验收后再作为 Release 附件发布。
-- The 1.00 candidate installer is currently local at `dist/Cherry-AI-Connect-Setup-1.00.exe`; it will be published as a Release asset after final acceptance.
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)
+- 安装包 SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
+- Installer SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
 
 ## 安全边界 / Security boundary
 
@@ -82,7 +83,8 @@ Configuration conflicts require an explicit local-or-cloud choice. Usage events 
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.00 本地候选安装包在 `dist/Cherry-AI-Connect-Setup-1.00.exe`。正式上传后再在这里增加固定版本下载链接和 SHA-256。
+当前 1.00 安装包下载：[Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)。
+SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
