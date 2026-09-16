@@ -6,123 +6,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
+import { ClientKeyForm } from "./ClientKeyForm";
+import type { ClientKey, ClientRequestStatus, ConfirmDialogOptions, ConfirmDialogState, DesktopSettings, GatewaySettings, GatewayStatus, Language, ModalState, Provider, ReasoningLevel, SyncProgress, ToastState, ToastTone, View } from "./app-types";
+import { Icon } from "./ui/Icon";
 
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.00";
+const VERSION = "1.1";
 
-type View = "overview" | "providers" | "models" | "keys" | "usage" | "settings";
-type Language = "zh" | "en";
-type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max";
-type SyncStatus = "ok" | "error" | "never";
-type ClientRequestStatus = "never" | "pending" | "ok" | "error";
-
-type Provider = {
-  id: string;
-  name: string;
-  baseUrl: string;
-  models: string[];
-  modelCount: number;
-  enabled: boolean;
-  hasApiKey: boolean;
-  modelFetchedAt: string;
-  lastTestAt?: string;
-  lastTestStatus?: SyncStatus;
-  lastLatencyMs?: number;
-  lastError?: string;
-  clientKeyCount?: number;
-};
-
-type ClientKey = {
-  id: string;
-  name: string;
-  nameCustomized: boolean;
-  providerId: string;
-  providerName: string;
-  reasoningLevel: ReasoningLevel;
-  createdAt: string;
-  enabled: boolean;
-  hasSecret?: boolean;
-};
-
-type GatewaySettings = {
-  forcedLevel: ReasoningLevel;
-  defaultProvider: string;
-  reasoningLevels?: ReasoningLevel[];
-};
-
-type GatewayStatus = {
-  lastClientRequestAt?: string;
-  lastClientRequestStatus?: ClientRequestStatus;
-  lastClientRequestModel?: string;
-};
-
-type SyncProgress = {
-  current: number;
-  total: number;
-  providerId: string;
-  providerName: string;
-};
-
-type DesktopSettings = {
-  language: Language;
-  autoLaunch: boolean;
-  startMinimized: boolean;
-  closeToTray: boolean;
-  loginItem?: boolean;
-};
-
-type ModalState =
-  | { kind: "provider"; provider?: Provider }
-  | { kind: "key"; key?: ClientKey }
-  | { kind: "key-result"; secret: string }
-  | null;
-
-type ToastTone = "success" | "error" | "info";
-type ToastState = { message: string; tone: ToastTone } | null;
-type ConfirmTone = "primary" | "warning" | "danger";
-type ConfirmDialogOptions = {
-  title: string;
-  message: string;
-  confirmLabel: string;
-  cancelLabel: string;
-  tone?: ConfirmTone;
-  icon?: string;
-};
-type ConfirmDialogState = ConfirmDialogOptions | null;
 
 const levels: ReasoningLevel[] = ["low", "medium", "high", "xhigh", "max"];
-
-const iconPaths: Record<string, ReactNode> = {
-  spark: <path d="m12 3 1.7 6.3L20 11l-6.3 1.7L12 19l-1.7-6.3L4 11l6.3-1.7z" />,
-  grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
-  route: <><circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="18" r="2.5" /><path d="M8.5 6h4a5 5 0 0 1 5 5v4.5" /><path d="M15.5 18h-4a5 5 0 0 1-5-5V8.5" /></>,
-  layers: <><path d="m12 3 9 5-9 5-9-5z" /><path d="m3 12 9 5 9-5" /><path d="m3 16 9 5 9-5" /></>,
-  key: <><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8 3 3-2 2 2 2-3 3-2-2-3 3" /></>,
-  settings: <><circle cx="12" cy="12" r="3.5" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.8 1.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-2.6V20a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-1.8-1.8.1-.1A1.7 1.7 0 0 0 8 15a1.7 1.7 0 0 0-1.6-1H6v-2.6h.4a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.8-1.8.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V5h2.6v.4a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.8 1.8-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2V14h-.2a1.7 1.7 0 0 0-1.6 1Z" /></>,
-  folder: <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H10l2 2h6.5A2.5 2.5 0 0 1 21 8.5v8A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z" />,
-  refresh: <><path d="M20 11a8 8 0 0 0-14.7-4L3 10" /><path d="M3 5v5h5" /><path d="M4 13a8 8 0 0 0 14.7 4L21 14" /><path d="M21 19v-5h-5" /></>,
-  plus: <><path d="M12 5v14M5 12h14" /></>,
-  edit: <><path d="m4 16-.8 4.8L8 20l11-11-4-4z" /><path d="m13.5 6.5 4 4" /></>,
-  trash: <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
-  power: <><path d="M12 3v9" /><path d="M6.4 5.7a8 8 0 1 0 11.2 0" /></>,
-  check: <path d="m5 12 4.5 4.5L19 7" />,
-  shield: <><path d="M12 3 20 6v5c0 5.2-3.4 8.5-8 10-4.6-1.5-8-4.8-8-10V6z" /><path d="m8.5 12 2.3 2.3 4.8-5" /></>,
-  lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
-  monitor: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>,
-  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></>,
-  copy: <><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></>,
-  search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 5 5" /></>,
-  arrow: <><path d="M5 12h13" /><path d="m13 6 6 6-6 6" /></>,
-  external: <><path d="M14 5h5v5" /><path d="m19 5-8 8" /><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
-  info: <><circle cx="12" cy="12" r="9" /><path d="M12 10v6M12 7.5v.1" /></>,
-  chart: <><path d="M4 19V5" /><path d="M4 19h16" /><path d="m7 15 4-5 3 3 5-7" /></>,
-};
-
-function Icon({ name, size = 17 }: { name: string; size?: number }) {
-  return <svg className="icon" width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">{iconPaths[name] ?? iconPaths.spark}</svg>;
-}
 
 function useCopy() {
   return useCallback(async (text: string) => {
@@ -184,34 +78,6 @@ function initials(name: string) {
   return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2)).toUpperCase() || "CG";
 }
 
-function ClientKeyForm({ clientKey, providers, defaultLevel, language, onSubmit, actions }: { clientKey?: ClientKey; providers: Provider[]; defaultLevel: ReasoningLevel; language: Language; onSubmit: (event: FormEvent<HTMLFormElement>) => void; actions: ReactNode }) {
-  const tr = (zh: string, en: string) => language === "zh" ? zh : en;
-  const initialProviderId = clientKey?.providerId || providers[0]?.id || "";
-  const initialProvider = providers.find((provider) => provider.id === initialProviderId);
-  const [providerId, setProviderId] = useState(initialProviderId);
-  const [nameCustomized, setNameCustomized] = useState(clientKey?.nameCustomized === true);
-  const [name, setName] = useState(clientKey?.name || initialProvider?.name || "");
-
-  const changeProvider = (nextProviderId: string) => {
-    setProviderId(nextProviderId);
-    if (!nameCustomized) setName(providers.find((provider) => provider.id === nextProviderId)?.name || "");
-  };
-
-  const changeName = (nextName: string) => {
-    setName(nextName);
-    const routeName = providers.find((provider) => provider.id === providerId)?.name || "";
-    if (nextName !== routeName) setNameCustomized(true);
-  };
-
-  return <form onSubmit={onSubmit}>
-    <label className="field-label">{tr("Key 名称", "Key name")}<input className="field-control" name="name" value={name} onChange={(event) => changeName(event.target.value)} placeholder={tr("默认跟随线路名称", "Follows the route name by default")} required /><input type="hidden" name="nameCustomized" value={nameCustomized ? "true" : "false"} /><small className={`field-help name-sync-state ${nameCustomized ? "custom" : "synced"}`}>{nameCustomized ? tr("已使用自定义名称；以后切换或重命名线路时不再自动修改。", "Custom name locked; route changes will no longer rename this key.") : tr("名称正跟随绑定线路；手动修改后将停止自动同步。", "Name follows the bound route until you customize it.")}</small></label>
-    <label className="field-label">{tr("绑定中转站线路", "Bind upstream route")}<select className="field-control" name="providerId" value={providerId} onChange={(event) => changeProvider(event.target.value)} disabled={!providers.length} required><option value="">{tr("请选择线路", "Select a route")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id} · {provider.id}</option>)}</select></label>
-    <label className="field-label">{tr("思考强度", "Reasoning level")}<select className="field-control" name="reasoningLevel" defaultValue={clientKey?.reasoningLevel || defaultLevel || "high"}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select><small className="field-help">{tr("保存后会随每次请求发送给上游，不是只改界面标签。", "This is sent upstream with every request; it is not a visual-only label.")}</small></label>
-    {!providers.length && <div className="form-warning"><Icon name="route" size={14} />{tr("请先添加一条中转站线路，再生成客户端 Key。", "Add an upstream route before creating a client key.")}</div>}
-    {actions}
-  </form>;
-}
-
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("cherry-language") as Language) || "zh");
   const [view, setView] = useState<View>("overview");
@@ -239,6 +105,15 @@ export default function App() {
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState("all");
   const [modelQuery, setModelQuery] = useState("");
+  // 中文：模型分组的折叠状态属于纯界面偏好，保存在本机，不参与云同步。
+  // English: Model-group collapse state is a local UI preference and never enters cloud sync.
+  const [collapsedModelGroups, setCollapsedModelGroups] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("cherry-collapsed-model-groups") || "[]")); }
+    catch { return new Set(); }
+  });
+  // 中文：首次配置一旦真正成功便不再长期占据首页；用户仍可从各功能页维护配置。
+  // English: Once onboarding succeeds, it no longer occupies the dashboard permanently.
+  const [setupCompletedOnce, setSetupCompletedOnce] = useState(() => localStorage.getItem("cherry-setup-completed") === "true");
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const copy = useCopy();
 
@@ -350,20 +225,21 @@ export default function App() {
     document.querySelector(".main-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const isMac = useMemo(() => /Mac|iPhone|iPad/i.test(navigator.platform), []);
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return;
-      if (event.altKey || (isMac ? !event.metaKey : !event.ctrlKey)) return;
-      const nextView: Record<string, View> = { "1": "overview", "2": "providers", "3": "models", "4": "keys", "5": "usage" };
-      if (!nextView[event.key]) return;
-      event.preventDefault();
-      navigate(nextView[event.key]);
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isMac]);
+    const complete = providers.length > 0 && totalModels > 0 && keys.length > 0 && lastClientRequestStatus === "ok";
+    if (!complete || setupCompletedOnce) return;
+    localStorage.setItem("cherry-setup-completed", "true");
+    setSetupCompletedOnce(true);
+  }, [keys.length, lastClientRequestStatus, providers.length, setupCompletedOnce, totalModels]);
+
+  const toggleModelGroup = (providerId: string) => {
+    setCollapsedModelGroups((current) => {
+      const next = new Set(current);
+      if (next.has(providerId)) next.delete(providerId); else next.add(providerId);
+      localStorage.setItem("cherry-collapsed-model-groups", JSON.stringify([...next]));
+      return next;
+    });
+  };
 
   const changeDefaultReasoning = async (next: ReasoningLevel) => {
     const previous = settings.forcedLevel;
@@ -724,8 +600,12 @@ export default function App() {
         <div className="route-title"><div className="route-name-line"><strong>{provider.name || provider.id}</strong><StatusBadge provider={provider} /></div><code>{provider.id}</code></div>
       </div>
       <div className="route-address" title={provider.baseUrl}><Icon name="globe" size={14} /><span>{provider.baseUrl}</span></div>
-      <div className="route-facts"><span><b>{modelCount}</b>{tr("个模型", "models")}</span><span><b>{boundKeys}</b>{tr("个客户端 Key", "client keys")}</span><span>{provider.lastLatencyMs ? `${provider.lastLatencyMs}ms` : formatDate(provider.modelFetchedAt, language)}</span></div>
-      {showActions && <div className="route-actions">{showSync && <button className="button button-secondary button-small" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id || syncing === "all"}><Icon name="refresh" size={14} />{syncing === provider.id ? tr("同步中", "Syncing") : tr("同步此线路", "Sync this route")}</button>}<button className="icon-button" onClick={() => setModal({ kind: "provider", provider })} title={tr("编辑线路", "Edit route")} aria-label={tr("编辑线路", "Edit route")}><Icon name="edit" size={15} /></button><button className="icon-button danger" onClick={() => void deleteProvider(provider.id)} title={tr("删除线路", "Delete route")} aria-label={tr("删除线路", "Delete route")}><Icon name="trash" size={15} /></button></div>}
+      <div className="route-facts">
+        <span className="route-fact"><small>{tr("模型", "Models")}</small><b>{modelCount}</b></span>
+        <span className="route-fact"><small>{tr("客户端 Key", "Client keys")}</small><b>{boundKeys}</b></span>
+        <span className="route-fact route-latency" title={formatDate(provider.lastTestAt || provider.modelFetchedAt, language)}><small>{tr("延迟", "Latency")}</small><b>{provider.lastLatencyMs ? `${provider.lastLatencyMs}ms` : "—"}</b></span>
+      </div>
+      {showActions && <div className="route-actions">{showSync && <button className="button button-secondary button-small" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id || syncing === "all"}><Icon name="refresh" size={14} />{syncing === provider.id ? tr("检测中", "Testing") : tr("检测线路", "Test route")}</button>}<button className="icon-button" onClick={() => setModal({ kind: "provider", provider })} title={tr("编辑线路", "Edit route")} aria-label={tr("编辑线路", "Edit route")}><Icon name="edit" size={15} /></button><button className="icon-button danger" onClick={() => void deleteProvider(provider.id)} title={tr("删除线路", "Delete route")} aria-label={tr("删除线路", "Delete route")}><Icon name="trash" size={15} /></button></div>}
       {provider.lastTestStatus === "error" && provider.lastError && <div className="route-error" title={provider.lastError}><Icon name="shield" size={13} /><span><strong>{tr("检测失败", "Sync failed")}</strong>{errorSummary(provider.lastError)}</span><button className="text-button" onClick={() => void copyErrorDetails(provider.lastError || "")}>{tr("复制详情", "Copy details")}</button></div>}
     </article>;
   }
@@ -761,7 +641,16 @@ export default function App() {
   }
 
   function ProvidersView() {
-    return <section className="page-view"><PageIntro kicker={tr("中转站线路", "UPSTREAM ROUTES")} description={tr("一条线路保存一个上游地址和 Key；创建客户端 Key 时必须绑定其中一条。", "Each route stores one upstream URL and key. Every client key must bind to one route.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}><Icon name="plus" size={15} />{tr("添加线路", "Add route")}</button>} /><div className="info-banner"><div className="banner-icon"><Icon name="shield" size={17} /></div><div><strong>{tr("先检测，再绑定", "Test before binding")}</strong><span>{tr("模型目录是统一同步中心；新增线路会自动检测，后续请在模型目录中同步全部或单条线路。", "The Model Catalog is the sync center; new routes are tested automatically, then sync all or one route there.")}</span></div><span className="banner-rule">{tr("一 Key 一线路", "1 key · 1 route")}</span></div>{providers.length ? <div className="route-list">{providers.map((provider) => <RouteCard provider={provider} key={provider.id} showSync={false} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加中转站线路", "Add upstream route")}</button>} />}</section>;
+    const actions = <div className="page-action-group">
+      {providers.length > 0 && <button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("全部检测中", "Testing all") : tr("检测全部线路", "Test all routes")}</button>}
+      <button className="button button-primary" onClick={() => setModal({ kind: "provider" })}><Icon name="plus" size={15} />{tr("添加线路", "Add route")}</button>
+    </div>;
+    return <section className="page-view">
+      <PageIntro kicker={tr("中转站线路", "UPSTREAM ROUTES")} description={tr("一条线路保存一个上游地址和 Key；创建客户端 Key 时必须绑定其中一条。", "Each route stores one upstream URL and key. Every client key must bind to one route.")} action={actions} />
+      <div className="info-banner"><div className="banner-icon"><Icon name="shield" size={17} /></div><div><strong>{tr("先检测，再绑定", "Test before binding")}</strong><span>{tr("新增线路会自动检测；也可以随时单独检测或一次检测全部线路。", "New routes are tested automatically. You can also test one route or all routes at any time.")}</span></div><span className="banner-rule">{tr("一 Key 一线路", "1 key · 1 route")}</span></div>
+      {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在检测 ${syncProgress.current}/${syncProgress.total}`, `Testing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
+      {providers.length ? <div className="route-list">{providers.map((provider) => <RouteCard provider={provider} key={provider.id} showSync />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加中转站线路", "Add upstream route")}</button>} />}
+    </section>;
   }
 
   function ModelsView() {
@@ -771,7 +660,23 @@ export default function App() {
     }).filter(({ provider }) => modelFilter === "all" || provider.id === modelFilter);
     const visibleCount = groups.reduce((sum, group) => sum + group.models.length, 0);
     const failedNames = syncFailures.map((id) => providers.find((provider) => provider.id === id)?.name || id);
-    return <section className="page-view"><PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型，名称再长也不会堆在一张卡片里。", "Models are grouped by route so long names stay readable.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("同步中", "Syncing") : tr("同步全部", "Sync all")}</button>} />{syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在同步 ${syncProgress.current}/${syncProgress.total}`, `Syncing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}{!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路同步失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}<div className="catalog-toolbar"><label className="select-control"><span>{tr("线路", "Route")}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="all">{tr("全部线路", "All routes")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id}</option>)}</select></label><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>{groups.length ? <div className="model-groups">{groups.map(({ provider, models }) => <section className="model-group" key={provider.id}><header className="model-group-header"><div className="group-identity"><RouteAvatar provider={provider} /><div><strong>{provider.name || provider.id}</strong><code>{provider.id}</code></div></div><div className="group-summary"><span>{models.length} {tr("个匹配模型", "matching models")}</span><button className="icon-text-button" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id}><Icon name="refresh" size={13} />{tr("同步", "Sync")}</button></div></header>{models.length ? <div className="model-grid">{models.map((model) => <article className="model-item" key={`${provider.id}:${model}`}><span className="model-mark"><Icon name="layers" size={14} /></span><code title={model}>{model}</code><span className="model-ready"><span className="status-dot" /></span></article>)}</div> : <div className="inline-empty">{tr("没有匹配模型；尝试清空搜索词，或先同步线路。", "No matching models. Clear the search or sync this route.")}</div>}</section>)}</div> : <EmptyState icon="layers" title={providers.length ? tr("没有匹配的模型", "No matching models") : tr("还没有模型目录", "No model catalog yet")} description={providers.length ? tr("换一个搜索词试试。", "Try another search term.") : tr("去中转站线路页添加线路并同步模型。", "Add and sync a route from the Upstream Routes page.")} action={providers.length ? undefined : <button className="button button-primary" onClick={() => navigate("providers")}>{tr("去添加线路", "Go to routes")}</button>} />}</section>;
+    return <section className="page-view">
+      <PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型；每个分组可以独立展开或折叠。", "Models are grouped by route; every group can expand or collapse independently.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("同步中", "Syncing") : tr("同步全部", "Sync all")}</button>} />
+      {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在同步 ${syncProgress.current}/${syncProgress.total}`, `Syncing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
+      {!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路同步失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}
+      <div className="catalog-toolbar"><label className="select-control"><span>{tr("线路", "Route")}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="all">{tr("全部线路", "All routes")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id}</option>)}</select></label><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
+      {groups.length ? <div className="model-groups">{groups.map(({ provider, models }) => {
+        const collapsed = collapsedModelGroups.has(provider.id) && !modelQuery.trim();
+        return <section className={`model-group ${collapsed ? "is-collapsed" : ""}`} key={provider.id}>
+          <header className="model-group-header">
+            <button type="button" className="group-toggle" onClick={() => toggleModelGroup(provider.id)} aria-expanded={!collapsed} aria-label={collapsed ? tr("展开模型分组", "Expand model group") : tr("折叠模型分组", "Collapse model group")}><Icon name="chevron" size={15} /></button>
+            <div className="group-identity"><RouteAvatar provider={provider} /><div><strong>{provider.name || provider.id}</strong><code>{provider.id}</code></div></div>
+            <div className="group-summary"><span>{models.length} {tr("个匹配模型", "matching models")}</span><button className="icon-text-button" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id}><Icon name="refresh" size={13} />{tr("同步", "Sync")}</button></div>
+          </header>
+          {!collapsed && (models.length ? <div className="model-grid">{models.map((model) => <article className="model-item" key={`${provider.id}:${model}`}><span className="model-mark"><Icon name="layers" size={14} /></span><code title={model}>{model}</code><span className="model-ready"><span className="status-dot" /></span></article>)}</div> : <div className="inline-empty">{tr("没有匹配模型；尝试清空搜索词，或先同步线路。", "No matching models. Clear the search or sync this route.")}</div>)}
+        </section>;
+      })}</div> : <EmptyState icon="layers" title={providers.length ? tr("没有匹配的模型", "No matching models") : tr("还没有模型目录", "No model catalog yet")} description={providers.length ? tr("换一个搜索词试试。", "Try another search term.") : tr("去中转站线路页添加线路并同步模型。", "Add and sync a route from the Upstream Routes page.")} action={providers.length ? undefined : <button className="button button-primary" onClick={() => navigate("providers")}>{tr("去添加线路", "Go to routes")}</button>} />}
+    </section>;
   }
 
    function KeysView() {
@@ -792,7 +697,7 @@ export default function App() {
           <SettingsHeading icon="monitor" title={tr("桌面行为", "Desktop behavior")} description={tr("连接服务会随桌面程序一起运行，并可在托盘中保持后台工作。", "The connection service runs with the desktop app and can stay in the tray.")} />
           <SettingCheck name="autoLaunch" checked={desktop.autoLaunch} onChange={(checked) => void updateDesktopSetting({ autoLaunch: checked })} title={tr("开机自动启动", "Start with Windows")} description={tr("登录 Windows 后自动运行连接服务。", "Start the connection service when you sign in to Windows.")} />
           <SettingCheck name="startMinimized" checked={desktop.startMinimized} onChange={(checked) => void updateDesktopSetting({ startMinimized: checked })} title={tr("启动后隐藏到托盘", "Start hidden in tray")} description={tr("开机启动时不弹出主窗口。", "Do not show the main window on startup.")} />
-          <SettingCheck name="closeToTray" checked={desktop.closeToTray} onChange={(checked) => void updateDesktopSetting({ closeToTray: checked })} title={tr("关闭窗口时隐藏到托盘", "Close to tray")} description={tr("点击右上角关闭只隐藏窗口，连接服务继续工作。", "Closing the window hides it while the connection service keeps working.")} />
+          <SettingCheck name="closeToTray" checked={desktop.closeToTray} onChange={(checked) => void updateDesktopSetting({ closeToTray: checked })} title={tr("关闭窗口时隐藏到托盘", "Close to tray")} description={tr("点击右上角关闭会触发一次后台同步并隐藏窗口；连接服务继续工作。", "Closing triggers one background sync, hides the window, and keeps the service running.")} />
         </article>
         <article className="settings-card compact-settings">
           <SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} />
@@ -854,16 +759,16 @@ export default function App() {
     </div>;
   }
 
-  return <div className={`app-shell locale-${language}`}>
+  return <div className={`app-shell locale-${language} ${setupCompletedOnce ? "setup-complete" : ""}`}>
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Icon name="spark" size={18} /></div><div><strong>Cherry</strong><small>CONNECT</small></div><span className="brand-tag">{language === "zh" ? "本地" : "LOCAL"}</span></div>
-      <div className="workspace-card"><span className="workspace-icon"><Icon name="route" size={15} /></span><div><strong>{tr("连接中心", "Connection center")}</strong><small>Cherry AI Connect</small></div><Icon name="arrow" size={13} /></div>
+      <button type="button" className="workspace-card workspace-status-card" onClick={() => void copyApiAddress()} title={tr("复制本地 API 地址", "Copy local API URL")}><span className="workspace-icon"><span className={`status-dot ${gatewayResetting ? "is-restarting" : ""}`} /></span><div><strong>{gatewayResetting ? tr("服务正在重启", "Service restarting") : tr("本地服务在线", "Local service online")}</strong><small>127.0.0.1:{gatewayPort} · {tr("点击复制", "Click to copy")}</small></div><Icon name="copy" size={13} /></button>
       <div className="nav-label">{tr("工作台", "WORKSPACE")}</div>
-      <NavItem icon="grid" label={tr("总览", "Overview")} active={view === "overview"} onClick={() => navigate("overview")} shortcut={isMac ? "⌘1" : "Ctrl+1"} />
-      <NavItem icon="route" label={tr("中转站线路", "Routes")} active={view === "providers"} onClick={() => navigate("providers")} shortcut={isMac ? "⌘2" : "Ctrl+2"} />
-      <NavItem icon="layers" label={tr("模型目录", "Models")} active={view === "models"} onClick={() => navigate("models")} shortcut={isMac ? "⌘3" : "Ctrl+3"} />
-      <NavItem icon="key" label={tr("客户端 Key", "Client keys")} active={view === "keys"} onClick={() => navigate("keys")} shortcut={isMac ? "⌘4" : "Ctrl+4"} />
-      <NavItem icon="chart" label={tr("使用统计", "Usage")} active={view === "usage"} onClick={() => navigate("usage")} shortcut={isMac ? "⌘5" : "Ctrl+5"} />
+      <NavItem icon="grid" label={tr("总览", "Overview")} active={view === "overview"} onClick={() => navigate("overview")} />
+      <NavItem icon="route" label={tr("中转站线路", "Routes")} active={view === "providers"} onClick={() => navigate("providers")} />
+      <NavItem icon="layers" label={tr("模型目录", "Models")} active={view === "models"} onClick={() => navigate("models")} />
+      <NavItem icon="key" label={tr("客户端 Key", "Client keys")} active={view === "keys"} onClick={() => navigate("keys")} />
+      <NavItem icon="chart" label={tr("使用统计", "Usage")} active={view === "usage"} onClick={() => navigate("usage")} />
       <div className="nav-label nav-spaced">{tr("系统", "SYSTEM")}</div>
       <NavItem icon="settings" label={tr("设置", "Settings")} active={view === "settings"} onClick={() => navigate("settings")} />
       <div className="sidebar-grow" />
@@ -884,7 +789,7 @@ export default function App() {
   function PageIntro({ kicker, description, action }: { kicker: string; description: string; action: ReactNode }) { return <div className="page-intro"><div><div className="section-kicker">{kicker}</div><p>{description}</p></div><div className="page-intro-action">{action}</div></div>; }
   function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
   function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
-  function NavItem({ icon, label, active, onClick, shortcut }: { icon: string; label: string; active: boolean; onClick: () => void; shortcut?: string }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick} aria-keyshortcuts={shortcut}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span>{shortcut && <kbd>{shortcut}</kbd>}</button>; }
+  function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span></button>; }
   function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} /></label>; }
   function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-primary" disabled={disabled}>{submit}</button></div>; }
   function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }

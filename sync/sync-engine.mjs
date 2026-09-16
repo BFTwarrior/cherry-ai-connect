@@ -9,6 +9,7 @@ import {
   assetDescriptor,
   gzipJson,
   gzipJsonLines,
+  isManifestAssetName,
   jsonBuffer,
   manifestName,
   parseCompressedJson,
@@ -16,6 +17,7 @@ import {
   randomId,
   sha256,
   stableJson,
+  syncAssetTag,
   validateManifest,
   verifyAsset,
 } from "./sync-common.mjs";
@@ -41,7 +43,7 @@ function monthOf(value) {
   return Number.isNaN(date.valueOf()) ? "197001" : `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function usageAssets(events, generation, syncId) {
+function usageAssets(events, assetTag) {
   const grouped = new Map();
   for (const event of events) {
     const key = `${event.deviceId}|${event.deviceEpoch}|${monthOf(event.at)}`;
@@ -58,7 +60,7 @@ function usageAssets(events, generation, syncId) {
       const bytes = gzipJsonLines(chunk);
       const first = String(chunk[0].sequence).padStart(6, "0");
       const last = String(chunk.at(-1).sequence).padStart(6, "0");
-      const name = `usage-${deviceId}-e${deviceEpoch}-${month}-s${first}-e${last}-${syncId}.jsonl.gz`;
+      const name = `usage-${deviceId}-e${deviceEpoch}-${month}-s${first}-e${last}-${assetTag}.jsonl.gz`;
       assets.push({ descriptor: assetDescriptor("usage-segment", name, bytes), bytes, eventIds: chunk.map((item) => item.eventId || item.id) });
     }
   }
@@ -67,20 +69,23 @@ function usageAssets(events, generation, syncId) {
 
 async function readLatestManifest(provider, expectedDatasetId = "") {
   const assets = await provider.listAssets();
-  const candidates = assets
-    .filter((asset) => /^manifest-g\d{6}-ssync_[0-9a-f-]{36}\.json$/i.test(asset.name))
-    .sort((left, right) => right.name.localeCompare(left.name));
-  for (const asset of candidates) {
+  const candidates = [];
+  let datasetConflict = false;
+  for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
     try {
       const bytes = await provider.downloadAsset(asset);
-      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")), expectedDatasetId);
-      return { manifest, bytes: Buffer.from(bytes), asset };
+      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
+      if (expectedDatasetId && manifest.datasetId !== expectedDatasetId) { datasetConflict = true; continue; }
+      candidates.push({ manifest, bytes: Buffer.from(bytes), asset });
     } catch (error) {
-      if (String(error?.message || "") === "sync_dataset_conflict") throw error;
       // 中文：损坏或未提交的候选不能成为当前代，继续查看更早的完整代。
       // English: A damaged candidate cannot become current; fall back to an earlier committed generation.
     }
   }
+  candidates.sort((left, right) => Number(right.manifest.generation) - Number(left.manifest.generation)
+    || String(right.manifest.createdAtUtc || "").localeCompare(String(left.manifest.createdAtUtc || "")));
+  if (candidates.length) return candidates[0];
+  if (datasetConflict) throw new Error("sync_dataset_conflict");
   return null;
 }
 
@@ -224,12 +229,14 @@ export class SyncEngine {
         }
 
         const generation = Number(parent?.generation || 0) + 1;
-        const generationTag = `g${String(generation).padStart(6, "0")}-s${syncId}`;
+        const generatedAt = this.now();
+        const generatedAtUtc = generatedAt.toISOString();
+        const assetTag = syncAssetTag(syncId, generatedAt);
         const summaryBytes = gzipJson({
           format: SYNC_FORMAT,
           schemaVersion: SYNC_SCHEMA_VERSION,
           datasetId,
-          generatedAtUtc: this.now().toISOString(),
+          generatedAtUtc,
           counters: snapshot.counters,
           tombstones: snapshot.tombstones,
         });
@@ -240,13 +247,13 @@ export class SyncEngine {
           ...snapshot.publicConfig,
         });
         const candidates = [
-          { descriptor: assetDescriptor("summary", `summary-${generationTag}.json.gz`, summaryBytes), bytes: summaryBytes, eventIds: [] },
-          { descriptor: assetDescriptor("config", `config-${generationTag}.json.gz`, configBytes), bytes: configBytes, eventIds: [] },
-          ...usageAssets(snapshot.events, generation, syncId),
+          { descriptor: assetDescriptor("summary", `summary-${assetTag}.json.gz`, summaryBytes), bytes: summaryBytes, eventIds: [] },
+          { descriptor: assetDescriptor("config", `config-${assetTag}.json.gz`, configBytes), bytes: configBytes, eventIds: [] },
+          ...usageAssets(snapshot.events, assetTag),
         ];
         if (currentVault) {
           const bytes = jsonBuffer(currentVault);
-          candidates.push({ descriptor: assetDescriptor("vault", `vault-${generationTag}.enc`, bytes), bytes, eventIds: [] });
+          candidates.push({ descriptor: assetDescriptor("vault", `vault-${assetTag}.enc`, bytes), bytes, eventIds: [] });
         }
         const inherited = (parent?.files || []).filter((item) => item.type === "usage-segment");
 
@@ -273,7 +280,7 @@ export class SyncEngine {
           parentManifestSha256: latest ? sha256(latest.bytes) : "",
           writerDeviceId: snapshot.identity.deviceId,
           writerDeviceEpoch: snapshot.identity.deviceEpoch,
-          createdAtUtc: this.now().toISOString(),
+          createdAtUtc: generatedAtUtc,
           displayTimezone: "Asia/Shanghai",
           state: "committed",
           configRevision: snapshot.publicConfig.configRevision,
@@ -284,7 +291,7 @@ export class SyncEngine {
           retention: { localDetailCacheBytes: 50 * 1024 ** 2, localDetailTargetBytes: 45 * 1024 ** 2, prunedBeforeUtc: null },
         };
         const manifestBytes = jsonBuffer(manifest);
-        const name = manifestName(generation, syncId);
+        const name = manifestName(syncId, generatedAt);
         await this.provider.uploadAsset(name, manifestBytes, "manifest");
         const uploadedManifest = (await this.provider.listAssets()).find((item) => item.name === name);
         if (!uploadedManifest) throw new Error("sync_manifest_missing_after_upload");
@@ -310,7 +317,7 @@ export class SyncEngine {
   async collectGarbage() {
     const assets = await this.provider.listAssets();
     const manifests = [];
-    for (const asset of assets.filter((item) => /^manifest-g\d{6}-s/.test(item.name))) {
+    for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
       try {
         const bytes = await this.provider.downloadAsset(asset);
         const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));

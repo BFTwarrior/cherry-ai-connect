@@ -1,7 +1,7 @@
-# Cherry AI Connect 1.00 Sync Protocol
+# Cherry AI Connect 1.1 Sync Protocol
 
-> 中文：本文是 1.00 云同步实现的固定协议。
-> English: This document is the fixed cloud-sync contract for version 1.00.
+> 中文：本文是 1.1 云同步实现的固定协议。
+> English: This document is the fixed cloud-sync contract for version 1.1.
 
 ## 1. Safety boundary / 安全边界
 
@@ -33,12 +33,16 @@ All stored protocol timestamps use UTC ISO-8601. The interface displays UTC+8 or
 - Asset names are ASCII and immutable.
 
 ```text
-manifest-g000042-ssync_<uuid>.json
-summary-g000042-ssync_<uuid>.json.gz
-config-g000042-ssync_<uuid>.json.gz
-vault-g000042-ssync_<uuid>.enc
-usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-sync_<uuid>.jsonl.gz
+manifest-20260917-183025-123-ssync_<uuid>.json
+summary-20260917-183025-123-ssync_<uuid>.json.gz
+config-20260917-183025-123-ssync_<uuid>.json.gz
+vault-20260917-183025-123-ssync_<uuid>.enc
+usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-20260917-183025-123-ssync_<uuid>.jsonl.gz
 ```
+
+The date-time segment is generated in UTC+8 as `YYYYMMDD-HHmmss-SSS`. Readers still accept legacy `*-g000042-*` objects, while version 1.1 writes only the readable date-time form. The manifest's internal `generation` remains the authoritative order; filenames are never used to resolve conflicts.
+
+日期时间段固定按 UTC+8 生成，格式为 `YYYYMMDD-HHmmss-SSS`。1.1 仍能读取旧的 `*-g000042-*` 文件，但新写入只使用日期时间名称。真正的版本顺序仍以 manifest 内部的 `generation` 为准，不能只看文件名判断冲突。
 
 ## 4. Manifest / 提交清单
 
@@ -46,8 +50,8 @@ usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-sync_<uuid>.jsonl.gz
 {
   "format": "cherry-ai-connect-sync",
   "schemaVersion": 1,
-  "minReaderVersion": "1.00",
-  "minWriterVersion": "1.00",
+  "minReaderVersion": "1.1",
+  "minWriterVersion": "1.1",
   "datasetId": "ds_...",
   "syncId": "sync_...",
   "generation": 42,
@@ -134,7 +138,7 @@ ERROR_RECOVERABLE
 ERROR_FATAL
 ```
 
-Automatic sync checks every 30 minutes. Enabling sync, disabling sync, application startup, normal exit, manual sync, account/repository changes, restore, vault changes, and secure route changes trigger an additional sync attempt. A sync failure never stops the local service.
+Automatic sync checks every 30 minutes. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, and secure route changes trigger an additional sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
 
 ## 10. GitHub errors / GitHub 错误
 
@@ -150,7 +154,7 @@ Retries have a maximum count. Exit sync has a short deadline and leaves durable 
 
 ## 11. Compatibility / 兼容性
 
-- `schemaVersion = 1` is the 1.00 write format.
+- `schemaVersion = 1` remains the data schema; version 1.1 changes only asset naming and minimum compatible application version.
 - Readers reject a manifest with a higher `minReaderVersion`.
 - Writers refuse to overwrite a manifest with a higher `minWriterVersion`.
 - Future optional fields must have safe defaults.

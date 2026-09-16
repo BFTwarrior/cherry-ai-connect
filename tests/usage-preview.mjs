@@ -18,6 +18,15 @@ const upstream = http.createServer((req, res) => {
   const chunks = [];
   req.on("data", (chunk) => chunks.push(chunk));
   req.on("end", () => {
+    if (req.method === "GET" && /\/models(?:\?|$)/.test(req.url || "")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ data: [
+        { id: "gpt-5.6-luna", object: "model" },
+        { id: "gpt-5.6-sol", object: "model" },
+        { id: "gpt-5.5", object: "model" },
+      ] }));
+      return;
+    }
     requestNumber += 1;
     const input = 500 + (requestNumber * 811) % 12500;
     const output = 80 + (requestNumber * 157) % 2100;
@@ -33,6 +42,7 @@ await gateway.startGateway({ port: 27891 });
 const origin = "http://127.0.0.1:27891";
 const request = async (url, options = {}) => (await fetch(`${origin}${url}`, options)).json();
 await request("/admin/api/providers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "preview-purple", name: "Luna 高速线路", baseUrl: "http://127.0.0.1:27890", apiKey: "preview-upstream-placeholder" }) });
+await request("/admin/api/providers/preview-purple/test", { method: "POST" });
 const created = await request("/admin/api/client-keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ providerId: "preview-purple", reasoningLevel: "high", nameCustomized: false }) });
 for (let index = 0; index < 36; index += 1) {
   await fetch(`${origin}/v1/chat/completions`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${created.key}` }, body: JSON.stringify({ model: index % 2 ? "gpt-5.6-luna" : "gpt-5.5", messages: [{ role: "user", content: "visual preview" }] }) });
@@ -65,8 +75,8 @@ const previewDesktopScript = `<script>
     return { ...sync };
   };
   window.desktop = {
-    getGatewayInfo: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", adminUrl: "http://127.0.0.1:27891/admin" }),
-    resetGateway: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", adminUrl: "http://127.0.0.1:27891/admin" }),
+    getGatewayInfo: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", apiBase: "http://127.0.0.1:27891/v1", adminUrl: "http://127.0.0.1:27891/admin" }),
+    resetGateway: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", apiBase: "http://127.0.0.1:27891/v1", adminUrl: "http://127.0.0.1:27891/admin" }),
     getSettings: async () => ({ ...settings }),
     setSettings: async (patch) => (settings = { ...settings, ...patch }),
     openDataFolder: async () => true,
@@ -101,7 +111,7 @@ const previewDesktopScript = `<script>
       publish();
       return { ...sync };
     },
-    checkForUpdates: async () => ({ currentVersion: "1.00", latestVersion: "1.00", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-ai-connect/releases", checkedAt: now() })
+    checkForUpdates: async () => ({ currentVersion: "1.1", latestVersion: "1.1", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-ai-connect/releases", checkedAt: now() })
   };
 })();
 </script>`;

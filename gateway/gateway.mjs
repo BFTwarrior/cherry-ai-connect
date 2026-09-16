@@ -17,7 +17,7 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.00";
+const gatewayVersion = "1.1";
 const supportedReasoningLevels = ["low", "medium", "high", "xhigh", "max"];
 
 fs.mkdirSync(dataDir, { recursive: true });
@@ -898,6 +898,10 @@ export function replaceConfigFromSync(publicConfig, secureConfig) {
     const providerId = String(item.providerId || "");
     if (!id || !providerIds.has(providerId)) throw new Error("sync_invalid_client_metadata");
     const previous = previousKeys.get(id);
+    // 中文：客户端 Key 原值永不上云。若本机已有可解密的 Key 就保留；新设备或旧数据缺失时只在本机生成一次。
+    // English: Client-key secrets never sync. Preserve a decryptable local secret; otherwise generate one once on this device.
+    const previousSecret = decrypt(previous?.keyEnc || "");
+    const localSecret = previousSecret || makeClientKey();
     return {
       id,
       name: String(item.name || providers.find((provider) => provider.id === providerId)?.name || "客户端").slice(0, 200),
@@ -906,8 +910,8 @@ export function replaceConfigFromSync(publicConfig, secureConfig) {
       reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : "high",
       createdAt: String(item.createdAt || new Date().toLocaleString("zh-CN")),
       enabled: item.enabled !== false,
-      hash: String(previous?.hash || ""),
-      keyEnc: String(previous?.keyEnc || ""),
+      hash: hashKey(localSecret),
+      keyEnc: previousSecret ? String(previous.keyEnc) : encrypt(localSecret),
     };
   });
   config = {

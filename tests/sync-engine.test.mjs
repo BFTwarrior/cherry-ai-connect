@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { UsageLedger } from "../gateway/usage-ledger.mjs";
 import { SyncEngine, readLatestManifest } from "../sync/sync-engine.mjs";
+import { isManifestAssetName, manifestName, syncTimestamp } from "../sync/sync-common.mjs";
 import { LocalVaultStore } from "../sync/local-vault-store.mjs";
 import { SyncManager } from "../sync/sync-manager.mjs";
 
@@ -147,10 +148,20 @@ test("manifest is uploaded last and an interrupted candidate never clears the ou
     const latest = await readLatestManifest(provider, datasetId);
     assert.equal(latest.manifest.generation, 1);
     assert.equal(latest.manifest.state, "committed");
+    assert.ok([...provider.assets.keys()].some((name) => /^manifest-\d{8}-\d{6}-\d{3}-ssync_[0-9a-f-]{36}\.json$/.test(name)));
   } finally {
     ledger.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("sync asset names use UTC+8 timestamps while legacy manifest names stay readable", () => {
+  const date = new Date("2026-09-17T06:30:25.123Z");
+  const syncId = "sync_00000000-0000-0000-0000-000000000000";
+  assert.equal(syncTimestamp(date), "20260917-143025-123");
+  assert.equal(manifestName(syncId, date), "manifest-20260917-143025-123-ssync_00000000-0000-0000-0000-000000000000.json");
+  assert.equal(isManifestAssetName("manifest-g000042-ssync_00000000-0000-0000-0000-000000000000.json"), true);
+  assert.equal(isManifestAssetName(manifestName(syncId, date)), true);
 });
 
 test("two devices converge and repeated pulls do not duplicate lifetime totals", async () => {

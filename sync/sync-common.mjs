@@ -7,7 +7,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 export const SYNC_FORMAT = "cherry-ai-connect-sync";
 export const SYNC_SCHEMA_VERSION = 1;
-export const SYNC_PRODUCT_VERSION = "1.00";
+export const SYNC_PRODUCT_VERSION = "1.1";
 export const MAX_COMPRESSED_ASSET_BYTES = 24 * 1024 * 1024;
 export const MAX_DECOMPRESSED_ASSET_BYTES = 128 * 1024 * 1024;
 
@@ -86,8 +86,33 @@ export function sanitizeText(value, maximum = 300) {
   return String(value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, maximum);
 }
 
-export function manifestName(generation, syncId) {
-  return `manifest-g${String(generation).padStart(6, "0")}-s${syncId}.json`;
+// 中文：文件名使用 UTC+8 可读时间；manifest 内仍保存 generation，不能依赖文件名判断新旧。
+// English: Asset names use readable UTC+8 time; generation remains authoritative inside the manifest.
+export function syncTimestamp(value = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) throw new Error("sync_invalid_timestamp");
+  const utc8 = new Date(date.valueOf() + 8 * 60 * 60 * 1000);
+  const year = utc8.getUTCFullYear();
+  const month = String(utc8.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(utc8.getUTCDate()).padStart(2, "0");
+  const hour = String(utc8.getUTCHours()).padStart(2, "0");
+  const minute = String(utc8.getUTCMinutes()).padStart(2, "0");
+  const second = String(utc8.getUTCSeconds()).padStart(2, "0");
+  const millisecond = String(utc8.getUTCMilliseconds()).padStart(3, "0");
+  return `${year}${month}${day}-${hour}${minute}${second}-${millisecond}`;
+}
+
+export function syncAssetTag(syncId, value = new Date()) {
+  return `${syncTimestamp(value)}-s${syncId}`;
+}
+
+export function manifestName(syncId, value = new Date()) {
+  return `manifest-${syncAssetTag(syncId, value)}.json`;
+}
+
+export function isManifestAssetName(value) {
+  const name = String(value || "");
+  return /^manifest-(?:g\d{6}-ssync_[0-9a-f-]{36}|\d{8}-\d{6}-\d{3}-ssync_[0-9a-f-]{36})\.json$/i.test(name);
 }
 
 export function versionAtLeast(current, required) {

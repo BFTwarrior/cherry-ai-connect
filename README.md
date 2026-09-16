@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.00` 已创建正式 GitHub Release 并上传 Windows 安装包。真实 GitHub 私有仓库同步、Cherry Studio 实际请求、安装/卸载和托盘验收仍建议按测试文档逐项执行。
+`1.1` 源码、自动测试、视觉验收和 Windows 安装包已在本机完成，尚未上传 GitHub Release。当前公开下载仍为 `1.00`；真实 GitHub、Cherry Studio、安装/卸载和托盘验收仍按测试文档执行。
 
-Version `1.00` has a published GitHub Release with the Windows installer attached. Real private-GitHub sync, Cherry Studio requests, installation/uninstallation, and tray checks should still be verified using the tester guide.
+Version `1.1` has completed local source, automated, visual, and Windows-installer builds but is not yet published to GitHub Releases. The public download remains `1.00`; real GitHub, Cherry Studio, install/uninstall, and tray checks still follow the tester guide.
 
 ## 它能做什么 / Features
 
@@ -20,7 +20,8 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 - 自动读取并按线路分组显示模型目录。
 - 提供永久累计 Token、24 小时至半年趋势、缓存命中率和实时请求记录。
 - 本地请求明细以 50 MB 为上限；只有超限后才清理最早明细，永久累计不会归零。
-- 支持深灰紫色中英文界面、托盘、开机启动、关闭到托盘和手动检查更新。
+- 支持深灰、紫色、金色中英文界面、托盘、开机启动、关闭到托盘同步和手动检查更新。
+- 支持线路批量检测、模型分组折叠，以及默认窗口内完整可读的实时请求记录。
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
 - 可将加密后的线路配置和匿名使用量同步到用户自己的 GitHub 私有 Release。
 
@@ -32,7 +33,8 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 - Fetch model catalogs automatically and group models by route.
 - Show lifetime token totals, trends from 24 hours to six months, cache hit rate, and live request records.
 - Keep local request details up to 50 MB; only the oldest details are removed after the limit is exceeded, while lifetime totals remain intact.
-- Provide a dark gray and purple bilingual interface, tray support, startup launch, close-to-tray behavior, and manual update checks.
+- Provide a dark gray, purple, and gold bilingual interface, tray support, startup launch, close-to-tray sync, and manual update checks.
+- Support route batch testing, collapsible model groups, and complete live request records in the default window.
 - Reset the local connection service by securely selecting an available port from 29,000 candidates.
 - Sync encrypted route configuration and anonymous usage totals to the user’s own private GitHub Release.
 
@@ -40,6 +42,8 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 - [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)
+- 1.1 安装包尚未上传；在 Release 出现对应附件前，不提供虚假的 1.1 直达链接。
+- The v1.1 installer is not uploaded yet; no direct v1.1 link is claimed until the matching Release asset exists.
 - v1.00 安装包附件已上传；下载前可在 Release 页面核对文件名和 SHA-256。
 - The v1.00 installer is attached to the Release. Verify its filename and SHA-256 before installing.
 - 安装包 SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
@@ -256,6 +260,7 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
 当前 1.00 安装包直达地址：[Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)。
+当前源码可构建 1.1，但 GitHub Release 尚未上传；发布前仍以 1.00 链接为公开稳定版。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
 SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`。
 
@@ -268,6 +273,8 @@ The installer and release notes for the current stable v1.00 are available here:
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
 Direct download: [Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`.
+
+The current source builds v1.1, but its GitHub Release asset has not been uploaded. Until then, v1.00 remains the public stable download.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
@@ -317,10 +324,9 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 - `产品文档/产品目标.txt`、`产品文档/产品要求.txt`：产品定位、功能规则和安全边界。/ Product goals, functional rules, and safety boundaries.
 - `产品文档/使用说明.txt`：最终用户配置、使用和同步说明。/ End-user setup, usage, and sync instructions.
 - `产品文档/测试人员完整说明.txt`：按顺序执行的现场验收步骤。/ Ordered field acceptance steps for testers.
-- `产品文档/1.00-实现现状与验收报告.txt`：当前 1.00 唯一现状依据。/ The single source of truth for the current v1.00 implementation status.
+- `产品文档/1.1-实现现状与验收报告.txt`：当前 1.1 实现、证据和剩余现场验收。/ Current v1.1 implementation, evidence, and remaining field checks.
 - `产品文档/UI小功能测评问题清单.txt`：当前验收矩阵和剩余现场补测。/ Current acceptance matrix and remaining field checks.
-- `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器视觉验收边界。/ Browser visual acceptance boundaries.
-- `产品文档/1.1-下一版本修复与增加计划.txt`：1.1 待处理问题和验收标准。/ v1.1 pending issues and acceptance criteria.
+- `产品文档/浏览器视觉验收方法与操作记录.txt`：浏览器视觉验收步骤和边界。/ Browser visual-acceptance steps and boundaries.
 - `产品文档/版本说明.txt`、`产品文档/踩坑记录.txt`：简要参考。/ Quick references.
 
 ## 双语注释 / Bilingual comments

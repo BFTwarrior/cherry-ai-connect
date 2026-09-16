@@ -33,6 +33,16 @@ function displayTime(value: string, language: Language) {
   return date.toLocaleString(language === "zh" ? "zh-CN" : "en-US", { timeZone: "Asia/Shanghai", hour12: false });
 }
 
+function displayBackupVersion(value: string, generation: number, language: Language) {
+  if (!value) return language === "zh" ? "尚未生成" : "Not created";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return value;
+  const stamp = date.toLocaleString(language === "zh" ? "zh-CN" : "en-GB", {
+    timeZone: "Asia/Shanghai", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+  return generation > 0 ? `${stamp} · #${generation}` : stamp;
+}
+
 export function CloudSyncCard({ language, requestConfirmation }: { language: Language; requestConfirmation: ConfirmRequest }) {
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [status, setStatus] = useState<CloudSyncStatus>(emptyStatus);
@@ -144,7 +154,7 @@ export function CloudSyncCard({ language, requestConfirmation }: { language: Lan
       <div className="sync-actions"><button className="button button-primary" type="submit" disabled={busy || loading}><SyncIcon name="github" />{busy ? tr("正在连接并首次同步…", "Connecting and syncing…") : tr("连接 GitHub 并开启同步", "Connect GitHub and enable sync")}</button></div>
     </form> : <>
       <div className="sync-account-row"><div className="account-avatar">{status.account?.avatarUrl ? <img src={status.account.avatarUrl} alt="" /> : <SyncIcon name="user" />}</div><div><small>{tr("已连接账户", "Connected account")}</small><strong>@{status.account?.login}</strong></div><div><small>{tr("私有仓库", "Private repository")}</small><strong>{status.owner}/{status.repository}</strong></div><div><small>{tr("待同步", "Pending")}</small><strong>{status.pendingCount}</strong></div><button type="button" className="text-button" onClick={() => void window.desktop?.openExternal(`https://github.com/${status.owner}/${status.repository}/releases/tag/cherry-sync`)}><SyncIcon name="external" />{tr("查看私有备份", "View private backup")}</button></div>
-      <div className="sync-metrics"><div><small>{tr("上次完成", "Last completed")}</small><strong>{displayTime(status.lastSyncAt, language)}</strong></div><div><small>{tr("下次检查", "Next check")}</small><strong>{status.enabled ? displayTime(status.nextSyncAt, language) : tr("自动同步已关闭", "Automatic sync off")}</strong></div><div><small>{tr("云端代数", "Cloud generation")}</small><strong>G{String(status.generation || 0).padStart(6, "0")}</strong></div><div><small>Dataset ID</small><strong title={status.datasetId}>{status.datasetId ? `${status.datasetId.slice(0, 10)}…${status.datasetId.slice(-6)}` : "—"}</strong></div></div>
+      <div className="sync-metrics"><div><small>{tr("上次完成（UTC+8）", "Last completed (UTC+8)")}</small><strong>{displayTime(status.lastSyncAt, language)}</strong></div><div><small>{tr("下次同步（UTC+8）", "Next sync (UTC+8)")}</small><strong>{status.enabled ? displayTime(status.nextSyncAt, language) : tr("自动同步已关闭", "Automatic sync off")}</strong></div><div><small>{tr("备份版本（UTC+8）", "Backup version (UTC+8)")}</small><strong>{displayBackupVersion(status.lastSyncAt, status.generation, language)}</strong></div><div><small>Dataset ID</small><strong title={status.datasetId}>{status.datasetId ? `${status.datasetId.slice(0, 10)}…${status.datasetId.slice(-6)}` : "—"}</strong></div></div>
       {(error || (status.state !== "CONFLICT" && status.error)) && <div className="sync-error">{error || status.error}<small>{status.errorCode}</small></div>}
       {status.warning && <div className="sync-warning">{status.warning === "sync_disabled_with_pending_data" ? tr("自动同步已关闭，但仍有本地数据等待下次上传。", "Automatic sync is off, but local changes are still waiting to upload.") : status.warning}</div>}
       {status.state === "CONFLICT" && <div className="sync-conflict-panel"><div><strong>{tr("检测到两份不同的线路配置", "Two different route configurations were found")}</strong><p>{tr("为保护上游 Key，程序已暂停配置上传。请选择保留本机还是恢复云端；使用量会继续按事件去重合并。", "Configuration upload is paused to protect upstream keys. Choose this PC or the cloud copy; usage events continue to merge safely.")}</p></div><label><span>{tr("加密密码或 CGRC 恢复码", "Vault password or CGRC recovery code")}</span><input type="password" value={conflictCredential} onChange={(event) => setConflictCredential(event.target.value)} autoComplete="off" /><small>{tr("恢复云端时输入云端密码或恢复码；首次保留本机时请输入至少 8 位的新密码。", "For cloud restore, enter the cloud password or recovery code. To keep an unprotected local copy for the first time, enter a new password of at least 8 characters.")}</small></label><div><button type="button" className="button button-secondary" onClick={() => void resolveConflict("local")} disabled={busy}>{tr("保留本机配置", "Keep this PC")}</button><button type="button" className="button button-primary" onClick={() => void resolveConflict("remote")} disabled={busy}>{tr("恢复云端配置", "Restore cloud copy")}</button></div></div>}

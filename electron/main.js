@@ -331,12 +331,23 @@ function createWindow() {
     title: "Cherry AI 连接中心",
     icon: path.join(__dirname, "assets", "app.ico"),
     autoHideMenuBar: true,
+    // 中文：保留 Windows 原生窗口按钮，但让标题栏颜色和应用内容成为一个整体。
+    // English: Keep native Windows controls while visually merging the title bar with the app.
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#17171f", symbolColor: "#eadfc7", height: 40 },
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
   });
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "dist", "index.html"));
   mainWindow.once("ready-to-show", () => { if (!process.argv.includes("--hidden") && !settings.startMinimized) mainWindow.show(); });
   mainWindow.on("close", (event) => {
-    if (!quitting && readDesktopSettings().closeToTray) { event.preventDefault(); mainWindow.hide(); }
+    if (!quitting && readDesktopSettings().closeToTray) {
+      event.preventDefault();
+      // 中文：关闭到托盘属于重大事件；只在同步已启用且已连接时触发，失败不影响窗口隐藏。
+      // English: Close-to-tray is a major event; sync only when enabled/connected and never block hiding.
+      const status = syncManager?.status();
+      if (status?.enabled && status?.connected) void syncManager.syncNow("window-close").catch(() => {});
+      mainWindow.hide();
+    }
   });
 }
 

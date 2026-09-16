@@ -122,6 +122,22 @@ test("usage ledger and route-following key names survive the complete flow", asy
     assert.equal(usage.lifetime.cacheReadTokens, 39);
     assert.ok(usage.series.some((point) => point.totalTokens === 150));
 
+    // 中文：模拟新设备恢复云端元数据；客户端秘密必须在本机自动生成，且不能进入同步快照。
+    // English: Simulate a pristine-device restore; client secrets regenerate locally and never enter sync snapshots.
+    const snapshot = gateway.getSyncSnapshot();
+    const remoteKeyId = "remote-key-without-secret";
+    gateway.replaceConfigFromSync({
+      ...snapshot.publicConfig,
+      configRevision: { counter: snapshot.publicConfig.configRevision.counter + 1, deviceId: "remote-device" },
+      clientKeyMetadata: [{ id: remoteKeyId, name: "恢复的客户端", nameCustomized: true, providerId: "route-a", reasoningLevel: "high", createdAt: "2026-09-17 12:00:00", enabled: true }],
+    }, snapshot.secureConfig);
+    const restoredKeys = await api("/admin/api/client-keys");
+    assert.equal(restoredKeys.keys[0].id, remoteKeyId);
+    assert.equal(restoredKeys.keys[0].hasSecret, true);
+    const restoredSecret = await api(`/admin/api/client-keys/${remoteKeyId}/secret`);
+    assert.match(restoredSecret.key, /^cg_[A-Za-z0-9_-]{20,}$/);
+    assert.equal(JSON.stringify(gateway.getSyncSnapshot().publicConfig).includes(restoredSecret.key), false);
+
     await gateway.stopGateway();
     const reopenedLedger = new UsageLedger(dataDir);
     const restored = reopenedLedger.snapshot(new URL("http://local/usage?range=24h&limit=20"));

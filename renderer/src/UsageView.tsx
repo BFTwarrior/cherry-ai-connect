@@ -3,6 +3,7 @@
  * English: The usage page reads anonymous gateway metrics only; it never reads or stores prompts, responses, or secrets.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { UsageRecordsTable, type UsageRecord } from "./usage/UsageRecordsTable";
 
 type Language = "zh" | "en";
 type RangeKey = "24h" | "7d" | "30d" | "90d" | "180d";
@@ -21,26 +22,6 @@ type UsageTotals = {
 };
 
 type UsagePoint = Omit<UsageTotals, "cacheHitRate"> & { at: string };
-
-type UsageRecord = {
-  id: string;
-  at: string;
-  clientKeyName: string;
-  providerId: string;
-  providerName: string;
-  model: string;
-  endpoint: string;
-  reasoningLevel: string;
-  status: number;
-  durationMs: number;
-  ttftMs: number;
-  stream: boolean;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-};
 
 type UsageResponse = {
   detailCache: { count: number; bytes: number; maxBytes: number; targetBytes: number; pageLimit: number };
@@ -73,11 +54,6 @@ function compactNumber(value: number | undefined, language: Language) {
 function dateTime(value: string, language: Language) {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
-function duration(value: number | undefined) {
-  const milliseconds = Number(value || 0);
-  return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(2)}s` : `${Math.round(milliseconds)}ms`;
 }
 
 function megabytes(value: number | undefined) {
@@ -199,13 +175,16 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
     <div className="usage-summary-grid">
       <article><span className="summary-icon purple"><TinyIcon name="tokens" /></span><div><small>{selectedLabel} · {tr("Token", "Tokens")}</small><strong>{number(summary.totalTokens, language)}</strong><em>{tr("真实返回用量", "Reported usage")}</em></div></article>
       <article><span className="summary-icon blue"><TinyIcon name="input" /></span><div><small>{tr("输入", "Input")}</small><strong>{number(summary.inputTokens, language)}</strong><em>{tr("含缓存读取", "Includes cache reads")}</em></div></article>
-      <article><span className="summary-icon green"><TinyIcon name="output" /></span><div><small>{tr("输出", "Output")}</small><strong>{number(summary.outputTokens, language)}</strong><em>{tr("模型生成", "Model generated")}</em></div></article>
+      <article><span className="summary-icon gold"><TinyIcon name="output" /></span><div><small>{tr("输出", "Output")}</small><strong>{number(summary.outputTokens, language)}</strong><em>{tr("模型生成", "Model generated")}</em></div></article>
       <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存命中率", "Cache hit rate")}</small><strong>{summary.cacheHitRate.toFixed(1)}%</strong><em>{number(summary.cacheReadTokens, language)} {tr("命中 Token", "cached tokens")}</em></div></article>
       <article><span className="summary-icon teal"><TinyIcon name="request" /></span><div><small>{tr("请求", "Requests")}</small><strong>{number(summary.requests, language)}</strong><em>{successRate.toFixed(1)}% {tr("成功", "successful")}</em></div></article>
     </div>
 
     <article className="usage-panel chart-panel"><header><div><span>{tr("使用趋势", "USAGE TREND")}</span><h3>{selectedLabel}</h3></div><small>{tr("悬停折线查看具体时间点", "Hover the lines for exact values")}</small></header>{loading && !data ? <div className="usage-loading">{tr("正在读取统计…", "Loading analytics…")}</div> : data?.series.length ? <UsageChart points={data.series} language={language} range={range} /> : <div className="usage-loading">{tr("该时间范围暂无请求", "No requests in this period")}</div>}</article>
 
-    <article className="usage-panel records-panel"><header><div><span>{tr("实时请求记录", "LIVE REQUEST LOG")}</span><h3>{tr("最新 200 条（单页）", "Latest 200 (one page)")}</h3></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB；超限才清理最早详情，永久累计仍完整保留`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB; oldest details are pruned only after the limit, while lifetime totals remain complete`)}</small></header><div className="usage-table-wrap"><table className="usage-table"><thead><tr><th>{tr("时间", "Time")}</th><th>{tr("客户端 / 线路", "Client / Route")}</th><th>{tr("模型", "Model")}</th><th>{tr("思考", "Reasoning")}</th><th>{tr("输入", "Input")}</th><th>{tr("输出", "Output")}</th><th>{tr("缓存", "Cache")}</th><th>{tr("总计", "Total")}</th><th>{tr("耗时 / 首字", "Duration / TTFT")}</th><th>{tr("状态", "Status")}</th></tr></thead><tbody>{data?.records.map((record) => <tr key={record.id}><td><time>{dateTime(record.at, language)}</time><small>{record.stream ? tr("流式", "Stream") : tr("非流式", "Standard")}</small></td><td><strong>{record.clientKeyName || "—"}</strong><small>{record.providerName || record.providerId}</small></td><td><code title={record.model}>{record.model || "—"}</code><small>{record.endpoint}</small></td><td><span className="reasoning-tag">{String(record.reasoningLevel || "—").toUpperCase()}</span></td><td>{number(record.inputTokens, language)}</td><td>{number(record.outputTokens, language)}</td><td>{number(record.cacheReadTokens, language)}<small>+{number(record.cacheWriteTokens, language)}</small></td><td><strong>{number(record.totalTokens, language)}</strong></td><td>{duration(record.durationMs)}<small>{tr("首字", "TTFT")} {duration(record.ttftMs)}</small></td><td><span className={`request-status ${record.status >= 200 && record.status < 400 ? "ok" : "error"}`}>{record.status || "—"}</span></td></tr>)}{!data?.records.length && <tr><td className="usage-empty-row" colSpan={10}>{tr("还没有匹配的请求记录。通过 Cherry 发起一次对话后，这里会自动出现。", "No matching requests yet. Send a message through Cherry and it will appear here automatically.")}</td></tr>}</tbody></table></div></article>
+    <article className="usage-panel records-panel">
+      <header><div><span>{tr("实时请求记录", "LIVE REQUEST LOG")}</span><h3>{tr("最新 200 条（单页）", "Latest 200 (one page)")}</h3></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB；超限才清理最早详情，永久累计仍完整保留`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB; oldest details are pruned only after the limit, while lifetime totals remain complete`)}</small></header>
+      <UsageRecordsTable records={data?.records || []} language={language} />
+    </article>
   </section>;
 }
