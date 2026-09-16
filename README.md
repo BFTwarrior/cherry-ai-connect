@@ -12,6 +12,8 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 
 ## 它能做什么 / Features
 
+**中文**
+
 - 管理多个上游线路，每个客户端 Key 只绑定一条线路。
 - 客户端 Key 默认跟随线路名称；用户手动改名后停止自动同步名称。
 - 支持 `low`、`medium`、`high`、`xhigh`、`max` 五档思考强度。
@@ -22,21 +24,38 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
 - 可将加密后的线路配置和匿名使用量同步到用户自己的 GitHub 私有 Release。
 
+**English**
+
+- Manage multiple upstream routes, with each client key bound to exactly one route.
+- Client-key names follow the bound route by default; automatic renaming stops after the user enters a custom name.
+- Support five reasoning levels: `low`, `medium`, `high`, `xhigh`, and `max`.
+- Fetch model catalogs automatically and group models by route.
+- Show lifetime token totals, trends from 24 hours to six months, cache hit rate, and live request records.
+- Keep local request details up to 50 MB; only the oldest details are removed after the limit is exceeded, while lifetime totals remain intact.
+- Provide a dark gray and purple bilingual interface, tray support, startup launch, close-to-tray behavior, and manual update checks.
+- Reset the local connection service by securely selecting an available port from 29,000 candidates.
+- Sync encrypted route configuration and anonymous usage totals to the user’s own private GitHub Release.
+
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 - [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)
 - v1.00 安装包附件已上传；下载前可在 Release 页面核对文件名和 SHA-256。
+- The v1.00 installer is attached to the Release. Verify its filename and SHA-256 before installing.
 - 安装包 SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
 - Installer SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
 
 ## 安全边界 / Security boundary
+
+**中文**
 
 - 连接服务只监听 `127.0.0.1`，不会直接开放到局域网或互联网。
 - 上游 API Key 使用本机加密保存；完整客户端 Key、聊天正文、密码、恢复码和 GitHub 令牌不会上传。
 - 云端敏感配置使用 Argon2id + AES-256-GCM 信封加密。
 - GitHub 仓库必须为私有；发现公开仓库时同步会保护性停止。
 - GitHub 访问令牌由 Windows 安全存储保护，不写入源码、日志或云端附件。
+
+**English**
 
 - The service listens only on `127.0.0.1`.
 - Upstream keys are encrypted locally. Full client keys, prompts, responses, passwords, recovery codes, and GitHub tokens never upload.
@@ -46,23 +65,27 @@ Version `1.00` has a published GitHub Release with the Windows installer attache
 
 ## 本地数据与缓存 / Local data and cache
 
+**中文说明**
+
 正式安装版把运行数据统一放在软件安装目录旁：
 
 ```text
 <安装目录>\data\
-├─ browser-cache\             Electron 浏览器缓存
-├─ desktop-settings.json      桌面设置与当前端口
+├─ browser-cache\             Electron 浏览器缓存 / Electron browser cache
+├─ desktop-settings.json      桌面设置与当前端口 / Desktop settings and current port
 └─ gateway-data\
-   ├─ config.json             线路、客户端 Key 摘要与设置
-   ├─ usage.db                使用明细、永久总账和同步队列
-   ├─ device.json             本机和同步数据集身份
-   ├─ vault.enc               加密云端保险箱
-   └─ sync-state.json         云同步状态
+   ├─ config.json             线路、客户端 Key 摘要与设置 / Routes, client-key summaries, and settings
+   ├─ usage.db                使用明细、永久总账和同步队列 / Usage details, lifetime totals, and sync queue
+   ├─ device.json             本机和同步数据集身份 / Device and sync-dataset identity
+   ├─ vault.enc               加密云端保险箱 / Encrypted cloud vault
+   └─ sync-state.json         云同步状态 / Cloud-sync state
 ```
 
 安装到 D 盘时，主要数据和缓存也位于 D 盘，不固定占用 C 盘。开发环境使用项目根目录下的 `.runtime-data`。
 
 **请勿误删、移动、重命名或覆盖 `data` 及其中的记录文件。删除整个软件文件夹会同时删除缓存、线路、客户端 Key、永久统计和未同步数据。需要保留数据时，先完成云同步或备份整个 `data` 文件夹。**
+
+**English**
 
 Packaged runtime data lives in the `data` folder beside the installed app. Installing on drive D keeps the primary cache on drive D. Development uses `.runtime-data` inside the project.
 
@@ -226,7 +249,9 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 ## 安装 / Installation
 
-公开稳定版和后续 1.00 发布位于：
+**中文说明**
+
+当前稳定版 v1.00 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
@@ -236,9 +261,21 @@ SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
+**English**
+
+The installer and release notes for the current stable v1.00 are available here:
+
+- [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
+
+Direct download: [Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`.
+
+The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
+
 ## 开发与构建 / Development and build
 
-需要 Node.js 和 npm。最终用户安装 EXE 后不需要另外安装 Node.js、npm、pnpm 或 SQLite。
+**中文：** 开发环境需要 Node.js 和 npm。最终用户安装 EXE 后不需要另外安装 Node.js、npm、pnpm 或 SQLite。
+
+**English:** Development requires Node.js and npm. End users who install the EXE do not need to install Node.js, npm, pnpm, or SQLite separately.
 
 ```bash
 npm install
@@ -248,6 +285,8 @@ npm run renderer:build
 npm start
 npm run dist
 ```
+
+构建产物位于 `dist/`，并且不会提交到源码仓库。安装包应作为 GitHub Release 附件发布。
 
 Build output is placed in `dist/` and is intentionally excluded from source commits. Publish installers as GitHub Release assets.
 
@@ -264,22 +303,22 @@ Build output is placed in `dist/` and is intentionally excluded from source comm
 ## 代码结构 / Project structure
 
 ```text
-electron/       桌面主进程、托盘、窗口、安装路径和 IPC
-gateway/        本地 OpenAI 兼容连接服务、鉴权和转发
-renderer/       React + TypeScript 桌面界面
-sync/           加密保险箱、GitHub 适配器和同步协议
-tests/          自动回归、故障注入和视觉验收入口
-产品文档/       产品、使用、测试、验收和发布文档
+electron/       桌面主进程、托盘、窗口、安装路径和 IPC / Desktop process, tray, windows, install paths, and IPC
+gateway/        本地 OpenAI 兼容连接服务、鉴权和转发 / Local OpenAI-compatible service, authentication, and forwarding
+renderer/       React + TypeScript 桌面界面 / React and TypeScript desktop UI
+sync/           加密保险箱、GitHub 适配器和同步协议 / Encrypted vault, GitHub adapter, and sync protocol
+tests/          自动回归、故障注入和视觉验收入口 / Automated regression, fault injection, and visual acceptance entry points
+产品文档/       产品、使用、测试、验收和发布文档 / Product, usage, testing, acceptance, and release documents
 ```
 
 ## 文档入口 / Documentation
 
-- `产品文档/1.00-实现现状与验收报告.txt`：当前 1.00 唯一现状依据。
-- `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器预览、模拟接口、截图和验收边界。
-- `产品文档/1.00-最终实施方案（架构审计收敛版）.txt`：设计基线与未完成门槛。
-- `产品文档/测试人员完整说明.txt`：测试人员执行顺序。
-- `产品文档/使用说明.txt`：最终用户操作说明。
-- `产品文档/UI小功能测评问题清单.txt`：历史问题与状态；“待验收”和“待用户验收”不得混淆。
+- `产品文档/1.00-实现现状与验收报告.txt`：当前 1.00 唯一现状依据。/ The single source of truth for the current v1.00 implementation status.
+- `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器预览、模拟接口、截图和验收边界。/ Browser preview, mock API, screenshots, and acceptance boundaries.
+- `产品文档/1.00-最终实施方案（架构审计收敛版）.txt`：设计基线与未完成门槛。/ Design baseline and completion gates.
+- `产品文档/测试人员完整说明.txt`：测试人员执行顺序。/ Ordered instructions for testers.
+- `产品文档/使用说明.txt`：最终用户操作说明。/ End-user instructions.
+- `产品文档/UI小功能测评问题清单.txt`：历史问题与状态；“待验收”和“待用户验收”不得混淆。/ Historical issues and statuses; “pending acceptance” and “pending user acceptance” must remain distinct.
 
 ## 双语注释 / Bilingual comments
 
