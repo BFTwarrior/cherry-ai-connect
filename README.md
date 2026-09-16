@@ -22,15 +22,11 @@ Version `1.00` is in release-candidate validation. Source, automated tests, and 
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
 - 可将加密后的线路配置和匿名使用量同步到用户自己的 GitHub 私有 Release。
 
-- Multiple upstream routes with exactly one route per client key.
-- Route-following client-key names until the user customizes them.
-- Five reasoning levels: `low`, `medium`, `high`, `xhigh`, and `max`.
-- Model catalogs grouped by route.
-- Lifetime token totals, 24-hour to six-month trends, cache hit rate, and live request records.
-- A 50 MB local detail cache; oldest details are pruned only after the limit, while lifetime totals remain permanent.
-- Dark gray and purple bilingual UI, tray operation, auto-start, close-to-tray, and update checks.
-- Secure random reset across 29,000 candidate local ports.
-- Encrypted route configuration and anonymous usage sync through the user's private GitHub Release.
+## 快速下载 / Quick download
+
+- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-gateway-desktop/releases/latest)
+- 1.00 候选安装包暂保存在本地 `dist/Cherry-AI-Connect-Setup-1.00.exe`，完成最终验收后再作为 Release 附件发布。
+- The 1.00 candidate installer is currently local at `dist/Cherry-AI-Connect-Setup-1.00.exe`; it will be published as a Release asset after final acceptance.
 
 ## 安全边界 / Security boundary
 
@@ -141,6 +137,6 @@ tests/          自动回归、故障注入和视觉验收入口
 
 Core modules use paired Chinese and English comments for responsibilities, safety boundaries, and failure handling. Public commits must never contain real credentials.
 
-## License
+## 许可证 / License
 
 MIT
