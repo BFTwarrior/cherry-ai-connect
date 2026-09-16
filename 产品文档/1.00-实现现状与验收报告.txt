@@ -20,6 +20,8 @@ Cherry AI 连接中心 / Cherry AI Connect
    EXE 所在目录旁，不固定占用 C 盘。
 4. 打包流程会先清空整个 dist 生成目录，防止旧解包程序产生的缓存、线路、Key、
    用户数据或测试数据误进入下一份安装包。
+5. GitHub 已创建公开仓库、v1.00 标签和正式 Release 条目；安装包附件上传仍未完成，
+   因此 README 中的直达下载地址已预先固定，但在附件出现前不能视为可下载。
 
 仍需真实环境完成：
 1. 使用测试人员自己的 GitHub Token 和专用私有仓库跑通首次同步、第二设备恢复、
@@ -42,8 +44,8 @@ C:\Users\BFTwarrior\Desktop\codex\Cherry多线路网关桌面版\dist\Cherry-AI-
 解包程序：
 C:\Users\BFTwarrior\Desktop\codex\Cherry多线路网关桌面版\dist\win-unpacked\Cherry AI 连接中心.exe
 
-文件大小：112,328,908 字节
-SHA-256：FB7C0062605551E89947FF6490BBDC3D8661E7A420B161A6BAE732EEE87D5B31
+文件大小：112,329,032 字节
+SHA-256：842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC
 构建时间：2026-09-16 09:30（UTC+8）
 签名状态：未进行商业代码签名
 
@@ -242,8 +244,9 @@ sync-engine 和 github-provider。
   趋势图和最新 200 条单页记录。
 - Close to tray 已勾选时按 Alt+F4：可见窗口消失，但同一 EXE 的 4 个 Electron 进程
   继续运行；再次启动同一 EXE 后只恢复一个原窗口，进程数仍为 4，单实例通过。
-- Check now 实际读取 GitHub 最新 Release v0.4.3，本机 v1.00 显示 Up to date，未执行
-  自动下载或自动安装。
+- GitHub 当前已存在 `Cherry AI Connect v1.00` 正式 Release 条目，标签为 `v1.00`；
+  本轮核对发现附件数量为 0，安装包上传因当前代理的大文件连接中断未完成。上传附件后，
+  仍需在安装版中重新点击 Check now，确认本机 v1.00 显示 Up to date，且不自动下载或安装。
 - 解包验收结束后只关闭本次测试 EXE，用户正在 D 盘运行的旧版 4 个进程保持不变。
 - 最后再次执行干净构建，当前 dist\\win-unpacked 中不存在 data。
 
