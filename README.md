@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.00` 正在进行候选版验收。源码、自动测试和本地安装包已经生成，但在完成真实 GitHub 私有仓库同步、Cherry Studio 实际请求、安装/卸载和托盘验收前，不标记为正式发布完成。
+`1.00` 已创建正式 GitHub Release 并上传 Windows 安装包。真实 GitHub 私有仓库同步、Cherry Studio 实际请求、安装/卸载和托盘验收仍建议按测试文档逐项执行。
 
-Version `1.00` is in release-candidate validation. Source, automated tests, and a local installer exist, but the release is not final until real private-GitHub sync, Cherry Studio, install/uninstall, and tray checks pass.
+Version `1.00` has a published GitHub Release with the Windows installer attached. Real private-GitHub sync, Cherry Studio requests, installation/uninstallation, and tray checks should still be verified using the tester guide.
 
 ## 它能做什么 / Features
 
@@ -70,7 +70,7 @@ Packaged runtime data lives in the `data` folder beside the installed app. Insta
 
 ## GitHub 云同步 / GitHub cloud sync
 
-当前候选版使用用户创建的 GitHub 访问令牌连接一个专用私有仓库，并在固定的 `cherry-sync` Release 中保存不可变、压缩和校验过的附件。默认每 30 分钟检查一次；开启、关闭、启动、退出、手动同步和安全配置变化会额外触发同步。
+当前版本使用用户创建的 GitHub 访问令牌连接一个专用私有仓库，并在固定的 `cherry-sync` Release 中保存不可变、压缩和校验过的附件。默认每 30 分钟检查一次；开启、关闭、启动、退出、手动同步和安全配置变化会额外触发同步。
 
 如果两台设备修改了不同版本的线路配置，程序进入冲突状态并要求用户选择“保留本机”或“恢复云端”，不会静默覆盖上游 Key。使用事件按唯一编号去重，永久统计使用分设备计数器合并。
 
