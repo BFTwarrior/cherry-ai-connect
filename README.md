@@ -313,12 +313,15 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 
 ## 文档入口 / Documentation
 
+- `产品文档/00-交付总览与文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version rules, and file boundaries.
+- `产品文档/产品目标.txt`、`产品文档/产品要求.txt`：产品定位、功能规则和安全边界。/ Product goals, functional rules, and safety boundaries.
+- `产品文档/使用说明.txt`：最终用户配置、使用和同步说明。/ End-user setup, usage, and sync instructions.
+- `产品文档/测试人员完整说明.txt`：按顺序执行的现场验收步骤。/ Ordered field acceptance steps for testers.
 - `产品文档/1.00-实现现状与验收报告.txt`：当前 1.00 唯一现状依据。/ The single source of truth for the current v1.00 implementation status.
-- `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器预览、模拟接口、截图和验收边界。/ Browser preview, mock API, screenshots, and acceptance boundaries.
-- `产品文档/1.00-最终实施方案（架构审计收敛版）.txt`：设计基线与未完成门槛。/ Design baseline and completion gates.
-- `产品文档/测试人员完整说明.txt`：测试人员执行顺序。/ Ordered instructions for testers.
-- `产品文档/使用说明.txt`：最终用户操作说明。/ End-user instructions.
-- `产品文档/UI小功能测评问题清单.txt`：历史问题与状态；“待验收”和“待用户验收”不得混淆。/ Historical issues and statuses; “pending acceptance” and “pending user acceptance” must remain distinct.
+- `产品文档/UI小功能测评问题清单.txt`：当前验收矩阵和剩余现场补测。/ Current acceptance matrix and remaining field checks.
+- `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器视觉验收边界。/ Browser visual acceptance boundaries.
+- `产品文档/1.01-下一版本修复与增加计划.txt`：下一版本范围和完成标准。/ Next-version scope and completion criteria.
+- `产品文档/版本说明.txt`、`产品文档/踩坑记录.txt`：简要参考。/ Quick references.
 
 ## 双语注释 / Bilingual comments
 
