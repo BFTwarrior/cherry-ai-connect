@@ -320,7 +320,7 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 - `产品文档/1.00-实现现状与验收报告.txt`：当前 1.00 唯一现状依据。/ The single source of truth for the current v1.00 implementation status.
 - `产品文档/UI小功能测评问题清单.txt`：当前验收矩阵和剩余现场补测。/ Current acceptance matrix and remaining field checks.
 - `产品文档/1.00-浏览器视觉验收方法与操作记录.txt`：浏览器视觉验收边界。/ Browser visual acceptance boundaries.
-- `产品文档/1.01-下一版本修复与增加计划.txt`：下一版本范围和完成标准。/ Next-version scope and completion criteria.
+- `产品文档/1.1-下一版本修复与增加计划.txt`：1.1 待处理问题和验收标准。/ v1.1 pending issues and acceptance criteria.
 - `产品文档/版本说明.txt`、`产品文档/踩坑记录.txt`：简要参考。/ Quick references.
 
 ## 双语注释 / Bilingual comments
