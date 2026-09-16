@@ -1,4 +1,4 @@
-Cherry 多线路网关桌面版
+Cherry AI 连接中心 / Cherry AI Connect
 UI 与小功能持续测评问题清单
 
 文档状态：持续维护

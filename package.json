@@ -1,5 +1,5 @@
 {
-  "name": "cherry-gateway-desktop",
+  "name": "cherry-ai-connect",
   "version": "1.0.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
@@ -22,7 +22,7 @@
     "vite": "^8.2.2"
   },
   "build": {
-    "appId": "com.bftwarrior.cherry-gateway",
+    "appId": "com.bftwarrior.cherry-ai-connect",
     "productName": "Cherry AI 连接中心",
     "files": [
       "electron/**/*",

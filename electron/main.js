@@ -14,8 +14,8 @@ const { resolveRuntimePaths } = require("./runtime-paths");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
-const RELEASE_API = "https://api.github.com/repos/BFTwarrior/cherry-gateway-desktop/releases/latest";
-const RELEASE_PAGE_PREFIX = "https://github.com/BFTwarrior/cherry-gateway-desktop/";
+const RELEASE_API = "https://api.github.com/repos/BFTwarrior/cherry-ai-connect/releases/latest";
+const RELEASE_PAGE_PREFIX = "https://github.com/BFTwarrior/cherry-ai-connect/";
 const RELEASE_LATEST_PAGE = `${RELEASE_PAGE_PREFIX}releases/latest`;
 
 let gatewayModule;
@@ -65,7 +65,7 @@ function migrateLegacyDataOnce() {
 migrateLegacyDataOnce();
 const singleInstance = app.requestSingleInstanceLock();
 
-app.setAppUserModelId("com.bftwarrior.cherry-gateway");
+app.setAppUserModelId("com.bftwarrior.cherry-ai-connect");
 
 const defaultDesktopSettings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, gatewayPort: DEFAULT_GATEWAY_PORT };
 function settingsFile() { return path.join(app.getPath("userData"), "desktop-settings.json"); }
@@ -168,7 +168,7 @@ function releaseResult(latestVersion, releaseUrl, publishedAt = "") {
 function fetchLatestReleaseFromApi() {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_API, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "Cherry-Gateway-Desktop" },
+      headers: { accept: "application/vnd.github+json", "user-agent": "Cherry-AI-Connect" },
       timeout: 12000,
     }, (response) => {
       const chunks = [];
@@ -193,7 +193,7 @@ function fetchLatestReleaseFromApi() {
 function fetchLatestReleaseFromRedirect() {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_LATEST_PAGE, {
-      headers: { "user-agent": "Cherry-Gateway-Desktop" },
+      headers: { "user-agent": "Cherry-AI-Connect" },
       timeout: 12000,
     }, (response) => {
       const location = String(response.headers.location || "");

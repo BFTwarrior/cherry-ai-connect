@@ -1,4 +1,4 @@
-Cherry 多线路网关桌面版踩坑记录
+Cherry AI 连接中心 / Cherry AI Connect 踩坑记录
 
 1. 旧版前端是静态 HTML/CSS/JavaScript，页面状态、弹窗、设置、线路和 Key 逻辑混在一起，导致功能能跑但界面冗余、后续改动容易互相影响。解决：升级为 React + TypeScript + Vite，并按总览、线路、模型、Key、设置拆分视图。
 

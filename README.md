@@ -24,7 +24,7 @@ Version `1.00` is in release-candidate validation. Source, automated tests, and 
 
 ## 快速下载 / Quick download
 
-- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-gateway-desktop/releases/latest)
+- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 - 1.00 候选安装包暂保存在本地 `dist/Cherry-AI-Connect-Setup-1.00.exe`，完成最终验收后再作为 Release 附件发布。
 - The 1.00 candidate installer is currently local at `dist/Cherry-AI-Connect-Setup-1.00.exe`; it will be published as a Release asset after final acceptance.
 
@@ -80,7 +80,7 @@ Configuration conflicts require an explicit local-or-cloud choice. Usage events 
 
 公开稳定版和后续 1.00 发布位于：
 
-- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-gateway-desktop/releases/latest)
+- [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
 当前 1.00 本地候选安装包在 `dist/Cherry-AI-Connect-Setup-1.00.exe`。正式上传后再在这里增加固定版本下载链接和 SHA-256。
 

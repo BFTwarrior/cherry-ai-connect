@@ -101,7 +101,7 @@ const previewDesktopScript = `<script>
       publish();
       return { ...sync };
     },
-    checkForUpdates: async () => ({ currentVersion: "1.00", latestVersion: "1.00", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-gateway-desktop/releases", checkedAt: now() })
+    checkForUpdates: async () => ({ currentVersion: "1.00", latestVersion: "1.00", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-ai-connect/releases", checkedAt: now() })
   };
 })();
 </script>`;

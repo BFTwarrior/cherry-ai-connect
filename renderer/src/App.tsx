@@ -220,7 +220,7 @@ export default function App() {
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "high", defaultProvider: "" });
   const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("high");
   const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
-  const [gatewayPort, setGatewayPort] = useState(27891);
+  const [gatewayPort, setGatewayPort] = useState(20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState<ToastState>(null);
