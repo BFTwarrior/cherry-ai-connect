@@ -14,6 +14,9 @@ function resolveRuntimePaths({ isPackaged, executablePath, moduleDirectory }) {
     runtimeDataRoot,
     browserCacheRoot: path.join(runtimeDataRoot, "browser-cache"),
     gatewayDataRoot: path.join(runtimeDataRoot, "gateway-data"),
+    // 中文：更新备份放在安装目录旁而不是安装目录内，避免覆盖安装清理应用目录时一起删除。
+    // English: Keep update recovery beside the install folder so an overwrite cannot remove both app and backup.
+    updateRecoveryRoot: path.join(path.dirname(applicationRoot), ".cherry-ai-connect-recovery"),
   };
 }
 

@@ -81,6 +81,8 @@ test("usage ledger and route-following key names survive the complete flow", asy
   const gateway = await import(`../gateway/gateway.mjs?test=${Date.now()}`);
   await gateway.startGateway({ port: gatewayPort });
   const origin = `http://127.0.0.1:${gatewayPort}`;
+  const syncReasons = [];
+  gateway.setSyncChangeHandler((reason) => syncReasons.push(reason));
 
   const api = async (pathname, options = {}) => {
     const response = await fetch(`${origin}${pathname}`, options);
@@ -91,6 +93,10 @@ test("usage ledger and route-following key names survive the complete flow", asy
 
   try {
     await api("/admin/api/providers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "route-a", name: "测试线路 A", baseUrl: `http://127.0.0.1:${upstreamPort}`, apiKey: "sk-test" }) });
+    syncReasons.length = 0;
+    await api("/admin/api/providers/route-a/test", { method: "POST" });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(syncReasons.includes("route-health-change"), "testing a route must schedule cloud sync");
     const created = await api("/admin/api/client-keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ providerId: "route-a", reasoningLevel: "high", nameCustomized: false }) });
     let keys = await api("/admin/api/client-keys");
     assert.equal(keys.keys[0].name, "测试线路 A");
@@ -122,21 +128,29 @@ test("usage ledger and route-following key names survive the complete flow", asy
     assert.equal(usage.lifetime.cacheReadTokens, 39);
     assert.ok(usage.series.some((point) => point.totalTokens === 150));
 
-    // 中文：模拟新设备恢复云端元数据；客户端秘密必须在本机自动生成，且不能进入同步快照。
-    // English: Simulate a pristine-device restore; client secrets regenerate locally and never enter sync snapshots.
+    // 中文：只有全新设备首次恢复才允许生成本地客户端秘密；普通同步必须保留同一个秘密。
+    // English: Only first restore on a pristine device may create a local client secret; normal sync must preserve it.
     const snapshot = gateway.getSyncSnapshot();
     const remoteKeyId = "remote-key-without-secret";
     gateway.replaceConfigFromSync({
       ...snapshot.publicConfig,
       configRevision: { counter: snapshot.publicConfig.configRevision.counter + 1, deviceId: "remote-device" },
       clientKeyMetadata: [{ id: remoteKeyId, name: "恢复的客户端", nameCustomized: true, providerId: "route-a", reasoningLevel: "high", createdAt: "2026-09-17 12:00:00", enabled: true }],
-    }, snapshot.secureConfig);
+    }, snapshot.secureConfig, { allowGenerateClientSecrets: true });
     const restoredKeys = await api("/admin/api/client-keys");
     assert.equal(restoredKeys.keys[0].id, remoteKeyId);
     assert.equal(restoredKeys.keys[0].hasSecret, true);
     const restoredSecret = await api(`/admin/api/client-keys/${remoteKeyId}/secret`);
     assert.match(restoredSecret.key, /^cg_[A-Za-z0-9_-]{20,}$/);
     assert.equal(JSON.stringify(gateway.getSyncSnapshot().publicConfig).includes(restoredSecret.key), false);
+    gateway.replaceConfigFromSync(gateway.getSyncSnapshot().publicConfig, gateway.getSyncSnapshot().secureConfig);
+    const sameDeviceSecret = await api(`/admin/api/client-keys/${remoteKeyId}/secret`);
+    assert.equal(sameDeviceSecret.key, restoredSecret.key, "same-device sync must never rotate the client key");
+    const unknownKeyConfig = {
+      ...gateway.getSyncSnapshot().publicConfig,
+      clientKeyMetadata: [{ ...gateway.getSyncSnapshot().publicConfig.clientKeyMetadata[0], id: "unknown-key-without-local-secret" }],
+    };
+    assert.throws(() => gateway.replaceConfigFromSync(unknownKeyConfig, gateway.getSyncSnapshot().secureConfig), /sync_client_key_secret_missing/);
 
     await gateway.stopGateway();
     const reopenedLedger = new UsageLedger(dataDir);

@@ -162,7 +162,7 @@ export class SyncManager {
     let result;
     try {
       result = await this.engine.sync("connect", latest && pristine
-        ? { adoptRemoteIfPristine: true, configPolicy: "remote", password: String(password) }
+        ? { adoptRemoteIfPristine: true, configPolicy: "remote", allowGenerateClientSecrets: true, password: String(password) }
         : {});
     } catch (error) {
       // 中文：连接已建立时仍返回状态，尤其要保证新生成的恢复码能展示给用户。

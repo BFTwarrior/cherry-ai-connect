@@ -17,7 +17,7 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.1";
+const gatewayVersion = "1.2";
 const supportedReasoningLevels = ["low", "medium", "high", "xhigh", "max"];
 
 fs.mkdirSync(dataDir, { recursive: true });
@@ -590,12 +590,14 @@ async function admin(req, res, url) {
       provider.lastLatencyMs = result.latencyMs;
       provider.lastError = "";
       saveConfig();
+      notifySyncChange("route-health-change");
       return json(res, 200, { ok: true, status: result.status, latencyMs: result.latencyMs, models: result.models, provider: providerView(provider) });
     } catch (error) {
       provider.lastTestAt = new Date().toISOString();
       provider.lastTestStatus = "error";
       provider.lastError = providerErrorMessage(error, provider);
       saveConfig();
+      notifySyncChange("route-health-change");
       return json(res, 502, { ok: false, error: provider.lastError });
     }
   }
@@ -886,7 +888,7 @@ function syncProviderFromRemote(publicProvider, secureProvider) {
 
 // 中文：只有用户明确选择云端版本后才调用；安全 URL 和上游 Key 不会在后台静默替换。
 // English: Called only after the user explicitly chooses the cloud copy; secure URLs and upstream keys never change silently.
-export function replaceConfigFromSync(publicConfig, secureConfig) {
+export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) {
   if (!publicConfig || Number(publicConfig.schemaVersion) !== 1 || !publicConfig.configRevision) throw new Error("sync_invalid_config");
   if (!secureConfig || Number(secureConfig.schemaVersion) !== 1 || secureConfig.datasetId !== usageLedger.identity.datasetId) throw new Error("sync_invalid_secure_config");
   const secureById = new Map((Array.isArray(secureConfig.providers) ? secureConfig.providers : []).map((item) => [String(item.id || ""), item]));
@@ -898,9 +900,11 @@ export function replaceConfigFromSync(publicConfig, secureConfig) {
     const providerId = String(item.providerId || "");
     if (!id || !providerIds.has(providerId)) throw new Error("sync_invalid_client_metadata");
     const previous = previousKeys.get(id);
-    // 中文：客户端 Key 原值永不上云。若本机已有可解密的 Key 就保留；新设备或旧数据缺失时只在本机生成一次。
-    // English: Client-key secrets never sync. Preserve a decryptable local secret; otherwise generate one once on this device.
+    // 中文：同一设备绝不因更新或同步刷新客户端 Key。只有同步引擎明确确认是全新设备首次恢复时才允许生成。
+    // English: Updates and normal syncs never rotate a same-device client key. Generation is allowed only
+    // when the sync engine explicitly identifies a pristine device performing its first restore.
     const previousSecret = decrypt(previous?.keyEnc || "");
+    if (!previousSecret && options.allowGenerateClientSecrets !== true) throw new Error("sync_client_key_secret_missing");
     const localSecret = previousSecret || makeClientKey();
     return {
       id,

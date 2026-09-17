@@ -1,5 +1,5 @@
-/* 中文：渲染层的深灰紫色设计系统和响应式布局。 */
-/* English: The renderer's dark-gray/purple design system and responsive layout. */
+/* 中文：渲染层的深灰、紫色、金色设计系统和响应式布局。 */
+/* English: The renderer's dark-gray, purple, and gold design system and responsive layout. */
 :root {
   --bg: #111113;
   --bg-elevated: #171719;
@@ -16,12 +16,15 @@
   --purple: #9a63e8;
   --purple-bright: #c49aef;
   --purple-deep: #3b2852;
+  --gold: #d9ad62;
+  --gold-bright: #f2cf82;
+  --gold-deep: #49361f;
   --green: #55d8a7;
   --green-deep: #193b31;
   --blue: #8aa3ff;
   --blue-deep: #222b4a;
-  --amber: #d9ad62;
-  --amber-deep: #49361f;
+  --amber: var(--gold);
+  --amber-deep: var(--gold-deep);
   --red: #ff7f99;
   --red-deep: #42222e;
   --shadow: 0 24px 70px rgb(0 0 0 / 36%);
@@ -897,22 +900,22 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .usage-record-card:hover { background: #1c1a21; }
 .usage-record-identity { display: grid; grid-template-columns: minmax(135px, .75fr) minmax(150px, 1fr) minmax(170px, 1.2fr) minmax(92px, .45fr) minmax(68px, .35fr); gap: 12px; padding: 13px 16px 10px; border-bottom: 1px solid #28262d; }
 .usage-record-identity > div, .usage-record-metrics > div { min-width: 0; }
-.usage-record-identity small, .usage-record-metrics small { display: block; margin-bottom: 5px; color: #8d848f; font-size: 10px; font-weight: 650; }
-.usage-record-identity strong, .usage-record-identity time, .usage-record-identity code { display: block; overflow: hidden; color: #e3dce5; font-size: 12px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.usage-record-identity code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 11px; }
-.usage-record-identity em, .usage-record-metrics em { display: block; margin-top: 4px; overflow: hidden; color: #857c89; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.usage-record-identity small, .usage-record-metrics small { display: block; margin-bottom: 5px; color: #9a919d; font-size: 11px; font-weight: 680; }
+.usage-record-identity strong, .usage-record-identity time, .usage-record-identity code { display: block; overflow: hidden; color: #ece5ee; font-size: 13px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.usage-record-identity code { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; }
+.usage-record-identity em, .usage-record-metrics em { display: block; margin-top: 4px; overflow: hidden; color: #938a96; font-size: 11px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .usage-record-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0; padding: 9px 16px 13px; }
 .usage-record-metrics > div { padding: 2px 12px; border-left: 1px solid #302d34; }
 .usage-record-metrics > div:first-child { padding-left: 0; border-left: 0; }
-.usage-record-metrics strong { display: block; font-size: 14px; font-variant-numeric: tabular-nums; }
+.usage-record-metrics strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
 .reasoning-tag { display: inline-flex; padding: 5px 8px; border: 1px solid #856138; border-radius: 6px; background: #3c2c1c; color: #e7bd75; font-size: 10px; font-weight: 800; letter-spacing: .25px; }
 .token-input { color: #cf9ef0 !important; }
 .token-output { color: #e4bb73 !important; }
 .token-cache { color: #c6bacb !important; }
 .token-total { color: #f5f1e9 !important; }
 .latency-value { display: grid; min-width: 88px; gap: 4px; font-variant-numeric: tabular-nums; }
-.latency-value strong { font-size: 13px; }
-.latency-value span { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 650; }
+.latency-value strong { font-size: 15px; }
+.latency-value span { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 680; }
 .latency-value i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
 .latency-fast { color: var(--green); }
 .latency-attention { color: var(--amber); }
@@ -1068,4 +1071,105 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .sync-conflict-panel > div:last-child { align-items: stretch; flex-direction: column; }
   .recovery-panel { grid-template-columns: 1fr; }
   .recovery-panel > .text-button { justify-self: start; }
+}
+
+/* 1.2 视觉与交互收口 / 1.2 visual and interaction refinements ----------- */
+.top-eyebrow, .section-kicker, .modal-kicker { color: var(--gold); }
+.eyebrow { color: var(--gold-bright); }
+.nav-item.active {
+  border-color: rgb(217 173 98 / 18%);
+  background: linear-gradient(90deg, #34234a 0%, #2b2038 72%, #32271d 100%);
+  box-shadow: inset 2px 0 0 var(--purple), inset -2px 0 0 rgb(217 173 98 / 45%);
+}
+.welcome-panel {
+  border-color: #66503e;
+  background: radial-gradient(440px 240px at 100% 0%, rgb(217 173 98 / 13%), transparent 72%), linear-gradient(115deg, #19191f 0%, #211a2e 58%, #302243 100%);
+}
+.welcome-copy h2 em { background: linear-gradient(90deg, var(--purple-bright), var(--gold-bright)); background-clip: text; color: transparent; }
+.metric-card:nth-child(4) { border-color: rgb(217 173 98 / 25%); background: linear-gradient(145deg, #211c18, #17171c); }
+.panel, .settings-card { box-shadow: inset 0 1px rgb(217 173 98 / 2%); }
+
+/* 中文：总览始终保留两个等宽信息块，引导完成后也不破坏视觉平衡。 */
+/* English: Keep two equal overview panels even after onboarding is complete. */
+.stable-overview-columns, .setup-complete .stable-overview-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+.connection-panel { display: flex; flex-direction: column; border-color: rgb(217 173 98 / 20%); }
+.connection-pulse-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 17px; }
+.connection-pulse-grid > button, .connection-pulse-grid > div { display: flex; min-width: 0; align-items: center; gap: 10px; padding: 13px; border: 1px solid #302d36; border-radius: 10px; background: #15151b; color: var(--text); text-align: left; }
+.connection-pulse-grid > button { cursor: pointer; }
+.connection-pulse-grid > button:hover { border-color: #715394; background: #1c1922; }
+.connection-pulse-grid > * > span:last-child { min-width: 0; }
+.connection-pulse-grid small, .connection-pulse-grid strong, .connection-pulse-grid em { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.connection-pulse-grid small { color: #8b8491; font-size: 9px; }
+.connection-pulse-grid strong { margin-top: 5px; color: #e8e1eb; font-size: 11px; }
+.connection-pulse-grid em { margin-top: 3px; color: #746d7b; font-size: 9px; font-style: normal; }
+.connection-pulse-icon { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; border-radius: 9px; background: #302047; color: var(--purple-bright); }
+.connection-pulse-icon.status-ok { background: #18372f; color: var(--green); }
+.connection-pulse-icon.status-error { background: var(--red-deep); color: var(--red); }
+.connection-panel-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 14px; color: #918998; font-size: 10px; }
+.connection-panel-footer > span { display: flex; align-items: center; gap: 7px; }
+.gold-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px rgb(217 173 98 / 52%); }
+
+/* 中文：首次配置改成应用内悬浮引导，完成标记写入持久设置后永久消失。 */
+/* English: First-run setup is a movable in-app guide that permanently disappears after completion. */
+.setup-float { position: fixed; z-index: 18; right: 26px; bottom: 25px; width: min(390px, calc(100vw - 32px)); overflow: hidden; border: 1px solid #66503e; border-radius: 15px; background: linear-gradient(155deg, rgb(37 27 50 / 98%), rgb(21 21 27 / 99%) 68%); box-shadow: 0 24px 70px rgb(0 0 0 / 55%), 0 0 0 1px rgb(154 99 232 / 8%); }
+.setup-float > header { display: flex; align-items: center; gap: 11px; padding: 13px 14px; border-bottom: 1px solid #372f3f; background: linear-gradient(90deg, rgb(154 99 232 / 10%), rgb(217 173 98 / 8%)); cursor: move; touch-action: none; user-select: none; }
+.setup-float > header > div { min-width: 0; flex: 1; }
+.setup-float > header span:first-child, .setup-float > header strong { display: block; }
+.setup-float > header span:first-child { color: var(--gold); font-size: 9px; font-weight: 750; letter-spacing: 1.3px; }
+.setup-float > header strong { margin-top: 3px; font-size: 14px; }
+.setup-float .progress-label { flex: 0 0 auto; }
+.setup-float-close { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #9d94a3; font-size: 18px; cursor: pointer; }
+.setup-float-close:hover { background: rgb(255 255 255 / 6%); color: #fff; }
+.setup-float .checklist { margin: 5px 12px 0; }
+.setup-float > small { display: block; padding: 10px 16px 14px; color: #887f8d; font-size: 9px; line-height: 1.5; }
+.setup-fab { position: fixed; z-index: 17; right: 25px; bottom: 24px; display: flex; align-items: center; gap: 7px; min-height: 39px; padding: 0 13px; border: 1px solid #66503e; border-radius: 999px; background: linear-gradient(135deg, #342247, #2e251e); color: #e6d5ee; box-shadow: 0 14px 38px rgb(0 0 0 / 40%); cursor: pointer; }
+.setup-fab span { color: var(--gold-bright); font-size: 10px; }
+
+/* 中文：设置卡按内容高度排列，语言选择不再被另一列强行拉高。 */
+/* English: Settings cards size to content so the language card no longer has a large void. */
+.settings-layout { align-items: start; }
+.compact-settings { align-self: start; }
+
+/* 中文：实时记录支持单行紧凑和双行详细两种密度；紧凑模式保留横向滚动条。 */
+/* English: Live records offer compact single-line and detailed two-line layouts, with horizontal scrolling in compact mode. */
+.records-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+.records-header-actions > small { color: #77717e; font-size: 10px; text-align: right; }
+.record-density-toggle { display: flex; flex: 0 0 auto; gap: 3px; padding: 3px; border: 1px solid #393341; border-radius: 8px; background: #111117; }
+.record-density-toggle button { min-height: 27px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #8c8492; font-size: 10px; cursor: pointer; }
+.record-density-toggle button.active { background: linear-gradient(135deg, #6938b4, #453322); color: #fff; box-shadow: inset 0 0 0 1px rgb(217 173 98 / 15%); }
+.usage-records-list { overflow: auto; scrollbar-color: #7d626f #242126; scrollbar-width: thin; }
+.usage-records-list::-webkit-scrollbar { display: block; width: 9px; height: 10px; }
+.usage-records-list::-webkit-scrollbar-corner, .usage-records-list::-webkit-scrollbar-track { background: #242126; }
+.usage-records-list::-webkit-scrollbar-thumb { border: 2px solid #242126; border-radius: 10px; background: linear-gradient(90deg, #6c4a91, #8a693e); }
+.usage-records-list.mode-compact { display: block; }
+.mode-compact .usage-record-card { display: grid; min-width: 1470px; grid-template-columns: minmax(620px, .95fr) minmax(820px, 1.25fr); align-items: stretch; }
+.mode-compact .usage-record-identity { grid-template-columns: 118px 150px minmax(175px, 1fr) 92px 64px; align-items: center; gap: 11px; padding: 11px 14px; border-right: 1px solid #302d34; border-bottom: 0; }
+.mode-compact .usage-record-metrics { grid-template-columns: repeat(4, minmax(105px, 1fr)) repeat(2, minmax(112px, 1fr)); align-items: center; padding: 9px 14px; }
+.mode-compact .usage-record-identity small, .mode-compact .usage-record-metrics small { margin-bottom: 5px; font-size: 11px; }
+.mode-compact .usage-record-identity strong, .mode-compact .usage-record-identity time, .mode-compact .usage-record-identity code { font-size: 13px; }
+.mode-compact .usage-record-identity em, .mode-compact .usage-record-metrics em { font-size: 11px; }
+.mode-detailed .usage-record-card { min-width: 0; }
+
+/* 更新中心 / Update center */
+.update-state.installing { border-color: #715394; background: #2a2038; color: var(--purple-bright); }
+.update-protected { color: var(--gold-bright); }
+.update-progress { display: grid; gap: 9px; margin: 3px 0 13px; padding: 12px; border: 1px solid #57435d; border-radius: 10px; background: linear-gradient(90deg, #211a2b, #231e19); }
+.update-progress > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.update-progress strong { color: #e6daeb; font-size: 11px; }
+.update-progress span { color: #9b8e9f; font-size: 9px; }
+.update-progress-track { height: 6px; overflow: hidden; border-radius: 999px; background: #111116; }
+.update-progress-track > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--purple), var(--gold)); transition: width .2s ease; }
+.update-footnote { margin: 10px 0 0; color: #837b87; font-size: 9px; line-height: 1.5; }
+
+@media (max-width: 1050px) {
+  .stable-overview-columns, .setup-complete .stable-overview-columns { grid-template-columns: 1fr; }
+  .records-header-actions { align-items: flex-end; flex-direction: column; }
+}
+
+@media (max-width: 680px) {
+  .connection-pulse-grid { grid-template-columns: 1fr; }
+  .setup-float { right: 16px; bottom: 16px; }
+  .setup-fab { right: 16px; bottom: 16px; }
+  .records-header-actions { width: 100%; align-items: flex-start; }
+  .records-header-actions > small { text-align: left; }
 }

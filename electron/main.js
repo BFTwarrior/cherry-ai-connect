@@ -6,11 +6,12 @@ const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard, 
 const fs = require("node:fs");
 const path = require("node:path");
 const https = require("node:https");
-const { execFile } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
 const { promisify } = require("node:util");
 const { pathToFileURL } = require("node:url");
 const { chooseGatewayPort } = require("./port-selector");
 const { resolveRuntimePaths } = require("./runtime-paths");
+const { createUpdateBackup, downloadVerifiedInstaller, restoreUpdateBackupIfNeeded } = require("./update-manager");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
@@ -26,15 +27,21 @@ let shutdownComplete = false;
 let currentGatewayPort = DEFAULT_GATEWAY_PORT;
 let syncManager;
 let majorSyncTimer;
+let updateRun;
 
 // 中文：正式版把运行数据放在安装目录旁，用户选择 D 盘后不会把主要缓存留在 C 盘。
 // English: Packaged builds keep runtime data beside the installation so a D-drive install stays on D.
 const legacyUserDataRoot = app.getPath("userData");
-const { runtimeDataRoot, browserCacheRoot, gatewayDataRoot } = resolveRuntimePaths({
+const { runtimeDataRoot, browserCacheRoot, gatewayDataRoot, updateRecoveryRoot } = resolveRuntimePaths({
   isPackaged: app.isPackaged,
   executablePath: process.execPath,
   moduleDirectory: __dirname,
 });
+// 中文：在网关读取配置前恢复更新备份；同机升级不能因空目录而刷新客户端 Key。
+// English: Restore update data before the gateway reads configuration so an empty post-update folder
+// never rotates client keys on the same device.
+const updateRestoreResult = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot });
+if (updateRestoreResult.restored) console.info(`已恢复更新前数据：${updateRestoreResult.backupRoot}`);
 fs.mkdirSync(runtimeDataRoot, { recursive: true });
 app.setPath("userData", runtimeDataRoot);
 app.setPath("sessionData", browserCacheRoot);
@@ -67,7 +74,7 @@ const singleInstance = app.requestSingleInstanceLock();
 
 app.setAppUserModelId("com.bftwarrior.cherry-ai-connect");
 
-const defaultDesktopSettings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, gatewayPort: DEFAULT_GATEWAY_PORT };
+const defaultDesktopSettings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, gatewayPort: DEFAULT_GATEWAY_PORT, setupCompleted: false };
 function settingsFile() { return path.join(app.getPath("userData"), "desktop-settings.json"); }
 function readDesktopSettings() {
   try { return { ...defaultDesktopSettings, ...JSON.parse(fs.readFileSync(settingsFile(), "utf8")) }; }
@@ -110,7 +117,7 @@ function syncSource() {
     recordSyncRun: (payload) => gatewayModule.recordSyncRun(payload),
     canAdoptSyncDataset: () => gatewayModule.canAdoptSyncDataset(),
     adoptSyncDataset: (datasetId) => gatewayModule.adoptSyncDataset(datasetId),
-    replaceConfigFromSync: (publicConfig, secureConfig) => gatewayModule.replaceConfigFromSync(publicConfig, secureConfig),
+    replaceConfigFromSync: (publicConfig, secureConfig, options) => gatewayModule.replaceConfigFromSync(publicConfig, secureConfig, options),
     bumpConfigRevisionForSync: () => gatewayModule.bumpConfigRevisionForSync(),
   };
 }
@@ -152,7 +159,7 @@ function isNewerVersion(candidate, current) {
   return false;
 }
 
-function releaseResult(latestVersion, releaseUrl, publishedAt = "") {
+function releaseResult(latestVersion, releaseUrl, publishedAt = "", asset = null) {
   const currentVersion = app.getVersion();
   return {
     ok: true,
@@ -162,7 +169,12 @@ function releaseResult(latestVersion, releaseUrl, publishedAt = "") {
     releaseUrl,
     publishedAt,
     checkedAt: new Date().toISOString(),
+    asset,
   };
+}
+
+function releaseBodySha256(body) {
+  return String(body || "").match(/SHA-?256\s*[:：]\s*`?([a-f0-9]{64})/i)?.[1]?.toLowerCase() || "";
 }
 
 function fetchLatestReleaseFromApi() {
@@ -179,7 +191,16 @@ function fetchLatestReleaseFromApi() {
           if (response.statusCode < 200 || response.statusCode >= 300) throw new Error(data?.message || `GitHub HTTP ${response.statusCode}`);
           const latestVersion = String(data.tag_name || "").replace(/^v/i, "");
           if (!latestVersion) throw new Error("未读取到 GitHub Release 版本号");
-          resolve(releaseResult(latestVersion, String(data.html_url || RELEASE_LATEST_PAGE), String(data.published_at || "")));
+          const candidates = Array.isArray(data.assets) ? data.assets : [];
+          const installer = candidates.find((item) => /^Cherry-AI-Connect-Setup-[0-9.]+\.exe$/i.test(String(item?.name || "")));
+          const digest = String(installer?.digest || "");
+          const asset = installer ? {
+            name: String(installer.name),
+            url: String(installer.browser_download_url || ""),
+            size: Math.max(0, Number(installer.size || 0)),
+            sha256: digest.replace(/^sha256:/i, "") || releaseBodySha256(data.body),
+          } : null;
+          resolve(releaseResult(latestVersion, String(data.html_url || RELEASE_LATEST_PAGE), String(data.published_at || ""), asset));
         } catch (error) { reject(error); }
       });
     });
@@ -216,6 +237,67 @@ function fetchLatestReleaseFromRedirect() {
 async function fetchLatestRelease() {
   try { return await fetchLatestReleaseFromApi(); }
   catch { return fetchLatestReleaseFromRedirect(); }
+}
+
+function emitUpdateProgress(value) {
+  mainWindow?.webContents.send("update-progress", { at: new Date().toISOString(), ...value });
+}
+
+// 中文：一键更新的顺序固定为下载校验、云同步、停止网关、离线备份、启动安装器。
+// 任一步失败都停止安装并保留当前版本，避免用“重新同步”掩盖本地数据丢失。
+// English: One-click update always verifies, syncs, stops the gateway, creates an offline backup,
+// and only then launches the installer. Any failure keeps the current version running.
+async function downloadAndInstallLatestUpdate() {
+  if (updateRun) return updateRun;
+  updateRun = (async () => {
+    emitUpdateProgress({ stage: "checking", percent: 0 });
+    const release = await fetchLatestRelease();
+    if (!release.updateAvailable) return { ok: true, updateAvailable: false, release };
+    if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
+    const installerDir = path.join(updateRecoveryRoot, "installers");
+    const installerPath = path.join(installerDir, `${Date.now()}-${release.asset.name}`);
+    emitUpdateProgress({ stage: "downloading", percent: 0, received: 0, total: release.asset.size || 0 });
+    const downloaded = await downloadVerifiedInstaller({
+      asset: release.asset,
+      destination: installerPath,
+      onProgress: (progress) => emitUpdateProgress({ stage: "downloading", ...progress }),
+    });
+    emitUpdateProgress({ stage: "syncing", percent: 100, installerPath });
+    const syncStatus = syncManager?.status();
+    if (syncStatus?.enabled && syncStatus?.connected) await syncManager.syncNow("before-update");
+    emitUpdateProgress({ stage: "backing-up", percent: 100 });
+    await stopGateway();
+    let backup;
+    try {
+      backup = createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: release.latestVersion });
+    } catch (error) {
+      await startGateway().catch(() => {});
+      throw error;
+    }
+    emitUpdateProgress({ stage: "installing", percent: 100, backupRoot: backup.backupRoot });
+    let child;
+    try {
+      child = await new Promise((resolve, reject) => {
+        const installer = spawn(downloaded.file, ["--updated", "/S", "--force-run"], { detached: true, stdio: "ignore", windowsHide: true });
+        installer.once("error", reject);
+        installer.once("spawn", () => resolve(installer));
+      });
+    } catch (error) {
+      // 中文：安装器若未真正启动，立即恢复当前网关，用户可以继续使用旧版本并重试。
+      // English: If the installer never starts, restore the current gateway so the old version remains usable.
+      await startGateway().catch(() => {});
+      throw error;
+    }
+    child.unref();
+    quitting = true;
+    shutdownComplete = true;
+    setTimeout(() => app.quit(), 250);
+    return { ok: true, updateAvailable: true, launched: true, version: release.latestVersion, backupRoot: backup.backupRoot };
+  })().catch((error) => {
+    emitUpdateProgress({ stage: "error", percent: 0, error: String(error?.message || error) });
+    throw error;
+  }).finally(() => { updateRun = null; });
+  return updateRun;
 }
 
 function trayImage() {
@@ -357,6 +439,7 @@ ipcMain.handle("set-desktop-settings", (_event, patch) => updateDesktopSettings(
 ipcMain.handle("get-gateway-info", () => gatewayInfo());
 ipcMain.handle("reset-gateway", async () => resetGateway());
 ipcMain.handle("check-for-updates", async () => fetchLatestRelease());
+ipcMain.handle("download-and-install-update", async () => downloadAndInstallLatestUpdate());
 ipcMain.handle("get-sync-status", async () => (await initializeSyncManager()).status());
 ipcMain.handle("github-connect", async (_event, value) => (await initializeSyncManager()).connect({
   token: String(value?.token || ""),

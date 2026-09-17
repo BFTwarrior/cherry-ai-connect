@@ -202,7 +202,11 @@ export class SyncEngine {
               if (!importedSecureConfig) throw new Error("sync_remote_vault_missing");
               secureConfig = importedSecureConfig;
             }
-            this.source.replaceConfigFromSync?.(remote.remoteConfig, secureConfig);
+            this.source.replaceConfigFromSync?.(remote.remoteConfig, secureConfig, {
+              // 中文：只有全新设备首次采用远端数据集时才允许创建本机客户端 Key。
+              // English: Only a pristine device adopting its first remote dataset may create local client keys.
+              allowGenerateClientSecrets: options.allowGenerateClientSecrets === true,
+            });
             snapshot = this.source.getSyncSnapshot();
           } else if (options.configPolicy === "local" || configOrder === "local-newer") {
             if (options.configPolicy === "local" && configOrder !== "local-newer") this.source.bumpConfigRevisionForSync?.();

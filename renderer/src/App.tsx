@@ -2,7 +2,7 @@
  * 中文：React 渲染层负责页面状态、双语界面、线路/模型/客户端 Key 管理。
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
@@ -13,7 +13,7 @@ import { Icon } from "./ui/Icon";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.1";
+const VERSION = "1.2";
 
 
 const levels: ReasoningLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -85,7 +85,7 @@ export default function App() {
   const [keys, setKeys] = useState<ClientKey[]>([]);
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "high", defaultProvider: "" });
   const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("high");
-  const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
+  const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, setupCompleted: false });
   const [gatewayPort, setGatewayPort] = useState(20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
@@ -114,6 +114,9 @@ export default function App() {
   // 中文：首次配置一旦真正成功便不再长期占据首页；用户仍可从各功能页维护配置。
   // English: Once onboarding succeeds, it no longer occupies the dashboard permanently.
   const [setupCompletedOnce, setSetupCompletedOnce] = useState(() => localStorage.getItem("cherry-setup-completed") === "true");
+  const [setupGuideOpen, setSetupGuideOpen] = useState(() => localStorage.getItem("cherry-setup-completed") !== "true");
+  const [setupGuidePosition, setSetupGuidePosition] = useState<{ left: number; top: number } | null>(null);
+  const setupDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const copy = useCopy();
 
@@ -185,6 +188,12 @@ export default function App() {
       if (desktopData) {
         setDesktop((current) => ({ ...current, ...desktopData }));
         if (!localStorage.getItem("cherry-language") && desktopData.language) setLanguage(desktopData.language);
+        const completed = desktopData.setupCompleted === true || localStorage.getItem("cherry-setup-completed") === "true";
+        setSetupCompletedOnce(completed);
+        setSetupGuideOpen(!completed);
+        // 中文：把 1.1 的浏览器完成标记迁移到正式桌面设置，之后覆盖安装仍保持隐藏。
+        // English: Migrate the 1.1 browser marker into desktop settings so updates never reopen onboarding.
+        if (completed && desktopData.setupCompleted !== true) void window.desktop?.setSettings?.({ setupCompleted: true });
       }
     } catch (error) {
       if (!silent) showToast(error instanceof Error ? error.message : String(error), "error");
@@ -225,11 +234,39 @@ export default function App() {
     document.querySelector(".main-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const beginSetupGuideDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    const panel = event.currentTarget.closest(".setup-float") as HTMLElement | null;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    setupDragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const moveSetupGuide = (event: ReactPointerEvent<HTMLElement>) => {
+    const drag = setupDragRef.current;
+    if (!drag) return;
+    const width = 390;
+    const height = 390;
+    setSetupGuidePosition({
+      left: Math.max(12, Math.min(window.innerWidth - width - 12, event.clientX - drag.offsetX)),
+      top: Math.max(48, Math.min(window.innerHeight - height - 12, event.clientY - drag.offsetY)),
+    });
+  };
+
+  const endSetupGuideDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    setupDragRef.current = null;
+    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
+  };
+
   useEffect(() => {
     const complete = providers.length > 0 && totalModels > 0 && keys.length > 0 && lastClientRequestStatus === "ok";
     if (!complete || setupCompletedOnce) return;
     localStorage.setItem("cherry-setup-completed", "true");
     setSetupCompletedOnce(true);
+    setSetupGuideOpen(false);
+    setDesktop((current) => ({ ...current, setupCompleted: true }));
+    void window.desktop?.setSettings?.({ setupCompleted: true });
   }, [keys.length, lastClientRequestStatus, providers.length, setupCompletedOnce, totalModels]);
 
   const toggleModelGroup = (providerId: string) => {
@@ -310,7 +347,7 @@ export default function App() {
     } catch (error) {
       setSyncFailures((current) => current.includes(id) ? current : [...current, id]);
       await load(true);
-      if (!quiet) showToast(`${tr("同步失败", "Sync failed")}：${error instanceof Error ? error.message : String(error)}`, "error");
+      if (!quiet) showToast(`${tr("线路检测失败", "Route test failed")}：${error instanceof Error ? error.message : String(error)}`, "error");
       throw error;
     } finally {
       setSyncing(null);
@@ -319,7 +356,7 @@ export default function App() {
 
   const syncAll = async (onlyIds?: string[]) => {
     const targets = onlyIds?.length ? providers.filter((provider) => onlyIds.includes(provider.id)) : providers;
-    if (!targets.length) return showToast(tr("还没有可同步的线路", "There are no routes to sync"), "info");
+    if (!targets.length) return showToast(tr("还没有可检测的线路", "There are no routes to test"), "info");
     setSyncing("all");
     setSyncFailures([]);
     let success = 0;
@@ -337,7 +374,7 @@ export default function App() {
     setSyncing(null);
     setSyncProgress(null);
     setSyncFailures(failures);
-    showToast(`${tr("已同步", "Synced")} ${success}/${targets.length}`, success === targets.length ? "success" : "info");
+    showToast(`${tr("已检测", "Tested")} ${success}/${targets.length}`, success === targets.length ? "success" : "info");
   };
 
   const runQuickSync = () => {
@@ -616,7 +653,7 @@ export default function App() {
     const nextStep = !providers.length
       ? { label: tr("添加第一条线路", "Add your first route"), action: () => setModal({ kind: "provider" }), icon: "plus" }
       : !totalModels
-        ? { label: tr("同步模型目录", "Sync model catalog"), action: () => void syncAll(), icon: "refresh" }
+        ? { label: tr("刷新模型目录", "Refresh model catalog"), action: () => void syncAll(), icon: "refresh" }
         : !keys.length
           ? { label: tr("生成客户端 Key", "Create client key"), action: () => setModal({ kind: "key" }), icon: "key" }
           : !hasSuccessfulClientRequest && firstActiveKey
@@ -624,7 +661,7 @@ export default function App() {
             : { label: tr("管理客户端 Key", "Manage client keys"), action: () => navigate("keys"), icon: "key" };
     const checklist = [
       { done: providers.length > 0, label: tr("添加一条中转站线路", "Add an upstream route"), action: providers.length ? () => navigate("providers") : () => setModal({ kind: "provider" }) },
-      { done: totalModels > 0, label: tr("同步上游模型目录", "Sync the upstream model catalog"), action: totalModels > 0 ? () => navigate("models") : runQuickSync },
+      { done: totalModels > 0, label: tr("刷新上游模型目录", "Refresh the upstream model catalog"), action: totalModels > 0 ? () => navigate("models") : runQuickSync },
       { done: keys.length > 0, label: tr("生成一个客户端 Key", "Create a client key"), action: keys.length ? () => navigate("keys") : providers.length ? () => setModal({ kind: "key" }) : () => navigate("providers") },
       { done: hasSuccessfulClientRequest, label: tr("在 Cherry 中成功使用客户端 Key", "Complete a successful Cherry client request"), action: hasSuccessfulClientRequest ? () => navigate("keys") : firstActiveKey ? () => void testClientKey(firstActiveKey) : () => navigate("keys") },
     ];
@@ -635,8 +672,12 @@ export default function App() {
         <div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core-orb"><Icon name="route" size={34} /></div><span className="visual-caption">{tr("本地连接", "LOCAL CONNECT")}</span><strong>127.0.0.1</strong><small>PORT {gatewayPort}</small></div>
       </section>
       <div className="metric-grid"><Metric icon="route" tone="purple" value={String(providers.length)} label={tr("中转站线路", "Upstream routes")} note={tr("可绑定客户端 Key", "Ready for key binding")} /><Metric icon="layers" tone="blue" value={String(totalModels)} label={tr("已同步模型", "Synced models")} note={tr("来自上游目录", "From upstream catalogs")} /><Metric icon="key" tone="green" value={String(activeKeys)} label={tr("有效客户端 Key", "Active client keys")} note={tr("仅显示本地凭证", "Local credentials only")} /><Metric icon="spark" tone="amber" value={levelLabel(settings.forcedLevel)} label={tr("默认思考强度", "Default reasoning")} note={tr("真实写入转发请求", "Written into requests")} /></div>
-      <div className="overview-columns"><section className="panel checklist-panel"><PanelHeading kicker={tr("QUICK START", "QUICK START")} title={tr("四步完成配置", "Finish setup in four steps")} action={<span className="progress-label">{checklist.filter((item) => item.done).length}/4</span>} /><div className="checklist">{checklist.map((item) => <button className={`checklist-row ${item.done ? "done" : ""}`} key={item.label} onClick={item.action}><span className="check-circle"><Icon name="check" size={12} /></span><span>{item.label}</span><span className="checklist-action-label">{item.done ? tr("查看", "View") : tr("执行", "Run")}</span><Icon name="arrow" size={15} /></button>)}</div><div className={`checklist-hint status-${lastClientRequestStatus}`}>{lastClientRequestStatus === "ok" ? <><Icon name="check" size={13} />{tr(`最近一次转发成功${lastClientRequestModel ? ` · ${lastClientRequestModel}` : ""} · ${formatDate(lastClientRequestAt, language)}`, `Last forwarded request succeeded${lastClientRequestModel ? ` · ${lastClientRequestModel}` : ""} · ${formatDate(lastClientRequestAt, language)}`)}</> : lastClientRequestStatus === "pending" ? <><Icon name="refresh" size={13} />{tr("正在等待上游响应…", "Waiting for the upstream response…")}</> : lastClientRequestStatus === "error" ? <><Icon name="shield" size={13} />{tr("最近一次客户端请求失败，请检查线路状态。", "The latest client request failed; check the route status.")}</> : <><Icon name="info" size={13} />{tr("尚未检测到成功的客户端转发；完成一次 Cherry 请求后这里会变为已完成。", "No successful client request yet; this step completes after Cherry makes one request.")}</>}</div></section><section className="panel default-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section></div>
-      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{providers.length ? <div className="route-list compact-route-list">{providers.slice(0, 3).map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击同步即可读取模型。", "Add your first route, then sync to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
+      <div className="overview-columns stable-overview-columns">
+        <section className="panel default-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section>
+        <section className="panel connection-panel"><PanelHeading kicker={tr("连接状态", "CONNECTION STATUS")} title={tr("本地连接脉搏", "Local connection pulse")} description={tr("集中查看本地入口和最近一次请求，不占用配置引导空间。", "See the local endpoint and latest request without permanent onboarding clutter.")} /><div className="connection-pulse-grid"><button type="button" onClick={() => void copyApiAddress()}><span className="connection-pulse-icon"><Icon name="copy" size={16} /></span><span><small>{tr("本地 API 地址", "Local API URL")}</small><strong>{apiBase}</strong></span></button><div><span className={`connection-pulse-icon status-${lastClientRequestStatus}`}><Icon name={lastClientRequestStatus === "ok" ? "check" : lastClientRequestStatus === "error" ? "shield" : "refresh"} size={16} /></span><span><small>{tr("最近请求", "Latest request")}</small><strong>{lastClientRequestStatus === "ok" ? tr("转发成功", "Forwarded") : lastClientRequestStatus === "error" ? tr("转发失败", "Failed") : tr("等待请求", "Waiting")}</strong><em>{lastClientRequestModel || formatDate(lastClientRequestAt, language)}</em></span></div></div><div className="connection-panel-footer"><span><i className="gold-dot" />{tr(`${providers.length} 条线路 · ${activeKeys} 个有效 Key`, `${providers.length} routes · ${activeKeys} active keys`)}</span><button className="text-button" onClick={() => navigate("usage")}>{tr("查看使用记录", "View usage")} <Icon name="arrow" size={13} /></button></div></section>
+      </div>
+      {!setupCompletedOnce && (setupGuideOpen ? <aside className="setup-float" role="dialog" aria-label={tr("四步完成配置", "Finish setup in four steps")} style={setupGuidePosition ? { ...setupGuidePosition, bottom: "auto" } : undefined}><header onPointerDown={beginSetupGuideDrag} onPointerMove={moveSetupGuide} onPointerUp={endSetupGuideDrag} onPointerCancel={endSetupGuideDrag}><div><span>{tr("快速开始", "QUICK START")}</span><strong>{tr("四步完成配置", "Finish setup in four steps")}</strong></div><span className="progress-label">{checklist.filter((item) => item.done).length}/4</span><button type="button" className="setup-float-close" onClick={() => setSetupGuideOpen(false)} aria-label={tr("暂时收起", "Hide for now")}>×</button></header><div className="checklist">{checklist.map((item) => <button className={`checklist-row ${item.done ? "done" : ""}`} key={item.label} onClick={item.action}><span className="check-circle"><Icon name="check" size={12} /></span><span>{item.label}</span><span className="checklist-action-label">{item.done ? tr("查看", "View") : tr("执行", "Run")}</span><Icon name="arrow" size={15} /></button>)}</div><small>{tr("全部完成后永久隐藏，更新版本也不会再次出现。", "It disappears permanently after completion and stays hidden after updates.")}</small></aside> : <button type="button" className="setup-fab" onClick={() => setSetupGuideOpen(true)}><Icon name="check" size={15} />{tr("继续配置", "Continue setup")}<span>{checklist.filter((item) => item.done).length}/4</span></button>)}
+      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{providers.length ? <div className="route-list compact-route-list">{providers.slice(0, 3).map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
     </>;
   }
 
@@ -661,9 +702,9 @@ export default function App() {
     const visibleCount = groups.reduce((sum, group) => sum + group.models.length, 0);
     const failedNames = syncFailures.map((id) => providers.find((provider) => provider.id === id)?.name || id);
     return <section className="page-view">
-      <PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型；每个分组可以独立展开或折叠。", "Models are grouped by route; every group can expand or collapse independently.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("同步中", "Syncing") : tr("同步全部", "Sync all")}</button>} />
-      {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在同步 ${syncProgress.current}/${syncProgress.total}`, `Syncing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
-      {!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路同步失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}
+      <PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型；每个分组可以独立展开或折叠。", "Models are grouped by route; every group can expand or collapse independently.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("刷新中", "Refreshing") : tr("刷新全部模型", "Refresh all models")}</button>} />
+      {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在刷新 ${syncProgress.current}/${syncProgress.total}`, `Refreshing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
+      {!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路刷新失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}
       <div className="catalog-toolbar"><label className="select-control"><span>{tr("线路", "Route")}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="all">{tr("全部线路", "All routes")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id}</option>)}</select></label><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
       {groups.length ? <div className="model-groups">{groups.map(({ provider, models }) => {
         const collapsed = collapsedModelGroups.has(provider.id) && !modelQuery.trim();
@@ -671,7 +712,7 @@ export default function App() {
           <header className="model-group-header">
             <button type="button" className="group-toggle" onClick={() => toggleModelGroup(provider.id)} aria-expanded={!collapsed} aria-label={collapsed ? tr("展开模型分组", "Expand model group") : tr("折叠模型分组", "Collapse model group")}><Icon name="chevron" size={15} /></button>
             <div className="group-identity"><RouteAvatar provider={provider} /><div><strong>{provider.name || provider.id}</strong><code>{provider.id}</code></div></div>
-            <div className="group-summary"><span>{models.length} {tr("个匹配模型", "matching models")}</span><button className="icon-text-button" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id}><Icon name="refresh" size={13} />{tr("同步", "Sync")}</button></div>
+            <div className="group-summary"><span>{models.length} {tr("个匹配模型", "matching models")}</span><button className="icon-text-button" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id}><Icon name="refresh" size={13} />{tr("刷新", "Refresh")}</button></div>
           </header>
           {!collapsed && (models.length ? <div className="model-grid">{models.map((model) => <article className="model-item" key={`${provider.id}:${model}`}><span className="model-mark"><Icon name="layers" size={14} /></span><code title={model}>{model}</code><span className="model-ready"><span className="status-dot" /></span></article>)}</div> : <div className="inline-empty">{tr("没有匹配模型；尝试清空搜索词，或先同步线路。", "No matching models. Clear the search or sync this route.")}</div>)}
         </section>;

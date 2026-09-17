@@ -3,6 +3,7 @@ interface DesktopSettings {
   autoLaunch?: boolean;
   startMinimized?: boolean;
   closeToTray?: boolean;
+  setupCompleted?: boolean;
   loginItem?: boolean;
 }
 
@@ -23,6 +24,16 @@ interface UpdateCheckResult {
   releaseUrl: string;
   publishedAt: string;
   checkedAt: string;
+  asset: { name: string; url: string; size: number; sha256: string } | null;
+}
+
+interface UpdateProgress {
+  stage: "checking" | "downloading" | "syncing" | "backing-up" | "installing" | "error";
+  percent: number;
+  received?: number;
+  total?: number;
+  error?: string;
+  at: string;
 }
 
 interface CloudSyncStatus {
@@ -67,6 +78,8 @@ interface Window {
     getGatewayInfo: () => Promise<GatewayInfo>;
     resetGateway: () => Promise<{ ok: boolean } & GatewayInfo>;
     checkForUpdates: () => Promise<UpdateCheckResult>;
+    downloadAndInstallUpdate: () => Promise<{ ok: boolean; updateAvailable: boolean; launched?: boolean; version?: string }>;
+    onUpdateProgress: (listener: (progress: UpdateProgress) => void) => () => void;
     getSyncStatus: () => Promise<CloudSyncStatus>;
     connectGitHub: (value: { token: string; repository: string; password: string }) => Promise<GitHubConnectResult>;
     syncNow: () => Promise<CloudSyncStatus>;

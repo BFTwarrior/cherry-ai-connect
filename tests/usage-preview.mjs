@@ -36,12 +36,24 @@ const upstream = http.createServer((req, res) => {
   });
 });
 
-await new Promise((resolve) => upstream.listen(27890, "127.0.0.1", resolve));
+await new Promise((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+const upstreamPort = upstream.address().port;
+async function availablePort() {
+  const probe = http.createServer();
+  await new Promise((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", resolve);
+  });
+  const port = probe.address().port;
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+const gatewayPort = await availablePort();
 const gateway = await import(`../gateway/gateway.mjs?preview=${Date.now()}`);
-await gateway.startGateway({ port: 27891 });
-const origin = "http://127.0.0.1:27891";
+await gateway.startGateway({ port: gatewayPort });
+const origin = `http://127.0.0.1:${gatewayPort}`;
 const request = async (url, options = {}) => (await fetch(`${origin}${url}`, options)).json();
-await request("/admin/api/providers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "preview-purple", name: "Luna 高速线路", baseUrl: "http://127.0.0.1:27890", apiKey: "preview-upstream-placeholder" }) });
+await request("/admin/api/providers", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: "preview-purple", name: "Luna 高速线路", baseUrl: `http://127.0.0.1:${upstreamPort}`, apiKey: "preview-upstream-placeholder" }) });
 await request("/admin/api/providers/preview-purple/test", { method: "POST" });
 const created = await request("/admin/api/client-keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ providerId: "preview-purple", reasoningLevel: "high", nameCustomized: false }) });
 for (let index = 0; index < 36; index += 1) {
@@ -55,7 +67,7 @@ const previewDesktopScript = `<script>
   const listeners = new Set();
   const now = () => new Date().toISOString();
   const next = () => new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  let settings = { language: "zh", autoStart: false, startHidden: false, minimizeToTray: true };
+  let settings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, setupCompleted: false };
   let sync = {
     enabled: false, connected: false, provider: "github", owner: "", repository: "cherry-ai-connect-sync",
     repositoryPrivate: false, account: null, state: "DISABLED", datasetId: "", generation: 0,
@@ -75,8 +87,8 @@ const previewDesktopScript = `<script>
     return { ...sync };
   };
   window.desktop = {
-    getGatewayInfo: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", apiBase: "http://127.0.0.1:27891/v1", adminUrl: "http://127.0.0.1:27891/admin" }),
-    resetGateway: async () => ({ ok: true, port: 27891, origin: "http://127.0.0.1:27891", apiBase: "http://127.0.0.1:27891/v1", adminUrl: "http://127.0.0.1:27891/admin" }),
+    getGatewayInfo: async () => ({ ok: true, port: ${gatewayPort}, origin: "${origin}", apiBase: "${origin}/v1", adminUrl: "${origin}/admin" }),
+    resetGateway: async () => ({ ok: true, port: ${gatewayPort}, origin: "${origin}", apiBase: "${origin}/v1", adminUrl: "${origin}/admin" }),
     getSettings: async () => ({ ...settings }),
     setSettings: async (patch) => (settings = { ...settings, ...patch }),
     openDataFolder: async () => true,
@@ -111,7 +123,9 @@ const previewDesktopScript = `<script>
       publish();
       return { ...sync };
     },
-    checkForUpdates: async () => ({ currentVersion: "1.1", latestVersion: "1.1", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-ai-connect/releases", checkedAt: now() })
+    checkForUpdates: async () => ({ currentVersion: "1.2", latestVersion: "1.2", updateAvailable: false, releaseUrl: "https://github.com/BFTwarrior/cherry-ai-connect/releases", checkedAt: now(), asset: null }),
+    downloadAndInstallUpdate: async () => ({ ok: true, updateAvailable: false }),
+    onUpdateProgress: () => () => {}
   };
 })();
 </script>`;

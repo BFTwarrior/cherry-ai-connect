@@ -1,7 +1,7 @@
-# Cherry AI Connect 1.1 Sync Protocol
+# Cherry AI Connect 1.2 Sync Protocol
 
-> 中文：本文是 1.1 云同步实现的固定协议。
-> English: This document is the fixed cloud-sync contract for version 1.1.
+> 中文：本文是 1.2 使用的云同步协议；数据格式仍为 schema 1，并兼容 1.1。
+> English: This is the sync contract used by version 1.2. The data schema remains schema 1 and stays compatible with 1.1.
 
 ## 1. Safety boundary / 安全边界
 
@@ -40,9 +40,9 @@ vault-20260917-183025-123-ssync_<uuid>.enc
 usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-20260917-183025-123-ssync_<uuid>.jsonl.gz
 ```
 
-The date-time segment is generated in UTC+8 as `YYYYMMDD-HHmmss-SSS`. Readers still accept legacy `*-g000042-*` objects, while version 1.1 writes only the readable date-time form. The manifest's internal `generation` remains the authoritative order; filenames are never used to resolve conflicts.
+The date-time segment is generated in UTC+8 as `YYYYMMDD-HHmmss-SSS`. Version 1.1 and later readers still accept legacy `*-g000042-*` objects, while current writers use only the readable date-time form. The manifest's internal `generation` remains the authoritative order; filenames are never used to resolve conflicts.
 
-日期时间段固定按 UTC+8 生成，格式为 `YYYYMMDD-HHmmss-SSS`。1.1 仍能读取旧的 `*-g000042-*` 文件，但新写入只使用日期时间名称。真正的版本顺序仍以 manifest 内部的 `generation` 为准，不能只看文件名判断冲突。
+日期时间段固定按 UTC+8 生成，格式为 `YYYYMMDD-HHmmss-SSS`。1.1 及之后版本仍能读取旧的 `*-g000042-*` 文件，但当前写入只使用日期时间名称。真正的版本顺序仍以 manifest 内部的 `generation` 为准。
 
 ## 4. Manifest / 提交清单
 
@@ -100,7 +100,7 @@ An interrupted candidate without a committed manifest is an orphan and is never 
 - A counter must never decrease.
 - Tombstones win over an older object revision and prevent deleted routes/client metadata from silently reappearing.
 - Public configuration uses `{counter, deviceId}` revisions. Different-device edits to the same field create a conflict preview; they are not silently overwritten.
-- Client-key secret values are local-only and are never restored from GitHub.
+- Client-key secret values are local-only and are never uploaded. Normal sync and same-device updates must preserve the existing secret. Only a pristine new device may generate a local secret during its first remote adoption; a missing secret on an existing device is a protective error, not a rotation trigger.
 - Vault changes require a valid password/recovery key, matching `datasetId`, valid AAD, and a non-decreasing `keyEpoch`.
 
 ## 7. Vault format / 加密仓库
@@ -138,7 +138,7 @@ ERROR_RECOVERABLE
 ERROR_FATAL
 ```
 
-Automatic sync checks every 30 minutes. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, and secure route changes trigger an additional sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
+Automatic sync checks every 30 minutes. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, route changes, route health tests, and model refreshes trigger an additional deduplicated sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
 
 ## 10. GitHub errors / GitHub 错误
 
@@ -154,7 +154,7 @@ Retries have a maximum count. Exit sync has a short deadline and leaves durable 
 
 ## 11. Compatibility / 兼容性
 
-- `schemaVersion = 1` remains the data schema; version 1.1 changes only asset naming and minimum compatible application version.
+- `schemaVersion = 1` remains the data schema. Version 1.2 does not raise `minReaderVersion` or `minWriterVersion` because it adds no incompatible cloud fields.
 - Readers reject a manifest with a higher `minReaderVersion`.
 - Writers refuse to overwrite a manifest with a higher `minWriterVersion`.
 - Future optional fields must have safe defaults.

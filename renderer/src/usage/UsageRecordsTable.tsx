@@ -4,6 +4,7 @@
  */
 
 type Language = "zh" | "en";
+export type UsageRecordDensity = "compact" | "detailed";
 
 export type UsageRecord = {
   id: string;
@@ -61,9 +62,9 @@ function LatencyValue({ value, kind, language }: { value: number; kind: "firstTo
   return <div className={`latency-value latency-${level}`}><strong>{formattedDuration(value)}</strong><span><i />{labels[level]}</span></div>;
 }
 
-export function UsageRecordsTable({ records, language }: { records: UsageRecord[]; language: Language }) {
+export function UsageRecordsTable({ records, language, density }: { records: UsageRecord[]; language: Language; density: UsageRecordDensity }) {
   const tr = (zh: string, en: string) => language === "zh" ? zh : en;
-  return <div className="usage-records-list" aria-label={tr("实时请求记录", "Live request log")}>
+  return <div className={`usage-records-list mode-${density}`} aria-label={tr("实时请求记录", "Live request log")}>
     {records.map((record) => {
       const successful = record.status >= 200 && record.status < 400;
       return <article className={`usage-record-card ${successful ? "" : "request-row-error"}`} key={record.id}>

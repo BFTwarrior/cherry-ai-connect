@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld("desktop", {
   getGatewayInfo: () => ipcRenderer.invoke("get-gateway-info"),
   resetGateway: () => ipcRenderer.invoke("reset-gateway"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  downloadAndInstallUpdate: () => ipcRenderer.invoke("download-and-install-update"),
+  onUpdateProgress: (listener) => {
+    const handler = (_event, value) => listener(value);
+    ipcRenderer.on("update-progress", handler);
+    return () => ipcRenderer.removeListener("update-progress", handler);
+  },
   getSyncStatus: () => ipcRenderer.invoke("get-sync-status"),
   connectGitHub: (value) => ipcRenderer.invoke("github-connect", value),
   syncNow: () => ipcRenderer.invoke("sync-now"),

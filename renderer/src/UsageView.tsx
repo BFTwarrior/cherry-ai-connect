@@ -3,7 +3,7 @@
  * English: The usage page reads anonymous gateway metrics only; it never reads or stores prompts, responses, or secrets.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { UsageRecordsTable, type UsageRecord } from "./usage/UsageRecordsTable";
+import { UsageRecordsTable, type UsageRecord, type UsageRecordDensity } from "./usage/UsageRecordsTable";
 
 type Language = "zh" | "en";
 type RangeKey = "24h" | "7d" | "30d" | "90d" | "180d";
@@ -129,6 +129,14 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
   const [data, setData] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // 中文：记录密度是本机视觉偏好；紧凑模式保留全部字段并用区域内横向滚动展示。
+  // English: Record density is a local visual preference; compact mode keeps every field in a horizontally scrollable region.
+  const [recordDensity, setRecordDensity] = useState<UsageRecordDensity>(() => localStorage.getItem("cherry-usage-record-density") === "detailed" ? "detailed" : "compact");
+
+  const changeRecordDensity = (next: UsageRecordDensity) => {
+    setRecordDensity(next);
+    localStorage.setItem("cherry-usage-record-density", next);
+  };
 
   const loadUsage = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -183,8 +191,8 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
     <article className="usage-panel chart-panel"><header><div><span>{tr("使用趋势", "USAGE TREND")}</span><h3>{selectedLabel}</h3></div><small>{tr("悬停折线查看具体时间点", "Hover the lines for exact values")}</small></header>{loading && !data ? <div className="usage-loading">{tr("正在读取统计…", "Loading analytics…")}</div> : data?.series.length ? <UsageChart points={data.series} language={language} range={range} /> : <div className="usage-loading">{tr("该时间范围暂无请求", "No requests in this period")}</div>}</article>
 
     <article className="usage-panel records-panel">
-      <header><div><span>{tr("实时请求记录", "LIVE REQUEST LOG")}</span><h3>{tr("最新 200 条（单页）", "Latest 200 (one page)")}</h3></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB；超限才清理最早详情，永久累计仍完整保留`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB; oldest details are pruned only after the limit, while lifetime totals remain complete`)}</small></header>
-      <UsageRecordsTable records={data?.records || []} language={language} />
+      <header><div><span>{tr("实时请求记录", "LIVE REQUEST LOG")}</span><h3>{tr("最新 200 条（单页）", "Latest 200 (one page)")}</h3></div><div className="records-header-actions"><div className="record-density-toggle" role="group" aria-label={tr("请求记录显示方式", "Request record layout")}><button type="button" className={recordDensity === "compact" ? "active" : ""} onClick={() => changeRecordDensity("compact")}>{tr("单行", "Single line")}</button><button type="button" className={recordDensity === "detailed" ? "active" : ""} onClick={() => changeRecordDensity("detailed")}>{tr("双行", "Two lines")}</button></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`)}</small></div></header>
+      <UsageRecordsTable records={data?.records || []} language={language} density={recordDensity} />
     </article>
   </section>;
 }

@@ -87,6 +87,7 @@ class ConfigSource {
     this.events = [];
     this.merged = [];
     this.replacements = 0;
+    this.lastReplaceOptions = null;
   }
 
   getSyncSnapshot() {
@@ -110,11 +111,12 @@ class ConfigSource {
     this.identity.datasetId = nextDatasetId;
     this.secureConfig.datasetId = nextDatasetId;
   }
-  replaceConfigFromSync(publicConfig, secureConfig) {
+  replaceConfigFromSync(publicConfig, secureConfig, options = {}) {
     this.publicConfig = clone(publicConfig);
     this.secureConfig = clone(secureConfig);
     this.pristine = false;
     this.replacements += 1;
+    this.lastReplaceOptions = clone(options);
   }
   bumpConfigRevisionForSync() {
     this.publicConfig.configRevision = {
@@ -203,10 +205,12 @@ test("a pristine installation adopts and decrypts the remote dataset before repl
     await new SyncEngine({ provider, source: sourceB, vault: vaultB }).sync("restore", {
       adoptRemoteIfPristine: true,
       configPolicy: "remote",
+      allowGenerateClientSecrets: true,
       password: "restore-password",
     });
     assert.equal(sourceB.identity.datasetId, remoteDataset);
     assert.equal(sourceB.replacements, 1);
+    assert.equal(sourceB.lastReplaceOptions.allowGenerateClientSecrets, true);
     assert.equal(sourceB.publicConfig.providers[0].name, "Cloud Route");
     assert.equal(sourceB.secureConfig.providers[0].apiKey, "test-upstream-secret");
     assert.equal(vaultB.status().unlocked, true);
