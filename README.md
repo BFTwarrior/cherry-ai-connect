@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.1` 源码、自动测试、视觉验收和 Windows 安装包已在本机完成，尚未上传 GitHub Release。当前公开下载仍为 `1.00`；真实 GitHub、Cherry Studio、安装/卸载和托盘验收仍按测试文档执行。
+`1.1` 源码、自动测试、视觉验收和 Windows 安装包已完成，并已发布到 GitHub Release。真实 GitHub、Cherry Studio、安装/卸载和托盘验收仍按测试文档执行。
 
-Version `1.1` has completed local source, automated, visual, and Windows-installer builds but is not yet published to GitHub Releases. The public download remains `1.00`; real GitHub, Cherry Studio, install/uninstall, and tray checks still follow the tester guide.
+Version `1.1` source, automated tests, visual checks, and the Windows installer are complete and published on GitHub Releases. Real GitHub, Cherry Studio, install/uninstall, and tray checks still follow the tester guide.
 
 ## 它能做什么 / Features
 
@@ -41,13 +41,11 @@ Version `1.1` has completed local source, automated, visual, and Windows-install
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)
-- 1.1 安装包尚未上传；在 Release 出现对应附件前，不提供虚假的 1.1 直达链接。
-- The v1.1 installer is not uploaded yet; no direct v1.1 link is claimed until the matching Release asset exists.
-- v1.00 安装包附件已上传；下载前可在 Release 页面核对文件名和 SHA-256。
-- The v1.00 installer is attached to the Release. Verify its filename and SHA-256 before installing.
-- 安装包 SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
-- Installer SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.1/Cherry-AI-Connect-Setup-1.1.exe)
+- 当前 Release 已包含 1.1 安装包；下载前请核对文件名和 SHA-256。
+- The current Release includes the v1.1 installer. Verify its filename and SHA-256 before installing.
+- 安装包 SHA-256：`1AA9C87C617BEDF9A770E375BDEB5D2ACE9CB2BF2F28C093092BE8672D80F06D`
+- Installer SHA-256: `1AA9C87C617BEDF9A770E375BDEB5D2ACE9CB2BF2F28C093092BE8672D80F06D`
 
 ## 安全边界 / Security boundary
 
@@ -255,26 +253,23 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 **中文说明**
 
-当前稳定版 v1.00 的安装包和发布说明位于：
+当前稳定版 v1.1 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.00 安装包直达地址：[Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe)。
-当前源码可构建 1.1，但 GitHub Release 尚未上传；发布前仍以 1.00 链接为公开稳定版。
+当前 1.1 安装包直达地址：[Cherry-AI-Connect-Setup-1.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.1/Cherry-AI-Connect-Setup-1.1.exe)。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
-SHA-256：`842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`。
+SHA-256：`1AA9C87C617BEDF9A770E375BDEB5D2ACE9CB2BF2F28C093092BE8672D80F06D`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
 **English**
 
-The installer and release notes for the current stable v1.00 are available here:
+The installer and release notes for the current stable v1.1 are available here:
 
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-Direct download: [Cherry-AI-Connect-Setup-1.00.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.00/Cherry-AI-Connect-Setup-1.00.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `842F78771926370A614C97F47E00C785ADB5255D0AA36BDF4DEFAAA6227591EC`.
-
-The current source builds v1.1, but its GitHub Release asset has not been uploaded. Until then, v1.00 remains the public stable download.
+Direct download: [Cherry-AI-Connect-Setup-1.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.1/Cherry-AI-Connect-Setup-1.1.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `1AA9C87C617BEDF9A770E375BDEB5D2ACE9CB2BF2F28C093092BE8672D80F06D`.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
