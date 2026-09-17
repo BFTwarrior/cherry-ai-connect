@@ -2,7 +2,7 @@
  * 中文：React 渲染层负责页面状态、双语界面、线路/模型/客户端 Key 管理。
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
@@ -13,7 +13,7 @@ import { Icon } from "./ui/Icon";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.2";
+const VERSION = "1.21";
 
 
 const levels: ReasoningLevel[] = ["low", "medium", "high", "xhigh", "max"];
@@ -85,7 +85,7 @@ export default function App() {
   const [keys, setKeys] = useState<ClientKey[]>([]);
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "high", defaultProvider: "" });
   const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("high");
-  const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, setupCompleted: false });
+  const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
   const [gatewayPort, setGatewayPort] = useState(20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
@@ -111,12 +111,6 @@ export default function App() {
     try { return new Set(JSON.parse(localStorage.getItem("cherry-collapsed-model-groups") || "[]")); }
     catch { return new Set(); }
   });
-  // 中文：首次配置一旦真正成功便不再长期占据首页；用户仍可从各功能页维护配置。
-  // English: Once onboarding succeeds, it no longer occupies the dashboard permanently.
-  const [setupCompletedOnce, setSetupCompletedOnce] = useState(() => localStorage.getItem("cherry-setup-completed") === "true");
-  const [setupGuideOpen, setSetupGuideOpen] = useState(() => localStorage.getItem("cherry-setup-completed") !== "true");
-  const [setupGuidePosition, setSetupGuidePosition] = useState<{ left: number; top: number } | null>(null);
-  const setupDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const copy = useCopy();
 
@@ -188,12 +182,6 @@ export default function App() {
       if (desktopData) {
         setDesktop((current) => ({ ...current, ...desktopData }));
         if (!localStorage.getItem("cherry-language") && desktopData.language) setLanguage(desktopData.language);
-        const completed = desktopData.setupCompleted === true || localStorage.getItem("cherry-setup-completed") === "true";
-        setSetupCompletedOnce(completed);
-        setSetupGuideOpen(!completed);
-        // 中文：把 1.1 的浏览器完成标记迁移到正式桌面设置，之后覆盖安装仍保持隐藏。
-        // English: Migrate the 1.1 browser marker into desktop settings so updates never reopen onboarding.
-        if (completed && desktopData.setupCompleted !== true) void window.desktop?.setSettings?.({ setupCompleted: true });
       }
     } catch (error) {
       if (!silent) showToast(error instanceof Error ? error.message : String(error), "error");
@@ -203,6 +191,15 @@ export default function App() {
   }, [applyGatewayInfo, showToast]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    // 中文：首次同步会在主进程中恢复网关配置；同步通知到达后必须重新读取线路、模型和客户端 Key。
+    // English: The main process restores gateway config during the first sync; reload routes, models,
+    // and client keys when the sync notification reaches the renderer.
+    const remove = window.desktop?.onSyncStatus?.((status) => {
+      if (["IDLE", "CONFLICT", "ERROR_RECOVERABLE", "ERROR_FATAL"].includes(status.state)) void load(true);
+    });
+    return () => remove?.();
+  }, [load]);
   useEffect(() => {
     let cancelled = false;
     const refreshClientStatus = async () => {
@@ -233,41 +230,6 @@ export default function App() {
     setView(nextView);
     document.querySelector(".main-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  const beginSetupGuideDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    if ((event.target as HTMLElement).closest("button")) return;
-    const panel = event.currentTarget.closest(".setup-float") as HTMLElement | null;
-    if (!panel) return;
-    const rect = panel.getBoundingClientRect();
-    setupDragRef.current = { offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  };
-
-  const moveSetupGuide = (event: ReactPointerEvent<HTMLElement>) => {
-    const drag = setupDragRef.current;
-    if (!drag) return;
-    const width = 390;
-    const height = 390;
-    setSetupGuidePosition({
-      left: Math.max(12, Math.min(window.innerWidth - width - 12, event.clientX - drag.offsetX)),
-      top: Math.max(48, Math.min(window.innerHeight - height - 12, event.clientY - drag.offsetY)),
-    });
-  };
-
-  const endSetupGuideDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    setupDragRef.current = null;
-    try { event.currentTarget.releasePointerCapture(event.pointerId); } catch { /* capture may already be released */ }
-  };
-
-  useEffect(() => {
-    const complete = providers.length > 0 && totalModels > 0 && keys.length > 0 && lastClientRequestStatus === "ok";
-    if (!complete || setupCompletedOnce) return;
-    localStorage.setItem("cherry-setup-completed", "true");
-    setSetupCompletedOnce(true);
-    setSetupGuideOpen(false);
-    setDesktop((current) => ({ ...current, setupCompleted: true }));
-    void window.desktop?.setSettings?.({ setupCompleted: true });
-  }, [keys.length, lastClientRequestStatus, providers.length, setupCompletedOnce, totalModels]);
 
   const toggleModelGroup = (providerId: string) => {
     setCollapsedModelGroups((current) => {
@@ -375,12 +337,6 @@ export default function App() {
     setSyncProgress(null);
     setSyncFailures(failures);
     showToast(`${tr("已检测", "Tested")} ${success}/${targets.length}`, success === targets.length ? "success" : "info");
-  };
-
-  const runQuickSync = () => {
-    if (syncing === "all" || gatewayResetting) return;
-    navigate("models");
-    void syncAll();
   };
 
   const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -659,12 +615,6 @@ export default function App() {
           : !hasSuccessfulClientRequest && firstActiveKey
             ? { label: tr("测试本地连接", "Test local connection"), action: () => void testClientKey(firstActiveKey), icon: "check" }
             : { label: tr("管理客户端 Key", "Manage client keys"), action: () => navigate("keys"), icon: "key" };
-    const checklist = [
-      { done: providers.length > 0, label: tr("添加一条中转站线路", "Add an upstream route"), action: providers.length ? () => navigate("providers") : () => setModal({ kind: "provider" }) },
-      { done: totalModels > 0, label: tr("刷新上游模型目录", "Refresh the upstream model catalog"), action: totalModels > 0 ? () => navigate("models") : runQuickSync },
-      { done: keys.length > 0, label: tr("生成一个客户端 Key", "Create a client key"), action: keys.length ? () => navigate("keys") : providers.length ? () => setModal({ kind: "key" }) : () => navigate("providers") },
-      { done: hasSuccessfulClientRequest, label: tr("在 Cherry 中成功使用客户端 Key", "Complete a successful Cherry client request"), action: hasSuccessfulClientRequest ? () => navigate("keys") : firstActiveKey ? () => void testClientKey(firstActiveKey) : () => navigate("keys") },
-    ];
     const boundRoutes = keys.filter((key) => key.enabled).map((key) => ({ key, provider: providerById(key.providerId) })).filter((item) => item.provider);
     return <>
       <section className="welcome-panel">
@@ -676,7 +626,6 @@ export default function App() {
         <section className="panel default-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section>
         <section className="panel connection-panel"><PanelHeading kicker={tr("连接状态", "CONNECTION STATUS")} title={tr("本地连接脉搏", "Local connection pulse")} description={tr("集中查看本地入口和最近一次请求，不占用配置引导空间。", "See the local endpoint and latest request without permanent onboarding clutter.")} /><div className="connection-pulse-grid"><button type="button" onClick={() => void copyApiAddress()}><span className="connection-pulse-icon"><Icon name="copy" size={16} /></span><span><small>{tr("本地 API 地址", "Local API URL")}</small><strong>{apiBase}</strong></span></button><div><span className={`connection-pulse-icon status-${lastClientRequestStatus}`}><Icon name={lastClientRequestStatus === "ok" ? "check" : lastClientRequestStatus === "error" ? "shield" : "refresh"} size={16} /></span><span><small>{tr("最近请求", "Latest request")}</small><strong>{lastClientRequestStatus === "ok" ? tr("转发成功", "Forwarded") : lastClientRequestStatus === "error" ? tr("转发失败", "Failed") : tr("等待请求", "Waiting")}</strong><em>{lastClientRequestModel || formatDate(lastClientRequestAt, language)}</em></span></div></div><div className="connection-panel-footer"><span><i className="gold-dot" />{tr(`${providers.length} 条线路 · ${activeKeys} 个有效 Key`, `${providers.length} routes · ${activeKeys} active keys`)}</span><button className="text-button" onClick={() => navigate("usage")}>{tr("查看使用记录", "View usage")} <Icon name="arrow" size={13} /></button></div></section>
       </div>
-      {!setupCompletedOnce && (setupGuideOpen ? <aside className="setup-float" role="dialog" aria-label={tr("四步完成配置", "Finish setup in four steps")} style={setupGuidePosition ? { ...setupGuidePosition, bottom: "auto" } : undefined}><header onPointerDown={beginSetupGuideDrag} onPointerMove={moveSetupGuide} onPointerUp={endSetupGuideDrag} onPointerCancel={endSetupGuideDrag}><div><span>{tr("快速开始", "QUICK START")}</span><strong>{tr("四步完成配置", "Finish setup in four steps")}</strong></div><span className="progress-label">{checklist.filter((item) => item.done).length}/4</span><button type="button" className="setup-float-close" onClick={() => setSetupGuideOpen(false)} aria-label={tr("暂时收起", "Hide for now")}>×</button></header><div className="checklist">{checklist.map((item) => <button className={`checklist-row ${item.done ? "done" : ""}`} key={item.label} onClick={item.action}><span className="check-circle"><Icon name="check" size={12} /></span><span>{item.label}</span><span className="checklist-action-label">{item.done ? tr("查看", "View") : tr("执行", "Run")}</span><Icon name="arrow" size={15} /></button>)}</div><small>{tr("全部完成后永久隐藏，更新版本也不会再次出现。", "It disappears permanently after completion and stays hidden after updates.")}</small></aside> : <button type="button" className="setup-fab" onClick={() => setSetupGuideOpen(true)}><Icon name="check" size={15} />{tr("继续配置", "Continue setup")}<span>{checklist.filter((item) => item.done).length}/4</span></button>)}
       <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{providers.length ? <div className="route-list compact-route-list">{providers.slice(0, 3).map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
     </>;
   }
@@ -728,21 +677,24 @@ export default function App() {
     return <section className="page-view">
       <PageIntro kicker={tr("设置", "PREFERENCES")} description={tr("控制请求策略、桌面行为、更新和界面语言；所有设置修改后立即生效。", "Control request policy, desktop behavior, updates, and language; changes apply immediately.")} action={undefined} />
       <div className="settings-layout">
+        <div className="settings-column">
         <article className="settings-card">
           <SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} />
           <div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。", "Saved immediately; existing keys keep their own level.")}</small></div><select name="forcedLevel" value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></div>
           <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${settings.forcedLevel.toUpperCase()} 应用到 ${keys.length} 个已有 Key`, `Apply ${settings.forcedLevel.toUpperCase()} to ${keys.length} existing key(s)`)}</button>
           <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
         </article>
+        <article className="settings-card compact-settings">
+          <SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} />
+          <div className="language-options"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")}>简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")}>English</button></div>
+        </article>
+        </div>
+        <div className="settings-column">
         <article className="settings-card">
           <SettingsHeading icon="monitor" title={tr("桌面行为", "Desktop behavior")} description={tr("连接服务会随桌面程序一起运行，并可在托盘中保持后台工作。", "The connection service runs with the desktop app and can stay in the tray.")} />
           <SettingCheck name="autoLaunch" checked={desktop.autoLaunch} onChange={(checked) => void updateDesktopSetting({ autoLaunch: checked })} title={tr("开机自动启动", "Start with Windows")} description={tr("登录 Windows 后自动运行连接服务。", "Start the connection service when you sign in to Windows.")} />
           <SettingCheck name="startMinimized" checked={desktop.startMinimized} onChange={(checked) => void updateDesktopSetting({ startMinimized: checked })} title={tr("启动后隐藏到托盘", "Start hidden in tray")} description={tr("开机启动时不弹出主窗口。", "Do not show the main window on startup.")} />
           <SettingCheck name="closeToTray" checked={desktop.closeToTray} onChange={(checked) => void updateDesktopSetting({ closeToTray: checked })} title={tr("关闭窗口时隐藏到托盘", "Close to tray")} description={tr("点击右上角关闭会触发一次后台同步并隐藏窗口；连接服务继续工作。", "Closing triggers one background sync, hides the window, and keeps the service running.")} />
-        </article>
-        <article className="settings-card compact-settings">
-          <SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} />
-          <div className="language-options"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")}>简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")}>English</button></div>
         </article>
         <article className="settings-card compact-settings">
           <SettingsHeading icon="shield" title={tr("安全与连接", "Security & connection")} description={tr("上游密钥使用本机加密保存；Cherry 只连接下面的本地地址。", "Upstream keys are encrypted locally; Cherry only connects to this local address.")} />
@@ -752,6 +704,7 @@ export default function App() {
           <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版的数据与缓存统一保存在安装目录下的 data 文件夹；安装到 D 盘时不会把主要缓存留在 C 盘。", "Packaged data and caches live in the data folder beside the app. Installing on drive D keeps the main cache off drive C.")}</span></div>
           <div className="settings-note warning-note"><Icon name="shield" size={14} /><span>{tr("请勿误删、移动或覆盖 data 及其中的记录文件。删除整个软件文件夹会同时删除缓存、线路、客户端 Key、永久统计和未同步数据。", "Do not accidentally delete, move, or overwrite data or its record files. Deleting the app folder also removes caches, routes, client keys, lifetime analytics, and unsynced data.")}</span></div>
         </article>
+        </div>
         <CloudSyncCard language={language} requestConfirmation={requestConfirmation} />
         <UpdateCard language={language} currentVersion={VERSION} />
       </div>
@@ -800,7 +753,7 @@ export default function App() {
     </div>;
   }
 
-  return <div className={`app-shell locale-${language} ${setupCompletedOnce ? "setup-complete" : ""}`}>
+  return <div className={`app-shell locale-${language}`}>
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Icon name="spark" size={18} /></div><div><strong>Cherry</strong><small>CONNECT</small></div><span className="brand-tag">{language === "zh" ? "本地" : "LOCAL"}</span></div>
       <button type="button" className="workspace-card workspace-status-card" onClick={() => void copyApiAddress()} title={tr("复制本地 API 地址", "Copy local API URL")}><span className="workspace-icon"><span className={`status-dot ${gatewayResetting ? "is-restarting" : ""}`} /></span><div><strong>{gatewayResetting ? tr("服务正在重启", "Service restarting") : tr("本地服务在线", "Local service online")}</strong><small>127.0.0.1:{gatewayPort} · {tr("点击复制", "Click to copy")}</small></div><Icon name="copy" size={13} /></button>

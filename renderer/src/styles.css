@@ -302,29 +302,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .metric-card em { margin-top: 2px; overflow: hidden; color: #66616d; font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 
 .overview-columns { display: grid; grid-template-columns: 1.06fr .94fr; gap: 12px; margin-bottom: 22px; }
-.setup-complete .checklist-panel { display: none; }
-.setup-complete .overview-columns { grid-template-columns: minmax(0, 1fr); }
 .panel, .settings-card { border: 1px solid #282731; border-radius: 13px; background: linear-gradient(145deg, #19191f, #15151b); }
 .panel { padding: 16px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
 .section-kicker { margin-bottom: 6px; }
 .panel-heading h3 { margin: 0; font-size: 17px; letter-spacing: -.15px; }
 .panel-heading p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
-.progress-label { display: inline-flex; align-items: center; min-height: 24px; padding: 3px 8px; border: 1px solid #4a3568; border-radius: 7px; background: #261b38; color: var(--purple-bright); font-size: 11px; }
-.checklist { margin-top: 14px; }
-.checklist-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 7px; border: 0; border-top: 1px solid #25242c; background: transparent; color: #c1bac8; text-align: left; cursor: pointer; }
-.checklist-row:first-child { border-top: 0; }
-.checklist-row:hover { color: #fff; }
-.checklist-row > span:nth-child(2) { flex: 1; font-size: 12px; }
-.checklist-action-label { flex: 0 0 auto; color: #8f72b6; font-size: 10px; }
-.checklist-row > .icon { color: #68616f; }
-.check-circle { display: grid; width: 21px; height: 21px; place-items: center; border: 1px solid #4b4454; border-radius: 50%; color: transparent; }
-.checklist-row.done .check-circle { border-color: #438d72; background: #1b4135; color: var(--green); }
-.checklist-row.done > span:nth-child(2) { color: #817c88; text-decoration: line-through; }
-.checklist-hint { display: flex; align-items: flex-start; gap: 7px; margin: 12px 7px 0; padding-top: 10px; border-top: 1px solid #25242c; color: #7f7787; font-size: 10px; line-height: 1.45; }
-.checklist-hint .icon { flex: 0 0 auto; margin-top: 1px; color: #a17bd3; }
-.checklist-hint.status-ok .icon { color: var(--green); }
-.checklist-hint.status-error .icon { color: var(--red); }
 .routing-summary { display: flex; align-items: center; gap: 11px; margin-top: 20px; padding: 13px; border: 1px solid #302e38; border-radius: 10px; background: #17171e; }
 .routing-icon { display: grid; width: 39px; height: 39px; place-items: center; border-radius: 10px; background: #302044; color: var(--purple-bright); }
 .routing-summary small, .routing-summary strong, .routing-summary code { display: block; }
@@ -483,7 +466,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .key-card-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; padding-left: 46px; border-top: 1px solid #292832; }
 .danger-text { color: #ff8fa3; }
 
-.settings-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.settings-layout { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 12px; }
+.settings-column { display: grid; align-content: start; gap: 12px; min-width: 0; }
 .settings-card { padding: 16px; }
 .settings-heading { display: flex; align-items: flex-start; gap: 11px; margin-bottom: 21px; }
 .settings-icon { display: grid; width: 35px; height: 35px; flex: 0 0 auto; place-items: center; border-radius: 9px; background: #302047; color: #c5a6f9; }
@@ -657,21 +641,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .locale-en .page-intro p {
   max-width: 700px;
   line-height: 1.65;
-}
-
-.locale-en .checklist-row {
-  min-height: 45px;
-  padding-top: 9px;
-  padding-bottom: 9px;
-}
-
-.locale-en .checklist-row > span:nth-child(2) {
-  line-height: 1.35;
-}
-
-.locale-en .checklist-action-label {
-  min-width: 30px;
-  text-align: right;
 }
 
 .locale-en .route-card {
@@ -1109,25 +1078,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .connection-panel-footer > span { display: flex; align-items: center; gap: 7px; }
 .gold-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px rgb(217 173 98 / 52%); }
 
-/* 中文：首次配置改成应用内悬浮引导，完成标记写入持久设置后永久消失。 */
-/* English: First-run setup is a movable in-app guide that permanently disappears after completion. */
-.setup-float { position: fixed; z-index: 18; right: 26px; bottom: 25px; width: min(390px, calc(100vw - 32px)); overflow: hidden; border: 1px solid #66503e; border-radius: 15px; background: linear-gradient(155deg, rgb(37 27 50 / 98%), rgb(21 21 27 / 99%) 68%); box-shadow: 0 24px 70px rgb(0 0 0 / 55%), 0 0 0 1px rgb(154 99 232 / 8%); }
-.setup-float > header { display: flex; align-items: center; gap: 11px; padding: 13px 14px; border-bottom: 1px solid #372f3f; background: linear-gradient(90deg, rgb(154 99 232 / 10%), rgb(217 173 98 / 8%)); cursor: move; touch-action: none; user-select: none; }
-.setup-float > header > div { min-width: 0; flex: 1; }
-.setup-float > header span:first-child, .setup-float > header strong { display: block; }
-.setup-float > header span:first-child { color: var(--gold); font-size: 9px; font-weight: 750; letter-spacing: 1.3px; }
-.setup-float > header strong { margin-top: 3px; font-size: 14px; }
-.setup-float .progress-label { flex: 0 0 auto; }
-.setup-float-close { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #9d94a3; font-size: 18px; cursor: pointer; }
-.setup-float-close:hover { background: rgb(255 255 255 / 6%); color: #fff; }
-.setup-float .checklist { margin: 5px 12px 0; }
-.setup-float > small { display: block; padding: 10px 16px 14px; color: #887f8d; font-size: 9px; line-height: 1.5; }
-.setup-fab { position: fixed; z-index: 17; right: 25px; bottom: 24px; display: flex; align-items: center; gap: 7px; min-height: 39px; padding: 0 13px; border: 1px solid #66503e; border-radius: 999px; background: linear-gradient(135deg, #342247, #2e251e); color: #e6d5ee; box-shadow: 0 14px 38px rgb(0 0 0 / 40%); cursor: pointer; }
-.setup-fab span { color: var(--gold-bright); font-size: 10px; }
-
-/* 中文：设置卡按内容高度排列，语言选择不再被另一列强行拉高。 */
-/* English: Settings cards size to content so the language card no longer has a large void. */
-.settings-layout { align-items: start; }
+/* 中文：设置页按左右内容列组织，避免短卡片被另一列拉出大面积空白。 */
+/* English: Settings use independent content columns so a short card is not stretched by its neighbor. */
 .compact-settings { align-self: start; }
 
 /* 中文：实时记录支持单行紧凑和双行详细两种密度；紧凑模式保留横向滚动条。 */
@@ -1162,14 +1114,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .update-footnote { margin: 10px 0 0; color: #837b87; font-size: 9px; line-height: 1.5; }
 
 @media (max-width: 1050px) {
-  .stable-overview-columns, .setup-complete .stable-overview-columns { grid-template-columns: 1fr; }
+  .stable-overview-columns { grid-template-columns: 1fr; }
   .records-header-actions { align-items: flex-end; flex-direction: column; }
 }
 
 @media (max-width: 680px) {
   .connection-pulse-grid { grid-template-columns: 1fr; }
-  .setup-float { right: 16px; bottom: 16px; }
-  .setup-fab { right: 16px; bottom: 16px; }
   .records-header-actions { width: 100%; align-items: flex-start; }
   .records-header-actions > small { text-align: left; }
 }

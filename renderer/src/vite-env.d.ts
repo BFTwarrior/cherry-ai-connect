@@ -3,7 +3,6 @@ interface DesktopSettings {
   autoLaunch?: boolean;
   startMinimized?: boolean;
   closeToTray?: boolean;
-  setupCompleted?: boolean;
   loginItem?: boolean;
 }
 

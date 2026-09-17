@@ -74,14 +74,18 @@ const singleInstance = app.requestSingleInstanceLock();
 
 app.setAppUserModelId("com.bftwarrior.cherry-ai-connect");
 
-const defaultDesktopSettings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, gatewayPort: DEFAULT_GATEWAY_PORT, setupCompleted: false };
+const defaultDesktopSettings = { language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true, gatewayPort: DEFAULT_GATEWAY_PORT };
 function settingsFile() { return path.join(app.getPath("userData"), "desktop-settings.json"); }
+function normalizeDesktopSettings(value) {
+  const { setupCompleted: _legacySetupCompleted, ...settings } = value && typeof value === "object" ? value : {};
+  return { ...defaultDesktopSettings, ...settings };
+}
 function readDesktopSettings() {
-  try { return { ...defaultDesktopSettings, ...JSON.parse(fs.readFileSync(settingsFile(), "utf8")) }; }
+  try { return normalizeDesktopSettings(JSON.parse(fs.readFileSync(settingsFile(), "utf8"))); }
   catch { return { ...defaultDesktopSettings }; }
 }
 function writeDesktopSettings(value) {
-  const next = { ...defaultDesktopSettings, ...value };
+  const next = normalizeDesktopSettings(value);
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   const temporary = `${settingsFile()}.${process.pid}.tmp`;
   fs.writeFileSync(temporary, JSON.stringify(next, null, 2), "utf8");

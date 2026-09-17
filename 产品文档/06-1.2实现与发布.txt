@@ -1,41 +1,24 @@
 # Cherry AI Connect 1.2 实现与发布
 
-时间：2026-09-17（UTC+8）  
-状态：正式版已发布，GitHub Release 已标记为 Latest。
+发布时间：2026-09-17（UTC+8）　状态：已发布，Latest
 
-## 已完成
+## 本版重点
 
-1. 线路新增、编辑、检测和模型刷新统一进入云同步队列；首次连接 GitHub 仍会立即同步。
-2. 一键更新支持下载、SHA-256 校验、更新前同步、本地备份和覆盖安装；异常启动时尝试恢复备份。
-3. 同一设备更新或同步绝不刷新客户端 API Key；密钥缺失时保护性停止。只有全新设备首次恢复才在本机生成新 Key。
-4. 四步配置改为可拖动悬浮引导；完成状态持久保存，升级、重启和同步后不再出现。
-   - 修复拖动后的定位冲突，悬浮窗不再被顶部和底部同时定位而拉出大面积空白。
-5. 首页完成配置后仍保持左右双栏；语言卡片取消无意义固定空白。
-6. 请求记录支持紧凑单行和详细双行；单行使用局部横向滚动条，选择会保存。
-7. 更新卡片重新显示版本、文件、体积、数据保护、下载和校验进度。
-8. 深灰负责背景，紫色负责主要交互，金色负责指标和重点，语义状态色继续独立使用。
-9. 打包只包含运行需要的源码；未打入开发数据和协议文档。
+- 线路新增、编辑、检测和模型刷新进入同步队列。
+- 更新流程支持下载、SHA-256、备份、覆盖安装和异常恢复。
+- 同设备更新/同步不刷新客户端 API Key；新设备首次恢复才生成本机 Key。
+- 四步引导改为可拖动悬浮窗，完成后永久隐藏；修复拖动后高度被拉伸的问题。
+- 统计记录支持单行/双行；设置、更新卡片和中英双语界面重新排版。
+- 深灰、紫色、金色主题完成统一；打包不包含开发数据和协议文档。
 
-## 安装包与占用
+## 安装包
 
-- 文件：`dist/Cherry-AI-Connect-Setup-1.2.exe`
-- 大小：103,003,789 字节（98.23 MiB）
+- 文件：`Cherry-AI-Connect-Setup-1.2.exe`
+- 大小：103,003,789 bytes（98.23 MiB）
 - SHA-256：`DA52B4F421C1623B3A08DED5838253823D93159F3EBF3F637348DA35A262487F`
-- 相比 1.1 减少约 0.62 MiB；相比 1.00 减少约 8.9 MiB。
-- 打包应用代码约 1.14 MiB，主要体积来自 Electron/Chromium 运行时。
-- 烟雾测试 15 秒后，4 个 Electron 进程的私有工作集合计约 104.2 MiB。内存目标未明显改善，不能宣称已经轻量化。
+- Release：[v1.2](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.2)
+- 下载：[Cherry-AI-Connect-Setup-1.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.2/Cherry-AI-Connect-Setup-1.2.exe)
 
-若要达到 20–30 MiB 安装包和更低内存，需要未来评估 WebView2、Tauri 等运行框架迁移；这不是继续压缩现有 Electron 包即可安全完成的工作。
+自动检查、测试、前端构建和打包均已完成；真实 GitHub 首次同步、新设备恢复、覆盖更新和中断恢复仍按统一验收清单执行。
 
-## 自动证据
-
-- 检查、测试、前端构建和安装包构建均通过；自动测试 23/23。
-- 打包程序可启动本地服务，健康检查显示版本 1.2。
-- 视觉截图位于 `产品文档/验收证据/1.2/`。
-
-## 发布后验收
-
-- 仍需使用真实 GitHub 自动同步、新设备恢复，以及从旧版本到 1.2 的一键更新和 Windows 覆盖安装/中断恢复验收。
-- Release：[v1.2](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.2)。
-- 安装包：[Cherry-AI-Connect-Setup-1.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.2/Cherry-AI-Connect-Setup-1.2.exe)。
-- 不得删除 `data`，不得用重新同步或重新生成客户端 Key 掩盖更新迁移错误。
+安装包体积主要来自 Electron/Chromium 运行时；继续压缩到 20–30 MiB 需要评估 WebView2、Tauri 等框架迁移，不能只靠继续压缩现有包安全实现。

@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.2` 源码、23 项自动测试、视觉验收和 Windows 安装包已完成，并发布到 GitHub Release。真实 GitHub、一键覆盖更新、Cherry Studio 和 Windows 生命周期验收仍按测试文档执行。
+`1.21` 源码、23 项自动测试、视觉验收和 Windows 安装包已完成，并发布到 GitHub Release。真实 GitHub、一键覆盖更新、Cherry Studio 和 Windows 生命周期验收仍按测试文档执行。
 
-Version `1.2` source, 23 automated tests, visual checks, and the Windows installer are complete and published on GitHub Releases. Real GitHub, one-click in-place update, Cherry Studio, and Windows lifecycle checks still follow the tester guide.
+Version `1.21` source, 23 automated tests, visual checks, and the Windows installer are complete and published on GitHub Releases. Real GitHub, one-click in-place update, Cherry Studio, and Windows lifecycle checks still follow the tester guide.
 
 ## 它能做什么 / Features
 
@@ -22,7 +22,7 @@ Version `1.2` source, 23 automated tests, visual checks, and the Windows install
 - 本地请求明细以 50 MB 为上限；只有超限后才清理最早明细，永久累计不会归零。
 - 支持深灰、紫色、金色中英文界面、托盘、开机启动、关闭到托盘同步和手动检查更新。
 - 支持线路批量检测、模型分组折叠，以及默认窗口内完整可读的实时请求记录。
-- 请求记录可切换紧凑单行与详细双行；四步配置使用完成后永久隐藏的悬浮引导。
+- 请求记录可切换紧凑单行与详细双行；1.21 已彻底移除四步配置引导。
 - 线路检测和模型刷新会自动排队同步；同一设备更新或同步不会刷新客户端 Key。
 - 检查到新版后可由用户确认下载、校验、备份并启动覆盖安装。
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
@@ -38,7 +38,7 @@ Version `1.2` source, 23 automated tests, visual checks, and the Windows install
 - Keep local request details up to 50 MB; only the oldest details are removed after the limit is exceeded, while lifetime totals remain intact.
 - Provide a dark gray, purple, and gold bilingual interface, tray support, startup launch, close-to-tray sync, and manual update checks.
 - Support route batch testing, collapsible model groups, and complete live request records in the default window.
-- Switch request records between compact single-line and detailed two-line views; the floating setup guide permanently hides after completion.
+- Switch request records between compact single-line and detailed two-line views; v1.21 removes the four-step setup guide completely.
 - Queue cloud sync after route tests and model refreshes; updates and normal sync never rotate same-device client keys.
 - After user confirmation, download, verify, back up, and start an in-place update.
 - Reset the local connection service by securely selecting an available port from 29,000 candidates.
@@ -47,11 +47,11 @@ Version `1.2` source, 23 automated tests, visual checks, and the Windows install
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.2/Cherry-AI-Connect-Setup-1.2.exe)
-- 当前公开 Release 为 1.2，并标记为 Latest。下载前请核对文件名和 SHA-256。
-- The current public Release is v1.2 and is marked Latest. Verify the filename and SHA-256 before installing.
-- 安装包 SHA-256：`DA52B4F421C1623B3A08DED5838253823D93159F3EBF3F637348DA35A262487F`
-- Installer SHA-256: `DA52B4F421C1623B3A08DED5838253823D93159F3EBF3F637348DA35A262487F`
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe)
+- 当前公开 Release 为 1.21，并标记为 Latest。下载前请核对文件名和 SHA-256。
+- The current public Release is v1.21 and is marked Latest. Verify the filename and SHA-256 before installing.
+- 安装包 SHA-256：`D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`
+- Installer SHA-256: `D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`
 
 ## 安全边界 / Security boundary
 
@@ -259,27 +259,27 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 **中文说明**
 
-当前稳定版 v1.2 的安装包和发布说明位于：
+当前稳定版 v1.21 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.2 安装包直达地址：[Cherry-AI-Connect-Setup-1.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.2/Cherry-AI-Connect-Setup-1.2.exe)。
+当前 1.21 安装包直达地址：[Cherry-AI-Connect-Setup-1.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe)。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
-SHA-256：`DA52B4F421C1623B3A08DED5838253823D93159F3EBF3F637348DA35A262487F`。
+SHA-256：`D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
 **English**
 
-The installer and release notes for the current stable v1.2 are available here:
+The installer and release notes for the current stable v1.21 are available here:
 
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-Direct download: [Cherry-AI-Connect-Setup-1.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.2/Cherry-AI-Connect-Setup-1.2.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `DA52B4F421C1623B3A08DED5838253823D93159F3EBF3F637348DA35A262487F`.
+Direct download: [Cherry-AI-Connect-Setup-1.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
-The v1.2 installer is now published as a GitHub Release asset. Verify the SHA-256 before installation.
+The v1.21 installer is now published as a GitHub Release asset. Verify the SHA-256 before installation.
 
 ## 开发与构建 / Development and build
 
@@ -330,6 +330,8 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 - `产品文档/04-1.1实现与发布.txt`：1.1 完成功能、Release、安装包和哈希。/ v1.1 delivered features, release, installer, and hash.
 - `产品文档/05-待验收与后续计划.txt`：当前待用户验收事项和后续问题登记格式。/ Pending user checks and future issue format.
 - `产品文档/06-1.2实现与发布.txt`：1.2 改动、证据、限制和发布资料。/ v1.2 changes, evidence, limitations, and release data.
+- `产品文档/07-1.21问题与小调整.txt`：1.21 问题、修复、构建和发布资料。/ v1.21 issues, fixes, build, and release data.
+- `产品文档/08-浏览器软件测试通用提示词.txt`：可复用于其他小软件的浏览器测试提示词。/ Reusable browser software testing prompt.
 
 ## 双语注释 / Bilingual comments
 
