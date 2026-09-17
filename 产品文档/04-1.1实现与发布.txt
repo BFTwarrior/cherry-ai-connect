@@ -1,0 +1,31 @@
+# Cherry AI Connect 1.1 实现与发布 / Implementation and release
+
+发布时间：2026-09-17（UTC+8）
+
+## 结论 / Summary
+
+1.1 源码、自动测试、浏览器视觉验收、默认窗口检查、Windows x64 安装包和 GitHub Release 已完成。真实 GitHub、真实线路、Cherry Studio、安装/卸载和托盘生命周期仍需按 `03-测试与验收.txt` 现场验证。
+
+## 本版完成 / Delivered in 1.1
+
+- 使用统计增加永久累计、24 小时至 180 天趋势、实时请求记录和缓存命中率。
+- 请求记录改为可读的两层卡片，清楚展示思考、输入、输出、缓存、总量、首字、总耗时和状态。
+- 线路支持单条检测、全部检测、进度、可用/失败状态和延迟；模型分组可独立折叠。
+- 客户端 Key 名称默认跟随线路；云端恢复缺失密钥时只在本机生成新 Key。
+- GitHub 同步显示上次/下次同步时间，文件使用 UTC+8 时间与唯一编号，并兼容旧编号格式。
+- 关闭窗口隐藏到托盘时触发去重同步；四步引导全部完成后自动收起。
+- 更新模块、深灰/紫色/金色主题、融合式标题栏和模块化代码结构已重做。
+- 只保留必要语言资源并启用高压缩；安装包比 1.00 缩小 7.72%。
+
+## 发布信息 / Release information
+
+- GitHub 仓库：[BFTwarrior/cherry-ai-connect](https://github.com/BFTwarrior/cherry-ai-connect)
+- Release：[v1.1](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.1)
+- Windows x64 安装包：[Cherry-AI-Connect-Setup-1.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.1/Cherry-AI-Connect-Setup-1.1.exe)
+- 文件大小：103,655,174 bytes（约 98.9 MiB）
+- SHA-256：`1AA9C87C617BEDF9A770E375BDEB5D2ACE9CB2BF2F28C093092BE8672D80F06D`
+- Release 状态：公开、非草稿、非预发布、Latest；附件为 1 个安装包。
+
+## 1.00 对照 / Compared with 1.00
+
+1.1 在 1.00 的本地连接、线路、客户端 Key、统计、加密同步和桌面能力基础上，补齐了线路批量检测、可读记录、模型折叠、更新模块、同步时间、生命周期同步和界面重排。1.00 的历史细节不再在当前文档重复维护。

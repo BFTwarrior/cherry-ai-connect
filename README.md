@@ -315,14 +315,12 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 
 ## 文档入口 / Documentation
 
-- `产品文档/00-交付总览与文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version rules, and file boundaries.
-- `产品文档/产品目标.txt`、`产品文档/产品要求.txt`：产品定位、功能规则和安全边界。/ Product goals, functional rules, and safety boundaries.
-- `产品文档/使用说明.txt`：最终用户配置、使用和同步说明。/ End-user setup, usage, and sync instructions.
-- `产品文档/测试人员完整说明.txt`：按顺序执行的现场验收步骤。/ Ordered field acceptance steps for testers.
-- `产品文档/1.1-实现现状与验收报告.txt`：当前 1.1 实现、证据和剩余现场验收。/ Current v1.1 implementation, evidence, and remaining field checks.
-- `产品文档/UI小功能测评问题清单.txt`：当前验收矩阵和剩余现场补测。/ Current acceptance matrix and remaining field checks.
-- `产品文档/浏览器视觉验收方法与操作记录.txt`：浏览器视觉验收步骤和边界。/ Browser visual-acceptance steps and boundaries.
-- `产品文档/版本说明.txt`、`产品文档/踩坑记录.txt`：简要参考。/ Quick references.
+- `产品文档/00-文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version facts, and file boundaries.
+- `产品文档/01-使用说明.txt`：普通用户安装、配置、GitHub 同步和安全提醒。/ End-user setup, GitHub sync, and safety notes.
+- `产品文档/02-开发维护规则.txt`：代码分层、注释、数据规则、安全边界和发布约束。/ Code structure, comments, data rules, security, and release constraints.
+- `产品文档/03-测试与验收.txt`：自动测试、浏览器验收和真实环境验收。/ Automated, browser, and real-environment acceptance.
+- `产品文档/04-1.1实现与发布.txt`：1.1 完成功能、Release、安装包和哈希。/ v1.1 delivered features, release, installer, and hash.
+- `产品文档/05-待验收与后续计划.txt`：当前待用户验收事项和后续问题登记格式。/ Pending user checks and future issue format.
 
 ## 双语注释 / Bilingual comments
 
