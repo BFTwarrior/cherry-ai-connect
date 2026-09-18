@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.21` 源码、23 项自动测试、视觉验收和 Windows 安装包已完成，并发布到 GitHub Release。真实 GitHub、一键覆盖更新、Cherry Studio 和 Windows 生命周期验收仍按测试文档执行。
+`1.22` 源码、24 项自动测试、视觉验收和 Windows 安装包已完成，并发布到 GitHub Release。1.22 修复了 GitHub API 限流时无法读取安装包哈希的问题；真实 GitHub、一键覆盖更新、Cherry Studio 和 Windows 生命周期验收仍按测试文档执行。
 
-Version `1.21` source, 23 automated tests, visual checks, and the Windows installer are complete and published on GitHub Releases. Real GitHub, one-click in-place update, Cherry Studio, and Windows lifecycle checks still follow the tester guide.
+Version `1.22` source, 24 automated tests, visual checks, and the Windows installer are complete and published on GitHub Releases. v1.22 fixes missing installer metadata when the anonymous GitHub API is rate-limited; real GitHub, one-click in-place update, Cherry Studio, and Windows lifecycle checks still follow the tester guide.
 
 ## 它能做什么 / Features
 
@@ -47,11 +47,11 @@ Version `1.21` source, 23 automated tests, visual checks, and the Windows instal
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe)
-- 当前公开 Release 为 1.21，并标记为 Latest。下载前请核对文件名和 SHA-256。
-- The current public Release is v1.21 and is marked Latest. Verify the filename and SHA-256 before installing.
-- 安装包 SHA-256：`D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`
-- Installer SHA-256: `D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.22/Cherry-AI-Connect-Setup-1.22.exe)
+- 当前公开 Release 为 1.22，并标记为 Latest。下载前请核对文件名和 SHA-256。
+- The current public Release is v1.22 and is marked Latest. Verify the filename and SHA-256 before installing.
+- 安装包 SHA-256：`FBC3C8A1097651DEF74FE11C973C0B66224F41C2B1983AC84BBDE0EC408DBA60`
+- Installer SHA-256: `FBC3C8A1097651DEF74FE11C973C0B66224F41C2B1983AC84BBDE0EC408DBA60`
 
 ## 安全边界 / Security boundary
 
@@ -259,27 +259,27 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 **中文说明**
 
-当前稳定版 v1.21 的安装包和发布说明位于：
+当前稳定版 v1.22 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.21 安装包直达地址：[Cherry-AI-Connect-Setup-1.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe)。
+当前 1.22 安装包直达地址：[Cherry-AI-Connect-Setup-1.22.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.22/Cherry-AI-Connect-Setup-1.22.exe)。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
-SHA-256：`D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`。
+SHA-256：`FBC3C8A1097651DEF74FE11C973C0B66224F41C2B1983AC84BBDE0EC408DBA60`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
 **English**
 
-The installer and release notes for the current stable v1.21 are available here:
+The installer and release notes for the current stable v1.22 are available here:
 
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-Direct download: [Cherry-AI-Connect-Setup-1.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `D6C6FBCE9DC4801745F96C6E510DAAD68B52B56CE58829A10287119B44C6E261`.
+Direct download: [Cherry-AI-Connect-Setup-1.22.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.22/Cherry-AI-Connect-Setup-1.22.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `FBC3C8A1097651DEF74FE11C973C0B66224F41C2B1983AC84BBDE0EC408DBA60`.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
-The v1.21 installer is now published as a GitHub Release asset. Verify the SHA-256 before installation.
+The v1.22 installer is now published as a GitHub Release asset. Verify the SHA-256 before installation.
 
 ## 开发与构建 / Development and build
 
@@ -325,13 +325,13 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 
 - `产品文档/00-文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version facts, and file boundaries.
 - `产品文档/01-使用说明.txt`：普通用户安装、配置、GitHub 同步和安全提醒。/ End-user setup, GitHub sync, and safety notes.
-- `产品文档/02-开发维护规则.txt`：代码分层、注释、数据规则、安全边界和发布约束。/ Code structure, comments, data rules, security, and release constraints.
-- `产品文档/03-测试与验收.txt`：自动测试、浏览器验收和真实环境验收。/ Automated, browser, and real-environment acceptance.
-- `产品文档/04-1.1实现与发布.txt`：1.1 完成功能、Release、安装包和哈希。/ v1.1 delivered features, release, installer, and hash.
-- `产品文档/05-待验收与后续计划.txt`：当前待用户验收事项和后续问题登记格式。/ Pending user checks and future issue format.
-- `产品文档/06-1.2实现与发布.txt`：1.2 改动、证据、限制和发布资料。/ v1.2 changes, evidence, limitations, and release data.
-- `产品文档/07-1.21问题与小调整.txt`：1.21 问题、修复、构建和发布资料。/ v1.21 issues, fixes, build, and release data.
-- `产品文档/08-浏览器软件测试通用提示词.txt`：可复用于其他小软件的浏览器测试提示词。/ Reusable browser software testing prompt.
+- `产品文档/流程与规范/10-版本开发、测试与GitHub发布流程.txt`：最高优先级的开发、测试和发布防错流程。/ Highest-priority development, testing, and release safeguards.
+- `产品文档/流程与规范/02-开发维护规则.txt`：代码分层、注释、数据规则和安全边界。/ Code structure, comments, data rules, and security boundaries.
+- `产品文档/流程与规范/03-测试与验收.txt`：本项目自动测试、浏览器验收和真实环境验收。/ Project-specific automated, browser, and real-environment acceptance.
+- `产品文档/流程与规范/05-待验收与后续计划.txt`：当前待验收事项和下个版本问题登记。/ Current acceptance items and next-version issue tracking.
+- `产品文档/流程与规范/08-浏览器软件测试通用提示词.txt`：通用的浏览器启动、运行和自主测试路径提示词。/ Generic browser launch, runtime, and self-generated test-path prompt.
+- `产品文档/版本记录/09-1.22更新校验问题.txt`：1.22 已发布的专项修复记录。/ Published v1.22 focused fix record.
+- `产品文档/版本记录/11-1.23修复计划.txt`：1.23 首个待修复问题。/ First planned v1.23 fix.
 
 ## 双语注释 / Bilingual comments
 

@@ -12,6 +12,7 @@ const { pathToFileURL } = require("node:url");
 const { chooseGatewayPort } = require("./port-selector");
 const { resolveRuntimePaths } = require("./runtime-paths");
 const { createUpdateBackup, downloadVerifiedInstaller, restoreUpdateBackupIfNeeded } = require("./update-manager");
+const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
@@ -177,14 +178,10 @@ function releaseResult(latestVersion, releaseUrl, publishedAt = "", asset = null
   };
 }
 
-function releaseBodySha256(body) {
-  return String(body || "").match(/SHA-?256\s*[:：]\s*`?([a-f0-9]{64})/i)?.[1]?.toLowerCase() || "";
-}
-
 function fetchLatestReleaseFromApi() {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_API, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "Cherry-AI-Connect" },
+      headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "Cherry-AI-Connect" },
       timeout: 12000,
     }, (response) => {
       const chunks = [];
@@ -213,8 +210,30 @@ function fetchLatestReleaseFromApi() {
   });
 }
 
-// 中文：匿名 GitHub API 被限流时，从 releases/latest 的官方跳转地址读取版本。
-// English: If the anonymous GitHub API is rate-limited, read the tag from the official releases/latest redirect.
+function requestText(url, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      headers: { "user-agent": "Cherry-AI-Connect", ...headers },
+      timeout: 12000,
+    }, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          reject(new Error(`GitHub page request failed (HTTP ${response.statusCode || 0})`));
+          return;
+        }
+        resolve(Buffer.concat(chunks).toString("utf8"));
+      });
+    });
+    request.on("timeout", () => request.destroy(new Error("GitHub page request timed out")));
+    request.on("error", reject);
+  });
+}
+
+// 中文：匿名 GitHub API 被限流时，读取官方 Release 页面和资产片段，保留安装包 URL 与 SHA-256。
+// English: If the anonymous GitHub API is rate-limited, read the official Release page and asset
+// fragment so the installer URL and SHA-256 remain available without weakening verification.
 function fetchLatestReleaseFromRedirect() {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_LATEST_PAGE, {
@@ -228,7 +247,19 @@ function fetchLatestReleaseFromRedirect() {
         : "";
       response.resume();
       if (response.statusCode >= 300 && response.statusCode < 400 && tag) {
-        resolve(releaseResult(tag.replace(/^v/i, ""), releaseUrl));
+        void (async () => {
+          const releaseHtml = await requestText(releaseUrl);
+          const page = releasePageMetadata(releaseHtml);
+          const expandedUrl = page.expandedAssetsUrl || `${RELEASE_PAGE_PREFIX}releases/expanded_assets/${encodeURIComponent(`v${tag.replace(/^v/i, "")}`)}`;
+          let asset = null;
+          try {
+            asset = expandedReleaseAsset(await requestText(expandedUrl), page.sha256);
+          } catch {
+            // 中文：页面元数据不可用时仍返回版本，但没有可信哈希就继续禁止安装。
+            // English: Keep the version result when metadata is unavailable; installation remains blocked without a trusted hash.
+          }
+          resolve(releaseResult(tag.replace(/^v/i, ""), releaseUrl, page.publishedAt, asset));
+        })().catch(reject);
       } else {
         reject(new Error(`GitHub Release 检查失败（HTTP ${response.statusCode || 0}）`));
       }

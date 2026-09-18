@@ -17,7 +17,7 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.21";
+const gatewayVersion = "1.22";
 const supportedReasoningLevels = ["low", "medium", "high", "xhigh", "max"];
 
 fs.mkdirSync(dataDir, { recursive: true });

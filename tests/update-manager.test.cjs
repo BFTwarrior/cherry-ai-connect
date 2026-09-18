@@ -9,6 +9,11 @@ const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const {
+  expandedReleaseAsset,
+  releaseBodySha256,
+  releasePageMetadata,
+} = require("../electron/release-metadata");
+const {
   createUpdateBackup,
   normalizeSha256,
   restoreUpdateBackupIfNeeded,
@@ -59,4 +64,22 @@ test("update helpers reject unsafe versions and normalize trusted checksums", ()
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("release metadata keeps the installer verifiable when GitHub API digest is absent", () => {
+  const hash = "d6c6fbce9dc4801745f96c6e510daad68b52b56ce58829a10287119b44c6e261";
+  const releasePage = `<li>SHA-256: ${hash}</li><relative-time datetime="2026-09-17T19:56:23Z"></relative-time><include-fragment src="https://github.com/BFTwarrior/cherry-ai-connect/releases/expanded_assets/v1.21"></include-fragment>`;
+  const metadata = releasePageMetadata(releasePage);
+  assert.equal(metadata.sha256, hash);
+  assert.equal(metadata.publishedAt, "2026-09-17T19:56:23Z");
+  assert.equal(metadata.expandedAssetsUrl, "https://github.com/BFTwarrior/cherry-ai-connect/releases/expanded_assets/v1.21");
+  assert.equal(releaseBodySha256("SHA256: `" + hash + "`"), hash);
+
+  const asset = expandedReleaseAsset(`<a href="/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe"><span>Cherry-AI-Connect-Setup-1.21.exe</span></a><span>sha256:${hash}</span>`);
+  assert.deepEqual(asset, {
+    name: "Cherry-AI-Connect-Setup-1.21.exe",
+    url: "https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.21/Cherry-AI-Connect-Setup-1.21.exe",
+    size: 0,
+    sha256: hash,
+  });
 });

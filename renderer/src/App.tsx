@@ -13,7 +13,7 @@ import { Icon } from "./ui/Icon";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.21";
+const VERSION = "1.22";
 
 
 const levels: ReasoningLevel[] = ["low", "medium", "high", "xhigh", "max"];
