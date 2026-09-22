@@ -410,6 +410,55 @@
   white-space: nowrap;
 }
 
+/* All reasoning labels use the same gold face; purple remains a surface color only. */
+.reasoning-select-trigger > span,
+.reasoning-menu button > span,
+.menu-select-trigger > span,
+.settings-level-menu .menu-select-option > span,
+.reasoning-form-menu .menu-select-option > span {
+  color: #f4cf82 !important;
+  font-weight: 800;
+  letter-spacing: .45px;
+  text-shadow: 0 1px 0 rgb(255 240 180 / 65%), 0 2px 6px rgb(217 173 98 / 28%);
+}
+
+/* The client-key card's reasoning value is centered beneath its field label. */
+.key-card-details > div:nth-child(2) {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.key-card-details > div:nth-child(2) .level-chip {
+  align-self: center;
+}
+
+/* Form menus use the same dimensions and gold-edged treatment as settings menus. */
+.form-menu-select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.form-menu-select .menu-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  border-color: rgb(115 84 145 / 72%);
+  background: #111116 !important;
+  color: #f4cf82;
+}
+
+.form-menu-select .menu-select-menu {
+  right: 0;
+  left: 0;
+  min-width: 100%;
+  width: 100%;
+  max-width: none;
+  border-color: rgb(203 157 73 / 88%) !important;
+}
+
 /* Custom select menus use the same dark glass language as the reasoning menu. */
 .menu-select {
   position: relative;

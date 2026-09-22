@@ -286,7 +286,16 @@ async function downloadAndInstallLatestUpdate() {
   if (updateRun) return updateRun;
   updateRun = (async () => {
     emitUpdateProgress({ stage: "checking", percent: 0 });
-    const release = await fetchLatestRelease();
+    let release;
+    try {
+      release = await fetchLatestRelease();
+    } catch (error) {
+      const raw = String(error?.message || error || "");
+      if (/(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|GitHub request timed out|connect timed out)/i.test(raw)) {
+        throw new Error("update_github_network_timeout");
+      }
+      throw error;
+    }
     if (!release.updateAvailable) return { ok: true, updateAvailable: false, release };
     if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
     const installerDir = path.join(updateRecoveryRoot, "installers");

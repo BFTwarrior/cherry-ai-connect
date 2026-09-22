@@ -54,6 +54,16 @@ function compareVersions(left, right) {
   return 0;
 }
 
+function canRepairConsumedRecovery(targetVersion, currentVersion) {
+  if (!currentVersion) return false;
+  const target = safeVersion(targetVersion).split(".").map(Number);
+  const current = safeVersion(currentVersion).split(".").map(Number);
+  if ((target[0] || 0) !== (current[0] || 0)) return false;
+  const targetMinor = target[1] || 0;
+  const currentMinor = current[1] || 0;
+  return targetMinor === currentMinor || targetMinor === currentMinor - 1;
+}
+
 function recoveryPointerFile(legacyUserDataRoot) {
   return path.join(path.resolve(legacyUserDataRoot), POINTER_NAME);
 }
@@ -95,14 +105,42 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, curr
   const backupRoot = path.resolve(String(pointer.backupRoot));
   const manifest = readJson(path.join(backupRoot, "recovery-manifest.json"));
   if (!manifest || path.resolve(String(manifest.backupRoot || "")) !== backupRoot) return { restored: false, reason: "invalid-update-backup" };
+  const targetVersion = safeVersion(manifest.targetVersion || pointer.targetVersion);
   // 中文：恢复指针是一次性事务。首次启动已经消费后，后续启动绝不能再次用旧备份覆盖新数据。
   // English: A recovery pointer is a one-shot transaction. Once consumed, later launches must never
   // reuse the old backup to overwrite newer local data.
   if (pointer.restoredAt) {
-    if (!criticalDataIsPresent(destination)) throw new Error("update_recovery_data_missing_after_consumption");
+    if (!criticalDataIsPresent(destination)) {
+      // 中文：1.31 的首次恢复可能在安装器完成后留下“已消费指针”，但网关数据尚未完整落盘，
+      // 这必须允许一次受版本限制的修复恢复；否则主进程会在启动阶段直接崩溃。
+      // English: A 1.31 first restore could leave a consumed pointer while gateway data was not
+      // fully materialized. Allow one version-bounded repair instead of crashing the main process.
+      if (pointer.recoveryRepairAt || !canRepairConsumedRecovery(pointer.targetVersion || manifest.targetVersion, currentVersion)) {
+        throw new Error("update_recovery_data_missing_after_consumption");
+      }
+      const sourceGateway = path.join(backupRoot, "gateway-data");
+      if (!criticalDataIsPresent(backupRoot)) throw new Error("update_recovery_backup_incomplete");
+      const destinationGateway = path.join(destination, "gateway-data");
+      if (fs.existsSync(destinationGateway) && fs.readdirSync(destinationGateway).length) {
+        throw new Error("update_recovery_partial_data_after_consumption");
+      }
+      fs.mkdirSync(destination, { recursive: true });
+      fs.cpSync(sourceGateway, destinationGateway, { recursive: true, errorOnExist: false });
+      const settingsBackup = path.join(backupRoot, "desktop-settings.json");
+      const settingsDestination = path.join(destination, "desktop-settings.json");
+      if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsBackup, settingsDestination);
+      if (!criticalDataIsPresent(destination)) throw new Error("update_recovery_repair_verification_failed");
+      atomicJson(recoveryPointerFile(legacyUserDataRoot), {
+        ...manifest,
+        ...pointer,
+        recoveryRepairAt: new Date().toISOString(),
+        repairedTo: destination,
+        restoreReason: "gateway-data-repaired-after-consumption",
+      });
+      return { restored: true, reason: "gateway-data-repaired-after-consumption", backupRoot, targetVersion };
+    }
     return { restored: false, reason: "update-backup-already-consumed", backupRoot };
   }
-  const targetVersion = safeVersion(manifest.targetVersion || pointer.targetVersion);
   if (currentVersion) {
     const versionRelation = compareVersions(targetVersion, currentVersion);
     if (versionRelation !== 0) {
@@ -218,6 +256,7 @@ module.exports = {
   normalizeSha256,
   recoveryPointerFile,
   restoreUpdateBackupIfNeeded,
+  canRepairConsumedRecovery,
   safeVersion,
   sha256File,
 };

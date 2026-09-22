@@ -15,6 +15,7 @@ const {
 } = require("../electron/release-metadata");
 const {
   createUpdateBackup,
+  canRepairConsumedRecovery,
   normalizeSha256,
   restoreUpdateBackupIfNeeded,
   safeVersion,
@@ -98,6 +99,9 @@ test("consumed recovery pointers are one-shot", () => {
     const first = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31" });
     assert.equal(first.restored, true);
     fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    const repaired = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31" });
+    assert.equal(repaired.reason, "gateway-data-repaired-after-consumption");
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
     assert.throws(
       () => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31" }),
       /update_recovery_data_missing_after_consumption/,
@@ -106,6 +110,36 @@ test("consumed recovery pointers are one-shot", () => {
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("consumed recovery pointer can repair the immediate next version once", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-repair-test-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.31" });
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    const pointerFile = path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json");
+    const pointer = JSON.parse(fs.readFileSync(pointerFile, "utf8"));
+    fs.writeFileSync(pointerFile, JSON.stringify({ ...pointer, restoredAt: new Date().toISOString() }), "utf8");
+    const repaired = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.32" });
+    assert.equal(repaired.reason, "gateway-data-repaired-after-consumption");
+    assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", ".gateway-secret"), "utf8"), "local-secret");
+    assert.throws(() => {
+      fs.rmSync(path.join(runtimeDataRoot, "gateway-data"), { recursive: true, force: true });
+      restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.32" });
+    }, /update_recovery_data_missing_after_consumption/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("recovery repair is limited to the same or immediate next minor version", () => {
+  assert.equal(canRepairConsumedRecovery("1.31", "1.31"), true);
+  assert.equal(canRepairConsumedRecovery("1.31", "1.32"), true);
+  assert.equal(canRepairConsumedRecovery("1.21", "1.32"), false);
+  assert.equal(canRepairConsumedRecovery("2.31", "1.32"), false);
 });
 
 test("update helpers reject unsafe versions and normalize trusted checksums", () => {

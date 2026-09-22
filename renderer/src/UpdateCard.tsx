@@ -20,9 +20,14 @@ function readableUpdateError(reason: unknown, language: Language) {
     ["update_checksum_mismatch", "安装包校验失败，文件已删除，未运行安装器。", "Installer verification failed. The file was removed and not launched."],
     ["update_source_data_incomplete", "本地数据尚未准备完整，已停止更新以免丢失数据。", "Local data is incomplete, so the update stopped to prevent data loss."],
     ["update_installer_missing", "新版 Release 中没有找到 Windows 安装包。", "No Windows installer was found in the new Release."],
+    ["update_github_network_timeout", "连接 GitHub 更新服务超时；这与上游 API Key 无关。请检查网络或代理后重试。", "The GitHub update service timed out; this is unrelated to an upstream API key. Check the network or proxy and retry."],
+    ["update_github_network_unavailable", "暂时无法连接 GitHub 更新服务；这与上游 API Key 无关。请检查网络后重试。", "The GitHub update service is temporarily unavailable; this is unrelated to an upstream API key. Check the network and retry."],
     ["sync_", "更新前云同步未完成；当前版本和本地数据保持不变。", "Pre-update cloud sync did not complete; the current version and local data remain unchanged."],
   ];
   const match = messages.find(([code]) => raw.includes(code));
+  if (!match && /(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|GitHub request timed out|connect timed out)/i.test(raw)) {
+    return tr("连接 GitHub 更新服务超时或暂时不可用；这与上游 API Key 无关。请检查网络或代理后重试。", "The GitHub update service timed out or is temporarily unavailable; this is unrelated to an upstream API key. Check the network or proxy and retry.");
+  }
   return match ? tr(match[1], match[2]) : raw;
 }
 
@@ -86,7 +91,7 @@ export function UpdateCard({ language, currentVersion }: { language: Language; c
 
   return <article className="settings-card update-card">
     <div className="update-card-header">
-      <div className="settings-heading"><span className="settings-icon update-icon"><Icon name="shield" size={17} /></span><div><h3>{tr("安全更新", "Safe updates")}</h3><p>{tr("一键下载、校验、同步并备份数据，再安装新版本。", "Download, verify, sync, back up, and install in one flow.")}</p></div></div>
+      <div className="settings-heading"><span className="settings-icon update-icon"><Icon name="shield" size={17} /></span><div><h3>{tr("安全更新", "Safe updates")}</h3><p>{tr("一键下载、校验、同步并备份数据，再安装新版本；不要求填写上游 API Key。", "Download, verify, sync, back up, and install in one flow; an upstream API key is not required.")}</p></div></div>
       <span className={`update-state ${state}`}><i />{stateText}</span>
     </div>
     <div className="update-version-grid">
@@ -103,5 +108,6 @@ export function UpdateCard({ language, currentVersion }: { language: Language; c
       {result?.updateAvailable && <button type="button" className="button button-primary update-install-button" onClick={() => void install()} disabled={!canInstall || installing}>{installing ? stageText : tr("下载并更新", "Download and update")}</button>}
     </div>
     <div className="update-footnote">{tr("更新不会刷新同一设备上的客户端 API Key；只有新设备首次同步才会生成新 Key。", "Updates never rotate client API keys on this device; only a new device creates keys on first sync.")}</div>
+    <div className="update-footnote update-local-mode-note">{tr("上游 API Key 可以留空；本地配置、界面和安全更新不依赖它。只有调用上游线路时才需要填写。", "An upstream API key may remain empty; local configuration, the interface, and safe updates do not depend on it. It is only needed when calling an upstream route.")}</div>
   </article>;
 }

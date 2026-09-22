@@ -1,0 +1,77 @@
+# Cherry AI Connect 1.32：安全更新、恢复修复与思考强度菜单验收
+
+## 版本目标
+
+- 产品正式版本：`1.32.0`
+- 网关健康检查版本：`1.32`
+- 发布标签：`v1.32`
+- 修复范围：1.31 启动崩溃、无上游 API Key 用户的安全更新体验、思考强度视觉和菜单一致性。
+
+## 严重问题修复
+
+### 1.31 启动崩溃
+
+1.31 在启动阶段遇到已消费但本地网关数据缺失的恢复指针时，抛出 `update_recovery_data_missing_after_consumption`，导致 Electron 主进程直接弹出 JavaScript 错误并无法打开。
+
+1.32 增加一次受版本限制的修复恢复：
+
+- 只允许目标版本与当前版本相同，或为当前版本的直接前一小版本。
+- 只在备份完整且当前目录为空时恢复。
+- 修复恢复最多执行一次，并写入 `recoveryRepairAt`。
+- 部分数据目录、旧版本远期备份和再次修复仍保护性停止，避免旧数据静默覆盖。
+
+### 无上游 API Key 的用户
+
+- 安全更新不读取、不要求上游 API Key。
+- 本地界面、配置保存和更新下载与上游线路 Key 分离。
+- GitHub 超时、GitHub 凭据失败、同步失败、安装包校验失败和线路 Key 缺失分别显示不同原因。
+- 没有上游 API Key 时，只有实际调用上游线路才会报告线路 Key 缺失。
+
+## 界面修复
+
+- 顶部和设置页的思考强度名称统一使用金色字体。
+- 客户端 Key 卡片的思考强度值在字段标题下方居中。
+- 客户端 Key 编辑弹窗的线路和思考强度下拉菜单改为统一的金紫玻璃菜单，不再使用 Windows 原生蓝色菜单。
+- 使用统计菜单保持原有独立样式，不纳入本次改动。
+
+## 验收标准
+
+- `npm run check`、`npm test`、`npm run renderer:build` 通过。
+- 覆盖恢复、已消费指针修复恢复、再次修复保护和旧版本指针拒绝测试通过。
+- 安装包启动后 `/health` 返回 `version: 1.32`。
+- 1.31 Release 不再作为当前有效发布入口；v1.32 成为唯一 Latest Release。
+- GitHub Release 仅包含 v1.32 的安装包、blockmap、Web Demo 和 `latest.yml`。
+
+## 发布前重点核查
+
+- 不填写任何上游 API Key 时启动设置页和更新卡片。
+- 1.31 已消费恢复指针且 `gateway-data` 缺失时安装 1.32，确认能完成一次修复恢复并正常启动。
+- 连续第二次删除网关数据后启动，确认不会无限重复恢复。
+- 打开顶部思考强度、设置页思考强度、客户端 Key 编辑菜单，确认三处均为金紫新版菜单。
+- 核对 1.31 Release 的公开状态、Latest 状态和直接下载链接，避免用户误装问题版本。
+
+## 发布结果
+
+状态：本地构建与自动回归已完成；GitHub 发布和真实 Windows 启动验收需以最终公开 Release 与安装机证据为准。
+
+本地构建证据：
+
+- `npm run check`：通过。
+- `npm test`：34 项通过，0 项失败。
+- `npm run renderer:build`：通过。
+- `npm run dist`：通过，生成 Windows x64 安装包。
+- `npm run web-demo:build`：通过，生成 Web Demo 压缩包。
+- `dist/win-unpacked/resources/app.asar` 已核对包含一次性恢复修复和新版菜单资源。
+
+安装包：`Cherry-AI-Connect-Setup-1.32.exe`
+安装包大小：`103025997` bytes
+SHA-256：`B38E6D11C83DFA69F229912D0662CCF7B78F6E312D6CB652A83FA8E43EBC4593`
+Blockmap SHA-256：`6D40785FAC42C75E1F231E60B0C35C81D8370B7BA3FDEF95B6E82A80909F15A4`
+Web Demo SHA-256：`CE3C965407D9019201911CBAD28D75784F97BC7C4D80E863023F7668BE0B1498`
+`latest.yml` SHA-256：`3DBD13A6F23591F1B9745FD37364FE2C5DC8599DD18365119A5B2A5C0D3EEFF9`
+安装包 SHA-512（latest.yml）：`H1JpDA85DzDZJ4KJtpnqfuXg2EejExR5UL7zacJe0VpiCnE6skoCJ58PTBggb1to+GEhJLC/u4guMPgVVOR3WA==`
+
+GitHub Release：待上传后填写公开地址和最终资产核对结果。
+1.31 撤回：必须在 v1.32 发布成功后将 v1.31 标记为不可用/非当前有效版本，保留历史提交和本地文件。
+未完成项：真实 Windows 安装启动、1.31 已消费恢复指针现场升级、无上游 API Key 的完整更新链路、GitHub 真实同步成功与断网恢复。
+风险与后续动作：发布后核对 Latest、v1.32 四项资产、README 直链和 v1.31 撤回状态；任何一项不一致都不得宣称正式版完成。

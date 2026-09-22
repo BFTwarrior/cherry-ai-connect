@@ -9,11 +9,12 @@ import { CloudSyncCard } from "./CloudSyncCard";
 import { ClientKeyForm } from "./ClientKeyForm";
 import type { ClientKey, ClientRequestStatus, ConfirmDialogOptions, ConfirmDialogState, DesktopSettings, GatewaySettings, GatewayStatus, Language, ModalState, Provider, ReasoningLevel, SyncProgress, ToastState, ToastTone, View } from "./app-types";
 import { Icon } from "./ui/Icon";
+import { MenuSelect } from "./ui/MenuSelect";
 
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.31";
+const VERSION = "1.32";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
 const DEMO_PROVIDERS: Provider[] = [
@@ -87,34 +88,6 @@ function levelLabel(level: ReasoningLevel | undefined) {
 
 function reasoningOptionLabel(level: ReasoningLevel | undefined, language: Language) {
   return String(level || "unchanged").toUpperCase();
-}
-
-type MenuSelectOption = { value: string; label: string };
-
-function MenuSelect({ value, options, onChange, ariaLabel, className = "", disabled = false }: { value: string; options: MenuSelectOption[]; onChange: (value: string) => void; ariaLabel: string; className?: string; disabled?: boolean }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const selected = options.find((option) => option.value === value);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleOutside = (event: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [open]);
-
-  return <div className={`menu-select ${className} ${open ? "is-open" : ""}`} ref={rootRef}>
-    <button type="button" className="menu-select-trigger" onClick={() => setOpen((current) => !current)} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}>
-      <span>{selected?.label || value}</span><Icon name="chevron" size={13} />
-    </button>
-    {open && <div className="menu-select-menu" role="listbox" aria-label={ariaLabel}>
-      {options.map((option) => <button type="button" role="option" aria-selected={option.value === value} className={`menu-select-option ${option.value === value ? "selected" : ""}`} key={option.value} onClick={() => { onChange(option.value); setOpen(false); }}>
-        <span>{option.label}</span>{option.value === value && <Icon name="check" size={13} />}
-      </button>)}
-    </div>}
-  </div>;
 }
 
 function initials(name: string) {
