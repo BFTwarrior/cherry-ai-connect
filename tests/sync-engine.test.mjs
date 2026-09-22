@@ -157,6 +157,75 @@ test("manifest is uploaded last and an interrupted candidate never clears the ou
   }
 });
 
+test("usage sync continues when the local vault key is unavailable", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-sync-vault-unavailable-"));
+  const ledger = ledgerAt(root, "aaaa");
+  const provider = new FakeProvider();
+  const source = sourceFor(ledger);
+  const vault = { getEnvelope: async () => { throw new Error("vault_local_key_unavailable"); } };
+  try {
+    append(ledger, "evt_vault_unavailable", 25);
+    const result = await new SyncEngine({ provider, source, vault }).sync("vault-recovery");
+    assert.equal(result.state, "IDLE");
+    assert.equal(result.warning, "sync_vault_unavailable_usage_only");
+    assert.equal(ledger.pendingUsage().length, 0);
+    const latest = await readLatestManifest(provider, datasetId);
+    assert.ok(latest.manifest.files.some((item) => item.type === "summary"));
+    assert.ok(latest.manifest.files.some((item) => item.type === "usage-segment"));
+    assert.equal(latest.manifest.files.some((item) => item.type === "vault"), false);
+  } finally {
+    ledger.close();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("usage-only sync preserves the latest remote encrypted configuration", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-sync-usage-only-"));
+  const sharedDataset = "ds_71995f2c-7f5a-7b21-a8d2-6dfc50f4a901";
+  const provider = new FakeProvider();
+  const remoteConfig = { id: "route-remote", name: "Remote Route", baseUrl: "https://remote.example.com", apiKey: "remote-secret" };
+  const remoteSource = new ConfigSource({ dataset: sharedDataset, deviceId: "dev_remote", revision: 2, provider: remoteConfig });
+  const localSource = new ConfigSource({
+    dataset: sharedDataset,
+    deviceId: "dev_local",
+    revision: 1,
+    provider: { id: "route-local", name: "Local Route", baseUrl: "https://local.example.com", apiKey: "local-secret" },
+  });
+  const remoteVault = vaultAt(root, "remote-vault");
+  try {
+    await remoteVault.initialize({ datasetId: sharedDataset, secrets: remoteSource.secureConfig, password: "remote-password", kdfOptions: { t: 1, m: 1024, p: 1 } });
+    await new SyncEngine({ provider, source: remoteSource, vault: remoteVault }).sync("seed-cloud");
+    localSource.events.push({
+      eventId: "evt_usage_only",
+      at: new Date().toISOString(),
+      deviceId: "dev_local",
+      deviceEpoch: 1,
+      sequence: 1,
+      providerId: "route-local",
+      providerName: "Local Route",
+      clientKeyId: "client-local",
+      clientKeyName: "Client Local",
+      model: "gpt-test",
+      endpoint: "/v1/chat/completions",
+      method: "POST",
+      reasoningLevel: "high",
+      status: 200,
+      inputTokens: 12,
+      totalTokens: 12,
+    });
+
+    const result = await new SyncEngine({ provider, source: localSource }).sync("usage-only", { syncUpstream: false });
+    const latest = await readLatestManifest(provider, sharedDataset);
+    assert.equal(result.state, "IDLE");
+    assert.equal(localSource.replacements, 0);
+    assert.equal(localSource.publicConfig.providers[0].name, "Local Route");
+    assert.equal(localSource.events.length, 0);
+    assert.ok(latest.manifest.files.some((item) => item.type === "config"));
+    assert.ok(latest.manifest.files.some((item) => item.type === "vault"));
+    assert.ok(latest.manifest.files.some((item) => item.type === "usage-segment"));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("sync asset names use UTC+8 timestamps while legacy manifest names stay readable", () => {
   const date = new Date("2026-09-17T06:30:25.123Z");
   const syncId = "sync_00000000-0000-0000-0000-000000000000";

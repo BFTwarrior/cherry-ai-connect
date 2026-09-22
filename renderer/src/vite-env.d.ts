@@ -37,6 +37,7 @@ interface UpdateProgress {
 
 interface CloudSyncStatus {
   enabled: boolean;
+  syncUpstream: boolean;
   connected: boolean;
   provider: "github";
   owner: string;
@@ -80,7 +81,7 @@ interface Window {
     downloadAndInstallUpdate: () => Promise<{ ok: boolean; updateAvailable: boolean; launched?: boolean; version?: string }>;
     onUpdateProgress: (listener: (progress: UpdateProgress) => void) => () => void;
     getSyncStatus: () => Promise<CloudSyncStatus>;
-    connectGitHub: (value: { token: string; repository: string; password: string }) => Promise<GitHubConnectResult>;
+    connectGitHub: (value: { token: string; repository: string; password: string; syncUpstream?: boolean }) => Promise<GitHubConnectResult>;
     syncNow: () => Promise<CloudSyncStatus>;
     setSyncEnabled: (enabled: boolean) => Promise<CloudSyncStatus>;
     unlockSyncVault: (value: { password?: string; recoveryCode?: string }) => Promise<{ ok: boolean; status: CloudSyncStatus }>;

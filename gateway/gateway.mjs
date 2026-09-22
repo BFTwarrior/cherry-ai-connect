@@ -17,8 +17,9 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.22";
-const supportedReasoningLevels = ["low", "medium", "high", "xhigh", "max"];
+const gatewayVersion = "1.30";
+// 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
+const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 
 fs.mkdirSync(dataDir, { recursive: true });
 
@@ -150,7 +151,7 @@ function decrypt(value) {
 
 let config = readJson(configFile, {
   version: 1,
-  forcedLevel: "high",
+  forcedLevel: "unchanged",
   defaultProvider: "",
   providers: [],
   clientKeys: [],
@@ -185,7 +186,7 @@ function migrateConfig() {
     counter: Math.max(0, Number(config.configRevision?.counter) || 0),
     deviceId: String(config.configRevision?.deviceId || usageLedger.identity.deviceId),
   };
-  config.forcedLevel = validReasoningLevel(config.forcedLevel) ? config.forcedLevel : "high";
+  config.forcedLevel = validReasoningLevel(config.forcedLevel) ? config.forcedLevel : "unchanged";
   config.providers = Array.isArray(config.providers) ? config.providers : [];
   config.clientKeys = Array.isArray(config.clientKeys) ? config.clientKeys : [];
   const requestStatus = ["never", "pending", "ok", "error"].includes(config.lastClientRequest?.status)
@@ -332,7 +333,9 @@ function selectProvider(model) {
 
 function forceReasoning(payload, pathname, levelOverride = "") {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return;
-  const level = validReasoningLevel(levelOverride) ? levelOverride : (config.forcedLevel || "high");
+  const level = validReasoningLevel(levelOverride) ? levelOverride : (config.forcedLevel || "unchanged");
+  // 中文：不做更改时保留客户端已有字段；English: preserve the client's original reasoning fields.
+  if (level === "unchanged") return;
   if (pathname.includes("/responses")) {
     payload.reasoning = { ...(payload.reasoning && typeof payload.reasoning === "object" ? payload.reasoning : {}), effort: level };
     if (Object.prototype.hasOwnProperty.call(payload, "reasoning_effort")) payload.reasoning_effort = level;
@@ -402,7 +405,7 @@ async function proxyRequest(req, res, rawBody) {
     model: String(payload.model || ""),
     endpoint: pathname,
     method: String(req.method || "POST"),
-    reasoningLevel: validReasoningLevel(client.reasoningLevel) ? client.reasoningLevel : (config.forcedLevel || "high"),
+    reasoningLevel: validReasoningLevel(client.reasoningLevel) ? client.reasoningLevel : (config.forcedLevel || "unchanged"),
     stream: Boolean(payload.stream),
   };
   const consumeSseLine = (line) => {
@@ -539,8 +542,8 @@ async function admin(req, res, url) {
     return res.end(fs.readFileSync(adminFile, "utf8"));
   }
   if (url.pathname === "/admin/api/providers" && req.method === "GET") return json(res, 200, { version: gatewayVersion, providers: config.providers.map(providerView) });
-  if (url.pathname === "/admin/api/settings" && req.method === "GET") return json(res, 200, { forcedLevel: config.forcedLevel || "high", defaultProvider: config.defaultProvider || "", reasoningLevels: supportedReasoningLevels });
-  if (url.pathname === "/admin/api/status" && req.method === "GET") return json(res, 200, { version: gatewayVersion, forcedLevel: config.forcedLevel || "high", lastClientRequestAt, lastClientRequestStatus, lastClientRequestModel, ledger: usageLedger.status() });
+  if (url.pathname === "/admin/api/settings" && req.method === "GET") return json(res, 200, { forcedLevel: config.forcedLevel || "unchanged", defaultProvider: config.defaultProvider || "", reasoningLevels: supportedReasoningLevels });
+  if (url.pathname === "/admin/api/status" && req.method === "GET") return json(res, 200, { version: gatewayVersion, forcedLevel: config.forcedLevel || "unchanged", lastClientRequestAt, lastClientRequestStatus, lastClientRequestModel, ledger: usageLedger.status() });
   if (url.pathname === "/admin/api/usage" && req.method === "GET") return json(res, 200, usageSnapshot(url));
   if (url.pathname === "/admin/api/providers" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
@@ -615,14 +618,14 @@ async function admin(req, res, url) {
     return json(res, 200, { ok: true, forcedLevel: config.forcedLevel, defaultProvider: config.defaultProvider, reasoningLevels: supportedReasoningLevels });
   }
   if (url.pathname === "/admin/api/client-keys" && req.method === "GET") {
-    return json(res, 200, { keys: config.clientKeys.map((item) => ({ id: item.id, name: item.name, nameCustomized: item.nameCustomized === true, providerId: item.providerId, providerName: config.providers.find((provider) => provider.id === item.providerId)?.name || "未绑定", reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : config.forcedLevel || "high", createdAt: item.createdAt, enabled: item.enabled !== false, hasSecret: Boolean(item.keyEnc && decrypt(item.keyEnc)) })) });
+    return json(res, 200, { keys: config.clientKeys.map((item) => ({ id: item.id, name: item.name, nameCustomized: item.nameCustomized === true, providerId: item.providerId, providerName: config.providers.find((provider) => provider.id === item.providerId)?.name || "未绑定", reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : config.forcedLevel || "unchanged", createdAt: item.createdAt, enabled: item.enabled !== false, hasSecret: Boolean(item.keyEnc && decrypt(item.keyEnc)) })) });
   }
   if (url.pathname === "/admin/api/client-keys" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
     const providerId = String(data.providerId || "");
     if (!providerId || !findProvider(providerId)) return json(res, 400, { error: "必须绑定一个有效的中转站线路" });
     const provider = findProvider(providerId);
-    const reasoningLevel = validReasoningLevel(data.reasoningLevel) ? String(data.reasoningLevel) : (config.forcedLevel || "high");
+    const reasoningLevel = validReasoningLevel(data.reasoningLevel) ? String(data.reasoningLevel) : (config.forcedLevel || "unchanged");
     const key = makeClientKey();
     const nameCustomized = data.nameCustomized === true;
     const item = { id: crypto.randomUUID(), name: nameCustomized ? String(data.name || provider.name).trim() : provider.name, nameCustomized, providerId, reasoningLevel, hash: hashKey(key), keyEnc: encrypt(key), createdAt: new Date().toLocaleString("zh-CN"), enabled: true };
@@ -911,7 +914,7 @@ export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) 
       name: String(item.name || providers.find((provider) => provider.id === providerId)?.name || "客户端").slice(0, 200),
       nameCustomized: item.nameCustomized === true,
       providerId,
-      reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : "high",
+      reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : "unchanged",
       createdAt: String(item.createdAt || new Date().toLocaleString("zh-CN")),
       enabled: item.enabled !== false,
       hash: hashKey(localSecret),
@@ -926,7 +929,7 @@ export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) 
       counter: Math.max(0, finiteToken(publicConfig.configRevision.counter)),
       deviceId: String(publicConfig.configRevision.deviceId || ""),
     },
-    forcedLevel: validReasoningLevel(publicConfig.forcedLevel) ? publicConfig.forcedLevel : "high",
+    forcedLevel: validReasoningLevel(publicConfig.forcedLevel) ? publicConfig.forcedLevel : "unchanged",
     defaultProvider: providerIds.has(String(publicConfig.defaultProvider || "")) ? String(publicConfig.defaultProvider) : (providers.find((item) => item.enabled)?.id || ""),
     providers,
     clientKeys,

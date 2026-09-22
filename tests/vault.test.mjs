@@ -1,4 +1,10 @@
-/** 中文：验证密码/恢复码、篡改保护和错误凭证不污染 vault。 English: Vault security tests. */
+/**
+ * 中文：验证密码/恢复码、篡改保护和错误凭证不污染 vault；测试只使用低成本 KDF，
+ * 不改变生产参数，只缩短自动化测试时间。
+ * English: Verify password/recovery-code access, tamper protection, and non-pollution after
+ * wrong credentials. Tests use a low-cost KDF only to shorten CI time; production defaults stay
+ * unchanged.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createVault, openVaultWithDek, unlockVault, updateVault } from "../sync/vault.mjs";

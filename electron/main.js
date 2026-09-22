@@ -338,7 +338,7 @@ async function downloadAndInstallLatestUpdate() {
 function trayImage() {
   const fileIcon = nativeImage.createFromPath(path.join(__dirname, "assets", "tray.png"));
   if (!fileIcon.isEmpty()) return fileIcon.resize({ width: 16, height: 16 });
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><rect x="1" y="1" width="30" height="30" rx="9" fill="#7c4dff" stroke="#c7a7ff" stroke-width="1"/><path d="M16 5.5l2.3 8.2L26.5 16l-8.2 2.3L16 26.5l-2.3-8.2L5.5 16l8.2-2.3z" fill="none" stroke="#fff" stroke-width="2.1" stroke-linejoin="round"/></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32"><defs><linearGradient id="cherry-purple" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a56cff"/><stop offset=".56" stop-color="#8b50e8"/><stop offset="1" stop-color="#6738b7"/></linearGradient></defs><rect x="1" y="1" width="30" height="30" rx="9" fill="url(#cherry-purple)" stroke="#c7a7ff" stroke-width="1"/><path d="M16 5.5l2.3 8.2L26.5 16l-8.2 2.3L16 26.5l-2.3-8.2L5.5 16l8.2-2.3z" fill="none" stroke="#fff" stroke-width="2.1" stroke-linejoin="round"/></svg>`;
   const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
   const image = nativeImage.createFromDataURL(dataUrl);
   if (image.isEmpty()) return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
@@ -480,6 +480,7 @@ ipcMain.handle("github-connect", async (_event, value) => (await initializeSyncM
   token: String(value?.token || ""),
   repository: String(value?.repository || "cherry-ai-connect-sync"),
   password: String(value?.password || ""),
+  syncUpstream: value?.syncUpstream === true,
 }));
 ipcMain.handle("sync-now", async () => (await initializeSyncManager()).syncNow("manual"));
 ipcMain.handle("set-sync-enabled", async (_event, enabled) => (await initializeSyncManager()).setEnabled(Boolean(enabled)));

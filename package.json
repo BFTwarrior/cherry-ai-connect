@@ -1,12 +1,13 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.22.0",
+  "version": "1.30.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
   "license": "MIT",
   "scripts": {
     "renderer:build": "vite build",
+    "web-demo:build": "npm run renderer:build && node scripts/package-web-demo.mjs",
     "check": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/*.test.cjs",
     "start": "npm run renderer:build && electron .",
@@ -43,7 +44,7 @@
       "target": "nsis",
       "icon": "electron/assets/app.ico",
       "signExecutable": false,
-      "artifactName": "Cherry-AI-Connect-Setup-1.22.${ext}"
+      "artifactName": "Cherry-AI-Connect-Setup-1.30.${ext}"
     },
     "nsis": {
       "oneClick": false,

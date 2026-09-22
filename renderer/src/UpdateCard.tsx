@@ -4,6 +4,7 @@
  * verification, pre-update sync, offline backup, and installer launch.
  */
 import { useEffect, useMemo, useState } from "react";
+import { Icon } from "./ui/Icon";
 
 type Language = "zh" | "en";
 
@@ -85,7 +86,7 @@ export function UpdateCard({ language, currentVersion }: { language: Language; c
 
   return <article className="settings-card update-card">
     <div className="update-card-header">
-      <div className="settings-heading"><span className="settings-icon update-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M5 20h14" /></svg></span><div><h3>{tr("安全更新", "Safe updates")}</h3><p>{tr("一键下载、校验、同步并备份数据，再安装新版本。", "Download, verify, sync, back up, and install in one flow.")}</p></div></div>
+      <div className="settings-heading"><span className="settings-icon update-icon"><Icon name="shield" size={17} /></span><div><h3>{tr("安全更新", "Safe updates")}</h3><p>{tr("一键下载、校验、同步并备份数据，再安装新版本。", "Download, verify, sync, back up, and install in one flow.")}</p></div></div>
       <span className={`update-state ${state}`}><i />{stateText}</span>
     </div>
     <div className="update-version-grid">

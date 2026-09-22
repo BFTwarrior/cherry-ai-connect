@@ -1,0 +1,64 @@
+# Cherry AI Connect 1.30 正式版：同步与加密拆分验收
+
+## 版本定义
+
+- 产品正式版本：`1.30.0`
+- 网关健康检查版本：`1.30`
+- 同步数据协议：继续使用 schema 1；同步协议格式版本不因产品版本号变化而改变。
+- 历史 1.23 及更早版本记录、安装包和同步格式保持不覆盖。
+
+## 模块边界
+
+| 模块 | 正式职责 |
+| --- | --- |
+| `sync/sync-manager.mjs` | 桌面生命周期、凭据状态、调度和 UI 状态发布 |
+| `sync/sync-engine.mjs` | manifest-last 提交顺序、父代检查、资产回读校验、合并和垃圾回收 |
+| `sync/github-provider.mjs` | 私有仓库、固定 Release 和不可变资产的 GitHub 请求 |
+| `sync/local-vault-store.mjs` | 本地文件、原子写入、备份、系统保护的 DEK 和远端 envelope 导入 |
+| `sync/sync-crypto.mjs` | Argon2id、AES-256-GCM、AAD、DEK wrapper、payload 加解密和格式校验 |
+| `sync/vault.mjs` | 旧导入路径的兼容 re-export，不重复实现加解密 |
+| `sync/sync-common.mjs` | 不含秘密的稳定序列化、压缩、哈希、资产描述和 manifest 校验 |
+
+## 已完成检查
+
+- `npm run check`：通过。
+- `npm test`：30 项全部通过。
+- `npm run renderer:build`：通过。
+- `npm run dist`：通过，生成 Windows x64 NSIS 安装包。
+- 正式包 `resources/app.asar` 已包含全部同步模块：
+  `sync-common.mjs`、`sync-crypto.mjs`、`sync-engine.mjs`、`sync-manager.mjs`、
+  `local-vault-store.mjs`、`github-provider.mjs`、`vault.mjs`。
+- 1.30 打包程序启动后 `/health` 返回 HTTP 200，且返回 `version: 1.30`。
+- `latest.yml` 的版本、文件大小和 SHA-512 与安装包实际内容一致。
+
+## 同步专项自动化证据
+
+- manifest 必须最后上传；中断候选不会清空 outbox。
+- 本地 vault 不可用时仍可同步用量，并继承上一份远端加密配置。
+- 用量-only 同步不会覆盖远端有效的加密配置。
+- 双设备合并不会重复累计 lifetime totals。
+- 全新设备会先采用远端数据集，再验证并解密远端 vault。
+- 错误密码和篡改数据不会写入本地，也不会替换现有配置。
+- 不同设备的同计数配置编辑会进入显式冲突处理。
+- GitHub token 错误信息会脱敏；公开仓库会被拒绝；不可变资产不会重复上传。
+
+## 正式版产物
+
+- 文件：`dist/Cherry-AI-Connect-Setup-1.30.exe`
+- 版本：`1.30.0`
+- 平台：Windows x64
+- 文件大小：`103024649` bytes
+- SHA-256：`2DE3C9B34668B65D781232900ECC322A7E4B0E7F34C7D958580AD7F81735C8F3`
+- SHA-512（base64）：`apvOr+OmJBzc0QZIc0tQ0XJDwSCv1f4vURhFaL3GhLp+EfylnSjjhWqeWTJRD/JP7N8zr5eMMFmaytHfEz63qA==`
+
+## 尚未宣称已通过的项目
+
+以下项目需要真实环境和用户账号，当前没有伪造为“已通过”：
+
+- 真实私有 GitHub 仓库的首次同步、再次同步、断网恢复、冲突和新设备恢复。
+- 换 Token、GitHub 限流和远端 Release 资产实际恢复。
+- 安装包安装、卸载、托盘、重启、关闭同步和覆盖更新后的完整回归。
+
+## 记录时间
+
+2026-09-22（UTC+8）

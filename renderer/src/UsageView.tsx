@@ -43,6 +43,35 @@ const ranges: Array<{ key: RangeKey; zh: string; en: string }> = [
   { key: "180d", zh: "半年", en: "6 months" },
 ];
 
+// 中文：固定时间轴和固定数字让分享出去的演示页面每次打开都稳定可核查，不依赖真实网关。
+// English: A fixed timeline and fixed values keep the shareable demo stable and independent of the real gateway.
+const DEMO_USAGE: UsageResponse = (() => {
+  const base = Date.parse("2026-09-19T02:00:00.000Z");
+  const series: UsagePoint[] = Array.from({ length: 12 }, (_, index) => {
+    const inputTokens = 3_600_000 + index * 280_000 + (index % 3) * 92_000;
+    const outputTokens = 6_500 + index * 410;
+    const cacheReadTokens = 2_500_000 + index * 190_000;
+    return { at: new Date(base + index * 2 * 60 * 60 * 1000).toISOString(), requests: 24 + index * 7, errors: index % 5 === 0 ? 1 : 0, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cacheReadTokens, cacheWriteTokens: 0 };
+  });
+  const records: UsageRecord[] = Array.from({ length: 8 }, (_, index) => {
+    const provider = index % 2 === 0 ? { id: "DEMO-NORTH", name: "北境中转（演示）" } : { id: "DEMO-AURORA", name: "极光线路（演示）" };
+    const inputTokens = 16_000 + index * 1_250;
+    const outputTokens = 2_400 + index * 180;
+    return {
+      id: `demo-request-${index + 1}`, at: new Date(base + (11 - index) * 2 * 60 * 60 * 1000).toISOString(), clientKeyName: `演示客户端 ${(index % 4) + 1}`,
+      providerId: provider.id, providerName: provider.name, model: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5"][index % 3], endpoint: "/v1/chat/completions", reasoningLevel: ["high", "xhigh", "max"][index % 3],
+      status: index === 5 ? 429 : 200, durationMs: 680 + index * 145, ttftMs: 210 + index * 32, stream: index % 3 !== 0,
+      inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cacheReadTokens: 8_000 + index * 800, cacheWriteTokens: 0,
+    };
+  });
+  return {
+    detailCache: { count: records.length, bytes: 12_845_312, maxBytes: 50 * 1024 * 1024, targetBytes: 45 * 1024 * 1024, pageLimit: 200 },
+    lifetime: { requests: 432, errors: 9, inputTokens: 57_595_034, outputTokens: 103_339, totalTokens: 57_698_373, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: new Date(base - 30 * 86400000).toISOString(), lastRequestAt: series[series.length - 1]?.at },
+    summary: { requests: 48, errors: 1, inputTokens: 57_595_034, outputTokens: 10_817, totalTokens: 57_605_851, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: series[0].at, lastRequestAt: series[series.length - 1]?.at },
+    series, records, filters: { providers: [{ id: "DEMO-NORTH", name: "北境中转（演示）" }, { id: "DEMO-AURORA", name: "极光线路（演示）" }, { id: "DEMO-LOAD", name: "本地压测线（演示）" }], models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "codex-auto-review"] }, range: "24h", updatedAt: "2026-09-19T02:05:00.000Z",
+  };
+})();
+
 function number(value: number | undefined, language: Language) {
   return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 0 }).format(Number(value || 0));
 }
@@ -71,6 +100,35 @@ function TinyIcon({ name }: { name: "pulse" | "tokens" | "input" | "output" | "c
     refresh: <><path d="M20 11a8 8 0 0 0-14.7-4L3 10" /><path d="M3 5v5h5" /><path d="M4 13a8 8 0 0 0 14.7 4L21 14" /><path d="M21 19v-5h-5" /></>,
   };
   return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
+type UsageFilterOption = { value: string; label: string };
+
+function UsageFilterSelect({ label, value, options, onChange }: { label: string; value: string; options: UsageFilterOption[]; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const selected = options.find((option) => option.value === value) || options[0];
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
+
+  return <div className={`usage-select ${open ? "is-open" : ""}`} ref={rootRef}>
+    <button type="button" className="usage-select-trigger" onClick={() => setOpen((current) => !current)} aria-haspopup="listbox" aria-expanded={open} aria-label={label}>
+      <span>{selected?.label || label}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 9 5 5 5-5" /></svg>
+    </button>
+    {open && <div className="usage-select-menu" role="listbox" aria-label={label}>
+      {options.map((option) => <button type="button" role="option" aria-selected={option.value === value} className={`usage-select-option ${option.value === value ? "selected" : ""}`} key={option.value} onClick={() => { onChange(option.value); setOpen(false); }}>
+        <span>{option.label}</span>
+        {option.value === value && <span className="usage-select-check" aria-hidden="true">✓</span>}
+      </button>)}
+    </div>}
+  </div>;
 }
 
 function UsageChart({ points, language, range }: { points: UsagePoint[]; language: Language; range: RangeKey }) {
@@ -120,7 +178,7 @@ function UsageChart({ points, language, range }: { points: UsagePoint[]; languag
   </div>;
 }
 
-export function UsageView({ language, gatewayOrigin }: { language: Language; gatewayOrigin: string }) {
+export function UsageView({ language, gatewayOrigin, demo = false }: { language: Language; gatewayOrigin: string; demo?: boolean }) {
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [range, setRange] = useState<RangeKey>("24h");
   const [providerId, setProviderId] = useState("");
@@ -141,6 +199,11 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
   const loadUsage = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      if (demo) {
+        setData({ ...DEMO_USAGE, range });
+        setError("");
+        return;
+      }
       const query = new URLSearchParams({ range, limit: "200", status });
       if (providerId) query.set("providerId", providerId);
       if (model) query.set("model", model);
@@ -152,7 +215,7 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { if (!silent) setLoading(false); }
-  }, [gatewayOrigin, model, providerId, range, status]);
+  }, [demo, gatewayOrigin, model, providerId, range, status]);
 
   useEffect(() => { void loadUsage(); }, [loadUsage]);
   useEffect(() => {
@@ -176,7 +239,12 @@ export function UsageView({ language, gatewayOrigin }: { language: Language; gat
 
     <div className="usage-toolbar">
       <div className="range-tabs">{ranges.map((item) => <button type="button" className={range === item.key ? "active" : ""} key={item.key} onClick={() => setRange(item.key)}>{language === "zh" ? item.zh : item.en}</button>)}</div>
-      <div className="usage-filters"><select value={providerId} onChange={(event) => setProviderId(event.target.value)}><option value="">{tr("全部线路", "All routes")}</option>{data?.filters.providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name}</option>)}</select><select value={model} onChange={(event) => setModel(event.target.value)}><option value="">{tr("全部模型", "All models")}</option>{data?.filters.models.map((item) => <option value={item} key={item}>{item}</option>)}</select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">{tr("全部状态", "All status")}</option><option value="success">{tr("仅成功", "Success only")}</option><option value="error">{tr("仅失败", "Errors only")}</option></select><button type="button" className="usage-refresh" onClick={() => void loadUsage()} disabled={loading}><TinyIcon name="refresh" />{tr("刷新", "Refresh")}</button></div>
+      <div className="usage-filters">
+        <UsageFilterSelect label={tr("线路筛选", "Route filter")} value={providerId} options={[{ value: "", label: tr("全部线路", "All routes") }, ...(data?.filters.providers || []).map((provider) => ({ value: provider.id, label: provider.name }))]} onChange={setProviderId} />
+        <UsageFilterSelect label={tr("模型筛选", "Model filter")} value={model} options={[{ value: "", label: tr("全部模型", "All models") }, ...(data?.filters.models || []).map((item) => ({ value: item, label: item }))]} onChange={setModel} />
+        <UsageFilterSelect label={tr("状态筛选", "Status filter")} value={status} options={[{ value: "all", label: tr("全部状态", "All status") }, { value: "success", label: tr("仅成功", "Success only") }, { value: "error", label: tr("仅失败", "Errors only") }]} onChange={setStatus} />
+        <button type="button" className="usage-refresh" onClick={() => void loadUsage()} disabled={loading}><TinyIcon name="refresh" />{tr("刷新", "Refresh")}</button>
+      </div>
     </div>
 
     {error && <div className="usage-error">{tr("统计读取失败：", "Failed to load analytics: ")}{error}</div>}

@@ -3,9 +3,9 @@
  * English: Shared renderer contracts. One source of truth prevents pages from drifting on field meaning.
  */
 
-export type View = "overview" | "providers" | "models" | "keys" | "usage" | "settings";
+export type View = "overview" | "providers" | "models" | "keys" | "usage" | "cloud" | "settings";
 export type Language = "zh" | "en";
-export type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max" | "unchanged";
 export type SyncStatus = "ok" | "error" | "never";
 export type ClientRequestStatus = "never" | "pending" | "ok" | "error";
 
@@ -70,7 +70,7 @@ export type ModalState =
   | { kind: "key-result"; secret: string }
   | null;
 
-export type ToastTone = "success" | "error" | "info";
+export type ToastTone = "success" | "error" | "info" | "warning";
 export type ToastState = { message: string; tone: ToastTone } | null;
 export type ConfirmTone = "primary" | "warning" | "danger";
 export type ConfirmDialogOptions = {

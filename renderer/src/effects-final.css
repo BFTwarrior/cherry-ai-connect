@@ -1,0 +1,828 @@
+/*
+ * Cherry AI 1.23 visual-effects acceptance layer.
+ * Loaded after styles.css so approved behavior is not lost to historical overrides.
+ */
+
+@property --ef-nav-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 135deg;
+}
+
+@keyframes ef-nav-border-orbit {
+  to { --ef-nav-angle: 495deg; }
+}
+
+@keyframes ef-nav-fill-flow {
+  0%, 100% { background-position: 0% 50%, 0% 50%, 0 0; }
+  50% { background-position: 100% 46%, 100% 52%, 0 0; }
+}
+
+@keyframes ef-nav-fireflies {
+  0% {
+    opacity: calc(var(--firefly-alpha, .8) * .2);
+    transform: translate3d(0, 0, 0) scale(.58);
+  }
+  48% { opacity: var(--firefly-alpha, .8); }
+  100% {
+    opacity: calc(var(--firefly-alpha, .8) * .42);
+    transform: translate3d(var(--firefly-x), var(--firefly-y), 0) scale(1.08);
+  }
+}
+
+@keyframes ef-main-smoke-a {
+  0%, 100% { transform: translate3d(-15%, 4%, 0) scale(1.02) rotate(-1.2deg); opacity: .24; }
+  34% { transform: translate3d(3%, -5%, 0) scale(1.12) rotate(.5deg); opacity: .48; }
+  72% { transform: translate3d(15%, 3%, 0) scale(1.05) rotate(-.4deg); opacity: .31; }
+}
+
+@keyframes ef-main-smoke-b {
+  0%, 100% { transform: translate3d(14%, -3%, 0) scale(1.06) rotate(.8deg); opacity: .2; }
+  42% { transform: translate3d(-6%, 5%, 0) scale(1.15) rotate(-.8deg); opacity: .42; }
+  76% { transform: translate3d(-15%, -2%, 0) scale(1.04) rotate(.3deg); opacity: .27; }
+}
+
+@keyframes ef-nested-liquid {
+  0%, 100% { background-position: 0% 50%; }
+  46% { background-position: 54% 47%; }
+  76% { background-position: 100% 54%; }
+}
+
+@keyframes ef-glass-pass {
+  0%, 20% { opacity: 0; transform: translate3d(-12%, 0, 0) skewX(-17deg); }
+  30% { opacity: .14; }
+  48% { opacity: .46; }
+  70% { opacity: .16; transform: translate3d(445%, 0, 0) skewX(-17deg); }
+  78%, 100% { opacity: 0; transform: translate3d(520%, 0, 0) skewX(-17deg); }
+}
+
+@keyframes ef-nested-sparks {
+  0% {
+    opacity: 0;
+    transform: scale(.95);
+    background-position: 50% 115%, 8% 104%, 92% 105%, -8% 50%, 108% 50%, 50% -12%;
+  }
+  22% { opacity: .9; }
+  62% {
+    opacity: .72;
+    transform: scale(1.02);
+    background-position: 12% 22%, 34% 6%, 68% 9%, 16% 72%, 86% 25%, 54% 78%;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.08);
+    background-position: -10% -8%, 19% -16%, 84% -14%, -12% 92%, 112% 4%, 58% 116%;
+  }
+}
+
+@keyframes ef-metric-sparks {
+  0% { opacity: 0; transform: translate3d(0, 8px, 0) scaleY(.45) rotate(0deg); }
+  10% { opacity: .94; }
+  62% { opacity: .72; }
+  100% { opacity: 0; transform: translate3d(var(--spark-x), calc(0px - var(--spark-rise)), 0) scaleY(1.15) rotate(var(--spark-rotate)); }
+}
+
+@keyframes ef-menu-settle {
+  from { opacity: 0; transform: translate3d(0, -3px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Sidebar workbench: permanent opposing liquid border and wandering gold fireflies. */
+.nav-item.active,
+.nav-item.active:hover,
+.nav-item.active:focus-visible {
+  --ef-nav-angle: 135deg;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid transparent !important;
+  background:
+    radial-gradient(ellipse at 18% 50%, rgb(157 83 211 / 24%), transparent 46%) padding-box,
+    linear-gradient(105deg, #2b1d3a 0%, #352145 42%, #2c1b36 70%, #24182e 100%) padding-box,
+    conic-gradient(from var(--ef-nav-angle) at 50% 50%, #8d4cc7 0deg, #9e61c6 24deg, #d5a365 55deg, #efc66c 78deg, #bc82b4 112deg, #9654ca 161deg, #b875bd 214deg, #e9bb65 275deg, #a25ccc 360deg) border-box !important;
+  background-size: 165% 160%, 220% 100%, 100% 100% !important;
+  box-shadow: inset 0 0 22px rgb(131 69 187 / 18%), 0 0 10px rgb(195 143 64 / 6%) !important;
+  animation: ef-nav-border-orbit 7.2s linear infinite, ef-nav-fill-flow 9.4s ease-in-out infinite !important;
+  transform: none !important;
+}
+
+.nav-item.active::before,
+.nav-item.active::after { content: none !important; animation: none !important; }
+
+.nav-item.active > * { position: relative; z-index: 1; }
+
+.nav-fireflies {
+  display: none;
+}
+
+.nav-item.active .nav-fireflies {
+  display: block;
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: 1px;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.nav-fireflies i {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #ffe5a4;
+  box-shadow: 0 0 3px #f6bd55, 0 0 6px rgb(238 174 65 / 56%);
+  animation: ef-nav-fireflies var(--firefly-time) ease-in-out var(--firefly-delay) infinite alternate both;
+  will-change: transform, opacity;
+}
+
+.nav-item.active > .nav-icon,
+.nav-item.active > span:not(.nav-fireflies) { position: relative; z-index: 2 !important; }
+
+/* Deliberately uneven: each firefly has its own pace, brightness and exit vector. */
+.nav-fireflies i:nth-child(1) { top: -1px; left: 11%; width: 1px; height: 1px; --firefly-alpha: .42; --firefly-x: 8px; --firefly-y: 17px; --firefly-time: 3.7s; --firefly-delay: -1.1s; }
+.nav-fireflies i:nth-child(2) { top: -1px; left: 39%; width: 3px; height: 3px; --firefly-alpha: .94; --firefly-x: -9px; --firefly-y: 10px; --firefly-time: 6.8s; --firefly-delay: -4.6s; }
+.nav-fireflies i:nth-child(3) { top: -1px; right: 18%; width: 1px; height: 1px; --firefly-alpha: .55; --firefly-x: -3px; --firefly-y: 19px; --firefly-time: 4.2s; --firefly-delay: -2.2s; }
+.nav-fireflies i:nth-child(4) { top: 27%; right: -1px; width: 2px; height: 2px; --firefly-alpha: .78; --firefly-x: -19px; --firefly-y: 7px; --firefly-time: 5.3s; --firefly-delay: -4.1s; }
+.nav-fireflies i:nth-child(5) { right: 9%; bottom: -1px; width: 3px; height: 3px; --firefly-alpha: .86; --firefly-x: -8px; --firefly-y: -17px; --firefly-time: 7.4s; --firefly-delay: -3.2s; }
+.nav-fireflies i:nth-child(6) { bottom: -1px; left: 57%; width: 1px; height: 1px; --firefly-alpha: .36; --firefly-x: 12px; --firefly-y: -9px; --firefly-time: 3.9s; --firefly-delay: -1.7s; }
+.nav-fireflies i:nth-child(7) { bottom: -1px; left: 17%; width: 2px; height: 2px; --firefly-alpha: .68; --firefly-x: 4px; --firefly-y: -21px; --firefly-time: 5.9s; --firefly-delay: -4.7s; }
+.nav-fireflies i:nth-child(8) { top: 62%; left: -1px; width: 1px; height: 1px; --firefly-alpha: .48; --firefly-x: 17px; --firefly-y: -8px; --firefly-time: 4.6s; --firefly-delay: -.6s; }
+
+/* Large main tabs: dark purple smoke always moves; interaction accelerates and adds gold. */
+.client-key-card,
+.route-card {
+  border-color: rgb(90 63 121 / 66%) !important;
+  background: linear-gradient(108deg, #0d0c11 0%, #15111b 34%, #0c0c10 65%, #17111f 100%) !important;
+  background-size: auto !important;
+  box-shadow: inset 0 1px rgb(217 190 250 / 4%), 0 10px 26px rgb(0 0 0 / 16%) !important;
+  animation: none !important;
+}
+
+.client-key-card::before,
+.route-card::before {
+  inset: -70% -30% !important;
+  background:
+    radial-gradient(ellipse at 20% 42%, rgb(88 48 122 / 42%), transparent 36%),
+    radial-gradient(ellipse at 70% 56%, rgb(54 35 76 / 48%), transparent 43%),
+    linear-gradient(118deg, transparent 20%, rgb(103 62 142 / 16%) 44%, transparent 66%) !important;
+  opacity: .38;
+  animation: ef-main-smoke-a 9.8s ease-in-out infinite !important;
+}
+
+.client-key-card::after,
+.route-card::after {
+  inset: -64% -26% !important;
+  background:
+    radial-gradient(ellipse at 84% 36%, rgb(76 43 105 / 38%), transparent 35%),
+    radial-gradient(ellipse at 36% 74%, rgb(111 68 145 / 22%), transparent 41%),
+    linear-gradient(106deg, transparent 28%, rgb(48 29 68 / 26%) 51%, transparent 72%) !important;
+  opacity: .32;
+  animation: ef-main-smoke-b 12.4s ease-in-out infinite !important;
+}
+
+.client-key-card:hover,
+.client-key-card:focus-within,
+.route-card:hover,
+.route-card:focus-within {
+  border-color: rgb(239 190 98 / 84%) !important;
+  background: linear-gradient(108deg, #0d0c11 0%, #15111b 34%, #0c0c10 65%, #17111f 100%) !important;
+  box-shadow: inset 0 1px rgb(255 225 161 / 10%), 0 0 0 1px rgb(239 190 98 / 10%), 0 13px 30px rgb(0 0 0 / 18%) !important;
+  transform: translateY(-1px) !important;
+}
+
+.client-key-card:hover::before,
+.client-key-card:focus-within::before,
+.route-card:hover::before,
+.route-card:focus-within::before { animation-duration: 4.7s !important; opacity: .53; }
+
+.client-key-card:hover::after,
+.client-key-card:focus-within::after,
+.route-card:hover::after,
+.route-card:focus-within::after { animation-duration: 5.5s !important; opacity: .46; }
+
+/* Nested action tabs: purple-gold flow, complete glass reflection, interaction sparks. */
+.route-actions > .button-secondary,
+.route-actions > .icon-button:not(.danger),
+.key-quick-actions > .quick-copy-button,
+.key-card-actions > .icon-text-button:not(.danger-text) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: rgb(113 74 158 / 76%) !important;
+  background-image: linear-gradient(108deg, #171020 0%, #3d2450 26%, #5a4026 49%, #47285c 73%, #171020 100%) !important;
+  background-size: 300% 100% !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 5%), 0 4px 12px rgb(0 0 0 / 10%) !important;
+  animation: ef-nested-liquid 8.6s ease-in-out infinite !important;
+}
+
+.route-actions > .button-secondary::before,
+.route-actions > .icon-button:not(.danger)::before,
+.key-quick-actions > .quick-copy-button::before,
+.key-card-actions > .icon-text-button:not(.danger-text)::before {
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: -42% auto -42% -64% !important;
+  width: 34% !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: linear-gradient(106deg, transparent 8%, rgb(255 255 255 / 3%) 25%, rgb(255 250 235 / 32%) 49%, rgb(225 203 255 / 12%) 62%, transparent 84%) !important;
+  content: "" !important;
+  filter: blur(.45px) !important;
+  mix-blend-mode: screen !important;
+  opacity: .4;
+  pointer-events: none !important;
+  animation: ef-glass-pass 7.8s cubic-bezier(.42, .06, .58, .96) infinite !important;
+}
+
+.route-actions > .button-secondary::after,
+.route-actions > .icon-button:not(.danger)::after,
+.key-quick-actions > .quick-copy-button::after,
+.key-card-actions > .icon-text-button:not(.danger-text)::after {
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: -44% !important;
+  border: 0 !important;
+  border-radius: inherit !important;
+  background-image:
+    radial-gradient(circle, rgb(255 226 151 / 98%) 0 1px, transparent 2.7px),
+    radial-gradient(circle, rgb(243 184 70 / 92%) 0 1px, transparent 2.8px),
+    radial-gradient(circle, rgb(255 239 188 / 94%) 0 1px, transparent 2.6px),
+    radial-gradient(circle, rgb(225 158 52 / 88%) 0 1px, transparent 2.7px),
+    radial-gradient(circle, rgb(255 210 104 / 92%) 0 1px, transparent 2.7px),
+    radial-gradient(circle, rgb(236 192 103 / 84%) 0 1px, transparent 2.6px) !important;
+  background-repeat: no-repeat !important;
+  content: "" !important;
+  opacity: 0;
+  pointer-events: none !important;
+  animation: none !important;
+}
+
+.route-actions > .button-secondary:hover:not(:disabled),
+.route-actions > .button-secondary:focus-visible:not(:disabled),
+.route-actions > .icon-button:not(.danger):hover:not(:disabled),
+.route-actions > .icon-button:not(.danger):focus-visible:not(:disabled),
+.key-quick-actions > .quick-copy-button:hover:not(:disabled),
+.key-quick-actions > .quick-copy-button:focus-visible:not(:disabled),
+.key-card-actions > .icon-text-button:not(.danger-text):hover:not(:disabled),
+.key-card-actions > .icon-text-button:not(.danger-text):focus-visible:not(:disabled) {
+  border-color: rgb(245 198 103 / 94%) !important;
+  box-shadow: inset 0 1px rgb(255 242 207 / 15%), 0 0 0 1px rgb(236 182 77 / 11%), 0 0 16px rgb(219 157 54 / 13%) !important;
+  animation-duration: 4.2s !important;
+}
+
+.route-actions > .button-secondary:hover:not(:disabled)::after,
+.route-actions > .button-secondary:focus-visible:not(:disabled)::after,
+.route-actions > .icon-button:not(.danger):hover:not(:disabled)::after,
+.route-actions > .icon-button:not(.danger):focus-visible:not(:disabled)::after,
+.key-quick-actions > .quick-copy-button:hover:not(:disabled)::after,
+.key-quick-actions > .quick-copy-button:focus-visible:not(:disabled)::after,
+.key-card-actions > .icon-text-button:not(.danger-text):hover:not(:disabled)::after,
+.key-card-actions > .icon-text-button:not(.danger-text):focus-visible:not(:disabled)::after {
+  animation: ef-nested-sparks 1.65s ease-out infinite !important;
+}
+
+.route-actions > .button-secondary > *,
+.route-actions > .icon-button:not(.danger) > *,
+.key-quick-actions > .quick-copy-button > *,
+.key-card-actions > .icon-text-button:not(.danger-text) > * { position: relative; z-index: 1; }
+
+.route-actions > .button-secondary .icon,
+.route-actions > .icon-button:not(.danger) .icon,
+.key-quick-actions > .quick-copy-button .icon,
+.key-card-actions > .icon-text-button:not(.danger-text) .icon { color: #efc86d !important; }
+
+/* Overview metric cards: independent sparks rise from the bottom only on interaction. */
+.metric-grid .metric-card::after { content: none !important; animation: none !important; }
+
+.metric-sparks {
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
+}
+
+.metric-grid .metric-card:hover .metric-sparks,
+.metric-grid .metric-card:focus-within .metric-sparks { opacity: 1; }
+
+.metric-sparks i {
+  position: absolute;
+  bottom: -10px;
+  left: var(--spark-left);
+  width: 2px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, #fff5ce 0%, #ffc55b 30%, rgb(232 155 42 / 46%) 72%, transparent 100%);
+  box-shadow: 0 -2px 4px rgb(255 207 107 / 78%), 0 0 7px rgb(239 164 47 / 38%);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.metric-grid .metric-card:hover .metric-sparks i,
+.metric-grid .metric-card:focus-within .metric-sparks i {
+  animation: ef-metric-sparks var(--spark-time) cubic-bezier(.18, .68, .24, 1) var(--spark-delay) infinite;
+}
+
+.metric-sparks i:nth-child(1) { --spark-left: 10%; --spark-x: -7px; --spark-rise: 53px; --spark-rotate: -8deg; --spark-time: 1.52s; --spark-delay: 0s; }
+.metric-sparks i:nth-child(2) { --spark-left: 23%; --spark-x: 6px; --spark-rise: 68px; --spark-rotate: 7deg; --spark-time: 1.82s; --spark-delay: -.9s; }
+.metric-sparks i:nth-child(3) { --spark-left: 36%; --spark-x: -4px; --spark-rise: 46px; --spark-rotate: -5deg; --spark-time: 1.38s; --spark-delay: .24s; }
+.metric-sparks i:nth-child(4) { --spark-left: 49%; --spark-x: 9px; --spark-rise: 72px; --spark-rotate: 9deg; --spark-time: 1.94s; --spark-delay: -1.4s; }
+.metric-sparks i:nth-child(5) { --spark-left: 61%; --spark-x: -8px; --spark-rise: 58px; --spark-rotate: -8deg; --spark-time: 1.64s; --spark-delay: .08s; }
+.metric-sparks i:nth-child(6) { --spark-left: 73%; --spark-x: 5px; --spark-rise: 76px; --spark-rotate: 6deg; --spark-time: 2.02s; --spark-delay: -.5s; }
+.metric-sparks i:nth-child(7) { --spark-left: 84%; --spark-x: -6px; --spark-rise: 50px; --spark-rotate: -6deg; --spark-time: 1.45s; --spark-delay: .42s; }
+.metric-sparks i:nth-child(8) { --spark-left: 94%; --spark-x: 4px; --spark-rise: 65px; --spark-rotate: 5deg; --spark-time: 1.76s; --spark-delay: -1.1s; }
+.metric-sparks i:nth-child(2n) { height: 12px; }
+.metric-sparks i:nth-child(3n) { width: 1px; height: 7px; }
+.metric-sparks i:nth-child(n+9) { display: none; }
+
+/* Content always wins over particles: icons, labels and values stay crisp. */
+.metric-grid .metric-card > * { position: relative; z-index: 1; }
+.metric-grid .metric-card > .metric-sparks { position: absolute !important; z-index: 0 !important; }
+
+/* Do not put a generic spark in the middle of an action button. The border and glass
+ * sweep remain, while particles are reserved for effects with a clear origin. */
+.button-secondary::after,
+.button-ghost::after,
+.icon-button:not(.danger)::after,
+.icon-text-button:not(.danger-text)::after,
+.quick-copy-button::after,
+.group-toggle::after,
+.group-summary > .icon-text-button::after,
+.connection-pulse-grid > button::after,
+.usage-refresh::after,
+.usage-select-trigger::after,
+.usage-select-option::after,
+.range-tabs button::after,
+.record-density-toggle button::after,
+.modal-close::after,
+.route-actions > .button-secondary::after,
+.route-actions > .icon-button:not(.danger)::after,
+.key-quick-actions > .quick-copy-button::after,
+.key-card-actions > .icon-text-button:not(.danger-text)::after {
+  content: none !important;
+  background: none !important;
+  animation: none !important;
+}
+
+/* Local API status/copy card: no unexplained central particle. */
+.connection-pulse-grid > button::after {
+  content: none !important;
+  background: none !important;
+  animation: none !important;
+}
+
+/* Reasoning dropdown: static control shell; only the menu settles in. */
+.custom-reasoning-control,
+.custom-reasoning-control:hover,
+.custom-reasoning-control:focus-within,
+.custom-reasoning-control.is-open {
+  transform: none !important;
+  animation: none !important;
+  background-image: var(--top-control-fill) !important;
+  box-shadow: none !important;
+}
+
+.custom-reasoning-control > .icon,
+.reasoning-select-trigger,
+.reasoning-select-trigger .icon {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
+}
+
+.custom-reasoning-control { flex: 0 0 auto; }
+
+/* Keep the longest reasoning label fully visible beside the chevron. */
+.reasoning-select-trigger {
+  min-width: 104px !important;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.reasoning-select-trigger > span {
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+/* Custom select menus use the same dark glass language as the reasoning menu. */
+.menu-select {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.menu-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  min-width: 128px;
+  padding: 0 10px;
+  border: 1px solid rgb(115 84 145 / 72%);
+  border-radius: 9px;
+  background: linear-gradient(112deg, #17121f, #251736 58%, #17121f) !important;
+  color: #e3d4ef;
+  font-size: 10.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu-select-trigger:hover:not(:disabled),
+.menu-select-trigger:focus-visible,
+.menu-select.is-open .menu-select-trigger {
+  border-color: rgb(220 174 83 / 78%);
+  background: linear-gradient(112deg, #261b2b, #3b2544 58%, #261b2b) !important;
+  box-shadow: inset 0 1px rgb(255 237 183 / 12%), 0 0 12px rgb(213 157 62 / 12%);
+  outline: none;
+}
+
+.menu-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-select-trigger .icon { flex: 0 0 auto; color: #efc86d !important; }
+.menu-select-trigger:disabled { cursor: wait; opacity: .6; }
+.settings-level-menu .menu-select-trigger { min-width: 138px; }
+.catalog-route-menu { min-width: 170px; }
+
+.menu-select-menu {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  min-width: 100%;
+  width: max-content;
+  max-width: 270px;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid rgb(129 91 156 / 78%);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #24192e, #17131e 82%) !important;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%), inset 0 1px rgb(255 239 188 / 7%);
+}
+
+.menu-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #c8bdce;
+  font-size: 10.5px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu-select-option:hover,
+.menu-select-option:focus-visible,
+.menu-select-option.selected {
+  border-color: rgb(202 153 71 / 74%);
+  background: linear-gradient(108deg, rgb(104 66 40 / 74%), rgb(67 39 78 / 78%));
+  color: #f3d886;
+  outline: none;
+}
+
+.menu-select-option .icon { flex: 0 0 auto; color: #efc86d !important; }
+
+/* Keep both dropdowns above the following cards and buttons instead of letting the
+ * surrounding panel stacking layers clip their options. */
+.catalog-toolbar {
+  position: relative;
+  z-index: 20 !important;
+  overflow: visible !important;
+}
+
+.catalog-toolbar .select-control,
+.catalog-toolbar .catalog-route-menu {
+  position: relative;
+  z-index: 40 !important;
+}
+
+.catalog-route-menu .menu-select-menu {
+  min-width: 210px;
+}
+
+.setting-line {
+  position: relative;
+  z-index: 8 !important;
+  overflow: visible !important;
+}
+
+.settings-level-menu {
+  position: relative;
+  z-index: 30 !important;
+}
+
+.settings-level-menu .menu-select-menu {
+  right: 0;
+  left: auto;
+  min-width: 138px;
+}
+
+/* Settings and model-catalog menus share the gold-edged treatment used by the
+ * top-level reasoning menu.  Usage analytics keeps its own menu styling below. */
+.settings-level-menu .menu-select-menu,
+.catalog-route-menu .menu-select-menu {
+  border-color: rgb(203 157 73 / 88%) !important;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%), 0 0 0 1px rgb(239 194 92 / 10%), inset 0 1px rgb(255 239 188 / 10%) !important;
+}
+
+.settings-level-menu .menu-select-option:hover,
+.settings-level-menu .menu-select-option:focus-visible,
+.settings-level-menu .menu-select-option.selected,
+.catalog-route-menu .menu-select-option:hover,
+.catalog-route-menu .menu-select-option:focus-visible,
+.catalog-route-menu .menu-select-option.selected {
+  border-color: rgb(218 171 78 / 90%) !important;
+  background: linear-gradient(108deg, rgb(104 66 40 / 78%), rgb(67 39 78 / 82%)) !important;
+  color: #f3d886 !important;
+}
+
+/* Each settings card is its own stacking context; lift only the card whose menu is
+ * open so the options can pass over the following update card. */
+.settings-card:has(.settings-level-menu.is-open) {
+  z-index: 30 !important;
+  overflow: visible !important;
+}
+
+/* Key state feedback: enabling is gold, disabling is red, never green by default. */
+.toast-warning {
+  border-color: rgb(193 145 62 / 78%) !important;
+  background: linear-gradient(110deg, #3c2a1a, #2b2028) !important;
+  color: #f0dc9d !important;
+}
+
+.toast-warning .toast-dot {
+  background: #efc86d !important;
+  box-shadow: 0 0 8px rgb(239 200 109 / 80%) !important;
+}
+
+.reasoning-menu { animation: ef-menu-settle .16s ease-out both; }
+
+/* Usage analytics: content-first, restrained and static. */
+.usage-view { --usage-gold: #d9b968; --usage-purple: #9470b8; }
+
+.usage-view .lifetime-card {
+  border-color: rgb(112 83 129 / 48%) !important;
+  background: linear-gradient(116deg, #17151c 0%, #1b1721 48%, #141419 100%) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%), 0 14px 34px rgb(0 0 0 / 15%) !important;
+}
+
+.usage-view .lifetime-card::before,
+.usage-view .lifetime-card::after,
+.usage-view .usage-toolbar::before,
+.usage-view .usage-toolbar::after,
+.usage-view .usage-panel::before,
+.usage-view .usage-panel::after,
+.usage-view .usage-summary-grid article::before,
+.usage-view .usage-summary-grid article::after { content: none !important; animation: none !important; }
+
+.usage-view .lifetime-icon,
+.usage-view .summary-icon {
+  border-color: rgb(190 147 74 / 26%) !important;
+  background: linear-gradient(145deg, #292033, #1d1923) !important;
+  color: #dbbd70 !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 5%), 0 0 12px rgb(130 79 170 / 9%) !important;
+  animation: none !important;
+}
+
+.usage-view .lifetime-icon svg,
+.usage-view .summary-icon svg,
+.usage-view .usage-refresh svg { color: #dbbd70 !important; filter: none !important; }
+
+.usage-view .lifetime-breakdown > div,
+.usage-view .usage-summary-grid article {
+  border-color: rgb(80 65 92 / 50%) !important;
+  background: linear-gradient(145deg, #17161c, #131318) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 2%), 0 7px 18px rgb(0 0 0 / 9%) !important;
+  animation: none !important;
+}
+
+.usage-view .usage-toolbar {
+  border-color: rgb(118 89 133 / 48%) !important;
+  background: #15141a !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%), 0 9px 24px rgb(0 0 0 / 12%) !important;
+}
+
+.usage-view .usage-panel {
+  border-color: rgb(82 67 95 / 56%) !important;
+  background: linear-gradient(145deg, #16151b, #121217) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 2%), 0 13px 32px rgb(0 0 0 / 13%) !important;
+}
+
+.usage-view .usage-panel > header {
+  border-bottom-color: rgb(84 67 98 / 38%) !important;
+  background: rgb(76 47 100 / 4%) !important;
+}
+
+.usage-view .usage-panel > header span { color: #c7a75d !important; }
+
+.usage-view .range-tabs button,
+.usage-view .record-density-toggle button,
+.usage-view .usage-select-trigger,
+.usage-view .usage-select-option,
+.usage-view .usage-refresh {
+  border-color: rgb(93 69 111 / 62%) !important;
+  background: #1b1722 !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%) !important;
+  animation: none !important;
+}
+
+.usage-view .range-tabs button::before,
+.usage-view .range-tabs button::after,
+.usage-view .record-density-toggle button::before,
+.usage-view .record-density-toggle button::after,
+.usage-view .usage-select-trigger::before,
+.usage-view .usage-select-trigger::after,
+.usage-view .usage-select-option::before,
+.usage-view .usage-select-option::after { content: none !important; animation: none !important; }
+
+.usage-view .range-tabs button:hover,
+.usage-view .range-tabs button:focus-visible,
+.usage-view .record-density-toggle button:hover,
+.usage-view .record-density-toggle button:focus-visible,
+.usage-view .usage-select-trigger:hover,
+.usage-view .usage-select-trigger:focus-visible,
+.usage-view .usage-select-option:hover,
+.usage-view .usage-select-option:focus-visible,
+.usage-view .usage-refresh:hover:not(:disabled),
+.usage-view .usage-refresh:focus-visible:not(:disabled) {
+  border-color: rgb(190 147 74 / 66%) !important;
+  background: #211b27 !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 4%), 0 0 0 1px rgb(190 147 74 / 6%) !important;
+}
+
+.usage-view .range-tabs button.active,
+.usage-view .record-density-toggle button.active,
+.usage-view .usage-select.is-open .usage-select-trigger,
+.usage-view .usage-select-option.selected {
+  border-color: rgb(203 160 78 / 72%) !important;
+  background: linear-gradient(108deg, #2b2030, #34262f) !important;
+  color: #ead493 !important;
+  box-shadow: inset 0 0 0 1px rgb(215 174 92 / 7%) !important;
+}
+
+.usage-view .usage-select-menu {
+  display: grid;
+  min-width: max(100%, 158px);
+  gap: 4px;
+  padding: 8px !important;
+  border-color: rgb(115 84 130 / 62%) !important;
+  border-radius: 12px !important;
+  background: #17141c !important;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 36%), inset 0 1px rgb(255 255 255 / 3%) !important;
+}
+
+.usage-view .usage-select-option {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+/* Settings controls: keep the copy action rectangular and make safe update unmistakable. */
+.connection-box .settings-copy-button {
+  width: auto !important;
+  min-width: 72px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  white-space: nowrap;
+}
+
+.update-icon {
+  border: 1px solid rgb(201 155 70 / 48%);
+  background: linear-gradient(145deg, #35271a, #211a2d) !important;
+  box-shadow: inset 0 1px rgb(255 236 184 / 8%), 0 0 14px rgb(208 148 48 / 10%);
+}
+
+.update-icon .icon {
+  color: #efc86d !important;
+  filter: drop-shadow(0 0 4px rgb(222 165 66 / 22%));
+}
+
+/* Shared premium icon treatment. The overview's six large icon groups stay on their
+ * existing purple/blue/green/amber treatments; secondary pages use the update icon's
+ * restrained gold surface, fine border and soft perimeter halo. */
+.workspace-icon,
+.routing-icon,
+.banner-icon,
+.route-avatar,
+.key-symbol,
+.settings-icon,
+.empty-icon,
+.modal-icon,
+.confirm-icon,
+.lifetime-icon,
+.summary-icon,
+.account-avatar {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgb(201 155 70 / 48%) !important;
+  background: linear-gradient(145deg, #35271a, #211a2d) !important;
+  color: #efc86d !important;
+  box-shadow: inset 0 1px rgb(255 236 184 / 8%), 0 0 14px rgb(208 148 48 / 10%) !important;
+}
+
+.workspace-icon::before,
+.routing-icon::before,
+.banner-icon::before,
+.route-avatar::before,
+.key-symbol::before,
+.settings-icon::before,
+.empty-icon::before,
+.modal-icon::before,
+.confirm-icon::before,
+.lifetime-icon::before,
+.summary-icon::before,
+.account-avatar::before {
+  position: absolute;
+  z-index: -1;
+  inset: -6px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse, rgb(229 170 65 / 28%), transparent 70%);
+  content: "";
+  filter: blur(6px);
+  opacity: .52;
+  pointer-events: none;
+}
+
+.workspace-icon > *,
+.routing-icon > *,
+.banner-icon > *,
+.route-avatar > *,
+.key-symbol > *,
+.settings-icon > *,
+.empty-icon > *,
+.modal-icon > *,
+.confirm-icon > *,
+.lifetime-icon > *,
+.summary-icon > *,
+.account-avatar > * {
+  position: relative;
+  z-index: 1;
+}
+
+.workspace-icon .icon,
+.routing-icon .icon,
+.banner-icon .icon,
+.route-avatar .icon,
+.key-symbol .icon,
+.settings-icon .icon,
+.empty-icon .icon,
+.modal-icon .icon,
+.confirm-icon .icon,
+.lifetime-icon svg,
+.summary-icon svg,
+.account-avatar .icon {
+  color: #efc86d !important;
+  filter: drop-shadow(0 0 4px rgb(222 165 66 / 22%));
+}
+
+.usage-view .usage-chart-shell { background: #121217 !important; }
+.usage-view .usage-grid-line { stroke: #29252f !important; }
+.usage-view .usage-line-total { stroke: #a978d6 !important; filter: none !important; }
+.usage-view .usage-line-input { stroke: #8b758f !important; }
+.usage-view .usage-line-output { stroke: #d6b464 !important; filter: none !important; }
+.usage-view .usage-line-cache { stroke: #9f7442 !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-item.active,
+  .nav-item.active::before,
+  .nav-item.active::after,
+  .client-key-card::before,
+  .client-key-card::after,
+  .route-card::before,
+  .route-card::after,
+  .route-actions > .button-secondary,
+  .route-actions > .button-secondary::before,
+  .route-actions > .icon-button:not(.danger),
+  .route-actions > .icon-button:not(.danger)::before,
+  .key-quick-actions > .quick-copy-button,
+  .key-quick-actions > .quick-copy-button::before,
+  .key-card-actions > .icon-text-button:not(.danger-text),
+  .key-card-actions > .icon-text-button:not(.danger-text)::before,
+  .metric-grid .metric-card::after,
+  .reasoning-menu { animation: none !important; }
+}

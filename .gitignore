@@ -2,7 +2,13 @@
 node_modules/
 dist/
 renderer/dist/
+dist-web-demo/
 dist-upload-check/
+.vite/
+
+# Local delivery copies; source and release history remain in the project folders.
+软件/
+安装包/
 
 # Local logs and temporary files
 *.log

@@ -9,6 +9,7 @@
 - 本地请求先写入 SQLite；云端失败只保留待同步队列，不能阻塞本地转发。
 - Prompt, response, message body, Authorization, cookies, full client keys, passwords, recovery codes, and OAuth/PAT tokens are never cloud objects.
 - 上游 API Key、Base URL、认证方式、代理和 TLS 设置只能进入加密 vault。
+- Usage records contain no upstream secrets and are stored as compressed JSONL without an additional encryption layer; the repository must still remain private.
 - Every download is size-limited, hashed, parsed in a staging area, and merged only after validation.
 
 ## 2. Identifiers / 编号
@@ -104,6 +105,26 @@ An interrupted candidate without a committed manifest is an orphan and is never 
 - Vault changes require a valid password/recovery key, matching `datasetId`, valid AAD, and a non-decreasing `keyEpoch`.
 
 ## 7. Vault format / 加密仓库
+
+### 7.1 Code ownership / 代码职责边界
+
+- `sync/sync-crypto.mjs` owns Argon2id, AES-256-GCM, AAD, DEK wrappers, payload compression, and envelope validation. It must not perform file I/O or GitHub requests.
+- `sync/vault.mjs` is a compatibility re-export only. Existing imports must continue to work while the cryptographic implementation stays in one dedicated module.
+- `sync/local-vault-store.mjs` owns local files, backups, atomic writes, and Windows DPAPI/safeStorage protection of the DEK. It must authenticate a remote envelope before writing it.
+- `sync/sync-engine.mjs` owns manifest-last ordering and must treat vault bytes as opaque. When the local vault is unavailable, it may publish usage-only generations only by inheriting the last valid remote config/vault assets.
+
+- `sync/sync-crypto.mjs` 负责 Argon2id、AES-256-GCM、AAD、DEK 包裹、业务数据压缩和 envelope 校验；不得执行文件读写或 GitHub 请求。
+- `sync/vault.mjs` 只作为兼容 re-export 入口。旧代码继续从原路径导入，真正的加密实现集中在唯一的专用模块中。
+- `sync/local-vault-store.mjs` 负责本地文件、备份、原子写入和 Windows DPAPI/safeStorage 保护 DEK；远端 envelope 未通过认证前不得写入本地。
+- `sync/sync-engine.mjs` 负责 manifest-last 提交顺序，并把 vault 字节当作不透明资产处理。本机 vault 不可用时，只能继承上一代有效 config/vault 资产来发布用量-only 版本。
+
+The following rules are format invariants and require a migration plan before any change:
+以下规则属于协议不变量，任何改动都必须先设计迁移方案：
+
+- Keep `SYNC_FORMAT`, `SYNC_SCHEMA_VERSION`, envelope field names, `objectType`, AAD fields, base64url encoding, and the `vaultRevision` meaning unchanged.
+- Keep `SYNC_FORMAT`、`SYNC_SCHEMA_VERSION`、envelope 字段名、`objectType`、AAD 字段、base64url 编码和 `vaultRevision` 含义不变。
+- Never replace a failed decrypt with `{}` or an empty provider list. Preserve the local state or the last valid remote asset and return a stable vault error.
+- 解密失败时绝不能用 `{}` 或空线路列表替代；必须保留本地状态或上一份有效远端资产，并返回稳定的 vault 错误码。
 
 - A random 256-bit DEK encrypts gzip-compressed secure connection settings.
 - Password and one-time recovery code independently derive KEKs using Argon2id.

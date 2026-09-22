@@ -78,7 +78,12 @@ export class GitHubReleaseProvider {
       const bytes = Buffer.from(await response.arrayBuffer());
       if (!response.ok) {
         let detail = "";
-        try { detail = String(JSON.parse(bytes.toString("utf8"))?.message || ""); } catch { /* non-JSON error */ }
+        try { detail = String(JSON.parse(bytes.toString("utf8"))?.message || ""); }
+        catch {
+          // 中文：GitHub 可能返回非 JSON 错误页；使用稳定的 HTTP 错误文本继续处理。
+          // English: GitHub may return a non-JSON error page; continue with stable HTTP error
+          // text instead of exposing parser details.
+        }
         throw new GitHubProviderError(statusCode(response.status), redactCredential(detail || `GitHub HTTP ${response.status}`, this.token), {
           status: response.status,
           retryAfter: response.headers.get("retry-after") || "",

@@ -50,6 +50,23 @@ test("update backup restores data and completed onboarding after an overwrite", 
   }
 });
 
+test("update recovery restores desktop startup settings even when data survived", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-settings-test-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.23" });
+    fs.writeFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), JSON.stringify({ autoLaunch: false, startHidden: false }), "utf8");
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot });
+    assert.equal(restored.restored, true);
+    assert.equal(restored.reason, "desktop-settings-restored");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).setupCompleted, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("update helpers reject unsafe versions and normalize trusted checksums", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-hash-"));
   const file = path.join(root, "installer.exe");

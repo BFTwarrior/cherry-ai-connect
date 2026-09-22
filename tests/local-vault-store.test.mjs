@@ -25,3 +25,16 @@ test("local vault store updates secure settings without retaining the password",
     assert.ok(fs.readdirSync(path.join(dataDir, "backups")).length >= 1);
   } finally { fs.rmSync(dataDir, { recursive: true, force: true }); }
 });
+
+test("local vault status detects an unreadable protected key", async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-vault-status-"));
+  try {
+    const store = new LocalVaultStore({ dataDir, protect, unprotect });
+    await store.initialize({ datasetId, secrets: { providers: [] }, password: "correct horse battery staple", kdfOptions: { t: 1, m: 1024, p: 1 } });
+    const unreadable = new LocalVaultStore({ dataDir, protect, unprotect: () => { throw new Error("dpapi_unavailable"); } });
+    const status = unreadable.status();
+    assert.equal(status.initialized, true);
+    assert.equal(status.unlocked, false);
+    assert.equal(status.error, "vault_local_key_unavailable");
+  } finally { fs.rmSync(dataDir, { recursive: true, force: true }); }
+});

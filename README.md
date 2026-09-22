@@ -26,7 +26,7 @@ Version `1.22` source, 24 automated tests, visual checks, and the Windows instal
 - 线路检测和模型刷新会自动排队同步；同一设备更新或同步不会刷新客户端 Key。
 - 检查到新版后可由用户确认下载、校验、备份并启动覆盖安装。
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
-- 可将加密后的线路配置和匿名使用量同步到用户自己的 GitHub 私有 Release。
+- 可将加密后的线路配置和压缩但不加密的匿名使用量同步到用户自己的 GitHub 私有 Release。
 
 **English**
 
@@ -42,7 +42,7 @@ Version `1.22` source, 24 automated tests, visual checks, and the Windows instal
 - Queue cloud sync after route tests and model refreshes; updates and normal sync never rotate same-device client keys.
 - After user confirmation, download, verify, back up, and start an in-place update.
 - Reset the local connection service by securely selecting an available port from 29,000 candidates.
-- Sync encrypted route configuration and anonymous usage totals to the user’s own private GitHub Release.
+- Sync encrypted route configuration and compressed, non-encrypted anonymous usage totals to the user’s own private GitHub Release.
 
 ## 快速下载 / Quick download
 
@@ -59,7 +59,7 @@ Version `1.22` source, 24 automated tests, visual checks, and the Windows instal
 
 - 连接服务只监听 `127.0.0.1`，不会直接开放到局域网或互联网。
 - 上游 API Key 使用本机加密保存；完整客户端 Key、聊天正文、密码、恢复码和 GitHub 令牌不会上传。
-- 云端敏感配置使用 Argon2id + AES-256-GCM 信封加密。
+- 云端敏感配置使用 Argon2id + AES-256-GCM 信封加密；用量记录只压缩，不依赖敏感配置解密即可同步。
 - GitHub 仓库必须为私有；发现公开仓库时同步会保护性停止。
 - GitHub 访问令牌由 Windows 安全存储保护，不写入源码、日志或云端附件。
 
@@ -316,10 +316,20 @@ Build output is placed in `dist/` and is intentionally excluded from source comm
 electron/       桌面主进程、托盘、窗口、安装路径和 IPC / Desktop process, tray, windows, install paths, and IPC
 gateway/        本地 OpenAI 兼容连接服务、鉴权和转发 / Local OpenAI-compatible service, authentication, and forwarding
 renderer/       React + TypeScript 桌面界面 / React and TypeScript desktop UI
-sync/           加密保险箱、GitHub 适配器和同步协议 / Encrypted vault, GitHub adapter, and sync protocol
+sync/           `sync-crypto.mjs` 加密模块、保险箱、GitHub 适配器和同步协议 / `sync-crypto.mjs` crypto module, vault, GitHub adapter, and sync protocol
 tests/          自动回归、故障注入和视觉验收入口 / Automated regression, fault injection, and visual acceptance entry points
 产品文档/       产品、使用、测试、验收和发布文档 / Product, usage, testing, acceptance, and release documents
+软件/           面向运行和预览的整理交付物 / Organized runnable app and web-demo deliverables
+安装包/         独立的 EXE、安装元数据和网页演示压缩包 / Separate EXE installers, metadata, and web-demo archives
+文档/           便于查阅的文档整理副本 / Curated documentation copies for quick reference
+逻辑图/         本地 XMind 逻辑图整理副本 / Local organized XMind logic-map copies
 ```
+
+## 交付目录 / Delivery directory
+
+`软件/` 和 `安装包/` 是面向使用者的两个同级整理目录：`软件/` 只放可运行或可预览的内容，`安装包/` 只放 EXE、安装元数据和 ZIP 压缩包。根目录的 `dist/`、`renderer/dist/` 和 `dist-web-demo/` 仍保留为构建脚本使用的技术输出目录，不要手动删除或改名。
+
+`软件/` and `安装包/` are two peer user-facing delivery directories: `软件/` contains runnable or previewable content, while `安装包/` contains only EXE installers, metadata, and ZIP archives. The root `dist/`, `renderer/dist/`, and `dist-web-demo/` directories remain as technical build outputs used by the packaging scripts; do not delete or rename them manually.
 
 ## 文档入口 / Documentation
 

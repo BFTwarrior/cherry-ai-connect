@@ -13,10 +13,22 @@ import { Icon } from "./ui/Icon";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.22";
+const VERSION = "1.30";
+const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
+
+const DEMO_PROVIDERS: Provider[] = [
+  { id: "DEMO-NORTH", name: "北境中转（演示）", baseUrl: "https://demo.example.invalid/north", models: Array.from({ length: 24 }, (_, index) => `demo-north-${index + 1}`), modelCount: 24, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 86, clientKeyCount: 3 },
+  { id: "DEMO-AURORA", name: "极光线路（演示）", baseUrl: "https://demo.example.invalid/aurora", models: Array.from({ length: 18 }, (_, index) => `demo-aurora-${index + 1}`), modelCount: 18, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 112, clientKeyCount: 2 },
+  { id: "DEMO-LOAD", name: "本地压测线（演示）", baseUrl: "http://127.0.0.1:20000/demo", models: Array.from({ length: 9 }, (_, index) => `demo-load-${index + 1}`), modelCount: 9, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 7, clientKeyCount: 3 },
+];
+
+const DEMO_KEYS: ClientKey[] = Array.from({ length: 8 }, (_, index) => {
+  const provider = DEMO_PROVIDERS[index % DEMO_PROVIDERS.length];
+  return { id: `demo-key-${index + 1}`, name: `演示客户端 ${index + 1}`, nameCustomized: true, providerId: provider.id, providerName: provider.name, reasoningLevel: "unchanged", createdAt: "2026-09-19 10:00:00", enabled: true, hasSecret: true };
+});
 
 
-const levels: ReasoningLevel[] = ["low", "medium", "high", "xhigh", "max"];
+const levels: ReasoningLevel[] = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 
 function useCopy() {
   return useCallback(async (text: string) => {
@@ -70,7 +82,39 @@ function errorSummary(value: string | undefined) {
 }
 
 function levelLabel(level: ReasoningLevel | undefined) {
-  return String(level || "high").toUpperCase();
+  return String(level || "unchanged").toUpperCase();
+}
+
+function reasoningOptionLabel(level: ReasoningLevel | undefined, language: Language) {
+  return String(level || "unchanged").toUpperCase();
+}
+
+type MenuSelectOption = { value: string; label: string };
+
+function MenuSelect({ value, options, onChange, ariaLabel, className = "", disabled = false }: { value: string; options: MenuSelectOption[]; onChange: (value: string) => void; ariaLabel: string; className?: string; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((option) => option.value === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleOutside = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [open]);
+
+  return <div className={`menu-select ${className} ${open ? "is-open" : ""}`} ref={rootRef}>
+    <button type="button" className="menu-select-trigger" onClick={() => setOpen((current) => !current)} disabled={disabled} aria-haspopup="listbox" aria-expanded={open} aria-label={ariaLabel}>
+      <span>{selected?.label || value}</span><Icon name="chevron" size={13} />
+    </button>
+    {open && <div className="menu-select-menu" role="listbox" aria-label={ariaLabel}>
+      {options.map((option) => <button type="button" role="option" aria-selected={option.value === value} className={`menu-select-option ${option.value === value ? "selected" : ""}`} key={option.value} onClick={() => { onChange(option.value); setOpen(false); }}>
+        <span>{option.label}</span>{option.value === value && <Icon name="check" size={13} />}
+      </button>)}
+    </div>}
+  </div>;
 }
 
 function initials(name: string) {
@@ -80,13 +124,15 @@ function initials(name: string) {
 
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("cherry-language") as Language) || "zh");
+  const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
+  const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false);
   const [view, setView] = useState<View>("overview");
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [keys, setKeys] = useState<ClientKey[]>([]);
-  const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "high", defaultProvider: "" });
-  const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("high");
+  const [providers, setProviders] = useState<Provider[]>(DEMO_MODE ? DEMO_PROVIDERS : []);
+  const [keys, setKeys] = useState<ClientKey[]>(DEMO_MODE ? DEMO_KEYS : []);
+  const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "unchanged", defaultProvider: "" });
+  const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("unchanged");
   const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
-  const [gatewayPort, setGatewayPort] = useState(20000);
+  const [gatewayPort, setGatewayPort] = useState(DEMO_MODE ? 27891 : 20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
   const [toast, setToast] = useState<ToastState>(null);
@@ -163,6 +209,21 @@ export default function App() {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      // 中文：网页演示必须完全脱离桌面桥和本地网关，所有页面都只读内存中的假数据。
+      // English: The web demo must stay completely detached from the desktop bridge and local gateway;
+      // every page reads in-memory fixture data only.
+      if (DEMO_MODE) {
+        setProviders(DEMO_PROVIDERS);
+        setKeys(DEMO_KEYS);
+        setSettings({ forcedLevel: "unchanged", defaultProvider: DEMO_PROVIDERS[0].id, reasoningLevels: levels });
+        setSettingsDraftLevel("unchanged");
+        setGatewayPort(27891);
+        setApiBase("http://127.0.0.1:27891/v1");
+        setLastClientRequestAt("2026-09-19T02:05:00.000Z");
+        setLastClientRequestStatus("ok");
+        setLastClientRequestModel("client-key-test");
+        return;
+      }
       if (window.desktop?.getGatewayInfo) applyGatewayInfo(await window.desktop.getGatewayInfo());
       const [providerData, keyData, settingsData, statusData, desktopData] = await Promise.all([
         request<{ providers: Provider[] }>("/admin/api/providers"),
@@ -173,7 +234,7 @@ export default function App() {
       ]);
       setProviders(providerData.providers || []);
       setKeys(keyData.keys || []);
-      const nextForcedLevel = settingsData.forcedLevel || "high";
+      const nextForcedLevel = settingsData.forcedLevel || "unchanged";
       setSettings({ forcedLevel: nextForcedLevel, defaultProvider: settingsData.defaultProvider || "", reasoningLevels: settingsData.reasoningLevels });
       setSettingsDraftLevel(nextForcedLevel);
       setLastClientRequestAt(statusData.lastClientRequestAt || "");
@@ -201,6 +262,7 @@ export default function App() {
     return () => remove?.();
   }, [load]);
   useEffect(() => {
+    if (DEMO_MODE) return;
     let cancelled = false;
     const refreshClientStatus = async () => {
       try {
@@ -220,6 +282,17 @@ export default function App() {
   useEffect(() => {
     if (modal?.kind !== "key-result") setSecretCopied(false);
   }, [modal]);
+
+  useEffect(() => {
+    if (!reasoningMenuOpen) return;
+    const closeReasoningMenu = (event: MouseEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".reasoning-control")) return;
+      setReasoningMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closeReasoningMenu);
+    return () => document.removeEventListener("mousedown", closeReasoningMenu);
+  }, [reasoningMenuOpen]);
 
 
   const providerById = useCallback((id: string) => providers.find((provider) => provider.id === id), [providers]);
@@ -247,11 +320,16 @@ export default function App() {
     setSettingsDraftLevel(next);
     setReasoningUpdating(true);
     try {
+      if (DEMO_MODE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 260));
+        showToast(tr(`演示模式：默认思考强度已设为 ${reasoningOptionLabel(next, "zh")}`, `Demo: default reasoning is now ${reasoningOptionLabel(next, "en")}`), "success");
+        return;
+      }
       const result = await request<GatewaySettings>("/admin/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ forcedLevel: next, applyToExisting: false }) });
       const savedLevel = result.forcedLevel || next;
       setSettings((current) => ({ ...current, ...result, forcedLevel: savedLevel }));
       setSettingsDraftLevel(savedLevel);
-      showToast(tr(`默认思考强度已设为 ${savedLevel.toUpperCase()}；已有客户端 Key 保持独立设置`, `Default reasoning is now ${savedLevel.toUpperCase()}; existing client keys keep their own levels`), "success");
+      showToast(tr(`默认思考强度已设为 ${reasoningOptionLabel(savedLevel, "zh")}；已有客户端 Key 保持独立设置`, `Default reasoning is now ${reasoningOptionLabel(savedLevel, "en")}; existing client keys keep their own levels`), "success");
     } catch (error) {
       setSettings((current) => ({ ...current, forcedLevel: previous }));
       setSettingsDraftLevel(previous);
@@ -262,6 +340,7 @@ export default function App() {
   };
 
   const changeLanguage = async (next: Language) => {
+    setLanguageMenuOpen(false);
     setLanguage(next);
     localStorage.setItem("cherry-language", next);
     try {
@@ -286,6 +365,13 @@ export default function App() {
     if (!confirmed) return;
     setGatewayResetting(true);
     try {
+      if (DEMO_MODE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 450));
+        setGatewayPort(27891);
+        setApiBase("http://127.0.0.1:27891/v1");
+        showToast(tr("演示模式：已模拟重置连接服务，不会修改本机设置", "Demo: connection service reset simulated; local settings were not changed"), "success");
+        return;
+      }
       if (!window.desktop?.resetGateway) throw new Error(tr("当前环境不支持重置连接服务", "This environment cannot reset the connection service"));
       const result = await window.desktop.resetGateway();
       applyGatewayInfo(result);
@@ -301,6 +387,14 @@ export default function App() {
   const syncProvider = async (id: string, quiet = false) => {
     setSyncing(id);
     try {
+      if (DEMO_MODE) {
+        const provider = providers.find((item) => item.id === id);
+        await new Promise((resolve) => window.setTimeout(resolve, 520));
+        setSyncFailures((current) => current.filter((providerId) => providerId !== id));
+        const result = { models: provider?.models || [], latencyMs: provider?.lastLatencyMs || 42 };
+        if (!quiet) showToast(`${tr("演示线路可用", "Demo route ready")} · ${result.latencyMs}ms · ${result.models.length} ${tr("个模型", "models")}`, "success");
+        return result;
+      }
       const result = await request<{ models: string[]; latencyMs: number }>(`/admin/api/providers/${encodeURIComponent(id)}/test`, { method: "POST" });
       setSyncFailures((current) => current.filter((providerId) => providerId !== id));
       await load(true);
@@ -326,13 +420,14 @@ export default function App() {
     for (const [index, provider] of targets.entries()) {
       setSyncProgress({ current: index + 1, total: targets.length, providerId: provider.id, providerName: provider.name || provider.id });
       try {
-        await request(`/admin/api/providers/${encodeURIComponent(provider.id)}/test`, { method: "POST" });
+        if (DEMO_MODE) await new Promise((resolve) => window.setTimeout(resolve, 300));
+        else await request(`/admin/api/providers/${encodeURIComponent(provider.id)}/test`, { method: "POST" });
         success += 1;
       } catch {
         failures.push(provider.id);
       }
     }
-    await load(true);
+    if (!DEMO_MODE) await load(true);
     setSyncing(null);
     setSyncProgress(null);
     setSyncFailures(failures);
@@ -345,6 +440,19 @@ export default function App() {
     const id = String(form.get("id") || "").trim();
     const isEditing = modal?.kind === "provider" && Boolean(modal.provider);
     try {
+      if (DEMO_MODE) {
+        const current = modal?.kind === "provider" ? modal.provider : undefined;
+        const nextProvider: Provider = {
+          ...(current || {}), id, name: String(form.get("name") || id), baseUrl: String(form.get("baseUrl") || "https://demo.example.invalid/custom"),
+          models: current?.models || ["demo-custom-1", "demo-custom-2", "demo-custom-3"], modelCount: current?.modelCount || 3,
+          enabled: true, hasApiKey: true, modelFetchedAt: current?.modelFetchedAt || "2026-09-19T02:05:00.000Z", lastTestStatus: "ok", lastTestAt: "2026-09-19T02:05:00.000Z", lastLatencyMs: current?.lastLatencyMs || 68,
+          clientKeyCount: current?.clientKeyCount || 0,
+        };
+        setProviders((currentProviders) => currentProviders.some((provider) => provider.id === id) ? currentProviders.map((provider) => provider.id === id ? nextProvider : provider) : [...currentProviders, nextProvider]);
+        setModal(null);
+        showToast(isEditing ? tr("演示线路已更新", "Demo route updated") : tr("演示线路已添加", "Demo route added"), "success");
+        return;
+      }
       await request("/admin/api/providers", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -367,8 +475,23 @@ export default function App() {
     const form = new FormData(event.currentTarget);
     const isEditing = modal?.kind === "key" && Boolean(modal.key);
     const currentKey = modal?.kind === "key" ? modal.key : undefined;
-    const payload = { name: String(form.get("name") || "").trim(), nameCustomized: form.get("nameCustomized") === "true", providerId: String(form.get("providerId") || ""), reasoningLevel: String(form.get("reasoningLevel") || "high") };
+    const payload = { name: String(form.get("name") || "").trim(), nameCustomized: form.get("nameCustomized") === "true", providerId: String(form.get("providerId") || ""), reasoningLevel: String(form.get("reasoningLevel") || "unchanged") as ReasoningLevel };
     try {
+      if (DEMO_MODE) {
+        if (isEditing && currentKey) {
+          const provider = providers.find((item) => item.id === payload.providerId);
+          setKeys((current) => current.map((key) => key.id === currentKey.id ? { ...key, ...payload, providerName: provider?.name || key.providerName } : key));
+          setModal(null);
+          showToast(tr("演示客户端 Key 已更新", "Demo client key updated"), "success");
+        } else {
+          const provider = providers.find((item) => item.id === payload.providerId) || providers[0];
+          const id = `demo-key-${Date.now()}`;
+          setKeys((current) => [...current, { id, ...payload, providerId: provider?.id || "", providerName: provider?.name || "演示线路", createdAt: "2026-09-19 10:05:00", enabled: true, hasSecret: true }]);
+          setModal({ kind: "key-result", secret: `cg_demo_${id}` });
+          showToast(tr("演示客户端 Key 已生成", "Demo client key created"), "success");
+        }
+        return;
+      }
       if (isEditing && currentKey) {
         await request(`/admin/api/client-keys/${encodeURIComponent(currentKey.id)}`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         setModal(null);
@@ -395,6 +518,12 @@ export default function App() {
     });
     if (!confirmed) return;
     try {
+      if (DEMO_MODE) {
+        setProviders((current) => current.filter((provider) => provider.id !== id));
+        setKeys((current) => current.filter((key) => key.providerId !== id));
+        showToast(tr("演示线路已删除", "Demo route deleted"), "success");
+        return;
+      }
       await request(`/admin/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
       await load(true);
       showToast(tr("线路已删除", "Route deleted"), "success");
@@ -405,9 +534,14 @@ export default function App() {
 
   const toggleKey = async (key: ClientKey) => {
     try {
+      if (DEMO_MODE) {
+        setKeys((current) => current.map((item) => item.id === key.id ? { ...item, enabled: !item.enabled } : item));
+        showToast(key.enabled ? tr("演示 Key 已停用", "Demo key disabled") : tr("演示 Key 已启用", "Demo key enabled"), key.enabled ? "error" : "warning");
+        return;
+      }
       await request(`/admin/api/client-keys/${encodeURIComponent(key.id)}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled: !key.enabled }) });
       await load(true);
-      showToast(key.enabled ? tr("Key 已停用", "Key disabled") : tr("Key 已启用", "Key enabled"), "success");
+      showToast(key.enabled ? tr("Key 已停用", "Key disabled") : tr("Key 已启用", "Key enabled"), key.enabled ? "error" : "warning");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
     }
@@ -424,6 +558,11 @@ export default function App() {
     });
     if (!confirmed) return;
     try {
+      if (DEMO_MODE) {
+        setKeys((current) => current.filter((item) => item.id !== key.id));
+        showToast(tr("演示客户端 Key 已删除", "Demo client key deleted"), "success");
+        return;
+      }
       await request(`/admin/api/client-keys/${encodeURIComponent(key.id)}`, { method: "DELETE" });
       await load(true);
       showToast(tr("客户端 Key 已永久删除", "Client key permanently deleted"), "success");
@@ -437,7 +576,7 @@ export default function App() {
       showToast(tr("当前没有可应用的客户端 Key", "There are no client keys to update"), "info");
       return;
     }
-    const level = settings.forcedLevel.toUpperCase();
+    const level = reasoningOptionLabel(settings.forcedLevel, language);
     const confirmed = await requestConfirmation({
       title: tr("覆盖已有 Key 的思考强度", "Apply reasoning to existing keys"),
       message: tr(
@@ -451,12 +590,17 @@ export default function App() {
     });
     if (!confirmed) return;
     try {
+      if (DEMO_MODE) {
+        setKeys((current) => current.map((key) => ({ ...key, reasoningLevel: settings.forcedLevel })));
+        showToast(tr(`演示 Key 已统一为 ${reasoningOptionLabel(settings.forcedLevel, "zh")}`, `Demo keys are now ${reasoningOptionLabel(settings.forcedLevel, "en")}`), "success");
+        return;
+      }
       const next = await request<GatewaySettings>("/admin/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ forcedLevel: settings.forcedLevel, applyToExisting: true }) });
       const savedLevel = next.forcedLevel || settings.forcedLevel;
       setSettings((current) => ({ ...current, ...next, forcedLevel: savedLevel }));
       setSettingsDraftLevel(savedLevel);
       await load(true);
-      showToast(tr(`现有客户端 Key 已统一为 ${savedLevel.toUpperCase()}`, `Existing client keys are now ${savedLevel.toUpperCase()}`), "success");
+      showToast(tr(`现有客户端 Key 已统一为 ${reasoningOptionLabel(savedLevel, "zh")}`, `Existing client keys are now ${reasoningOptionLabel(savedLevel, "en")}`), "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
     }
@@ -488,8 +632,8 @@ export default function App() {
     if (!key.hasSecret) return;
     setCopyingKeyId(key.id);
     try {
-      const result = await request<{ key: string }>(`/admin/api/client-keys/${encodeURIComponent(key.id)}/secret`);
-      await copy(result.key);
+      const secret = DEMO_MODE ? `cg_demo_${key.id}` : (await request<{ key: string }>(`/admin/api/client-keys/${encodeURIComponent(key.id)}/secret`)).key;
+      await copy(secret);
       showToast(tr("客户端 Key 已复制", "Client key copied"), "success");
     } catch (error) {
       showToast(`${tr("复制客户端 Key 失败", "Could not copy client key")}：${error instanceof Error ? error.message : String(error)}`, "error");
@@ -509,6 +653,12 @@ export default function App() {
     });
     if (!confirmed) return;
     try {
+      if (DEMO_MODE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 300));
+        setModal({ kind: "key-result", secret: `cg_demo_rotated_${key.id}` });
+        showToast(tr("演示客户端 Key 已重新生成", "Demo client key regenerated"), "success");
+        return;
+      }
       const result = await request<{ key: string }>(`/admin/api/client-keys/${encodeURIComponent(key.id)}/rotate`, { method: "POST" });
       await load(true);
       setModal({ kind: "key-result", secret: result.key });
@@ -522,8 +672,8 @@ export default function App() {
     if (!key.enabled) return showToast(tr("请先启用这个客户端 Key", "Enable this client key before testing"), "info");
     setTestingKeyId(key.id);
     try {
-      const result = await request<{ modelCount: number }>(`/admin/api/client-keys/${encodeURIComponent(key.id)}/test`, { method: "POST" });
-      await load(true);
+      const result = DEMO_MODE ? (await new Promise<{ modelCount: number }>((resolve) => window.setTimeout(() => resolve({ modelCount: 128 }), 520))) : await request<{ modelCount: number }>(`/admin/api/client-keys/${encodeURIComponent(key.id)}/test`, { method: "POST" });
+      if (!DEMO_MODE) await load(true);
       showToast(`${tr("本地连接正常", "Local connection ready")} · ${result.modelCount} ${tr("个模型", "models")}`, "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
@@ -560,6 +710,7 @@ export default function App() {
     models: ["模型目录", "Model catalog"],
     keys: ["客户端 Key", "Client keys"],
     usage: ["使用统计", "Usage analytics"],
+    cloud: ["云同步", "Cloud sync"],
     settings: ["设置", "Settings"],
   };
 
@@ -568,7 +719,8 @@ export default function App() {
       case "providers": return <ProvidersView />;
       case "models": return <ModelsView />;
       case "keys": return <KeysView />;
-      case "usage": return <UsageView language={language} gatewayOrigin={apiBase.replace(/\/v1\/?$/, "")} />;
+      case "usage": return <UsageView language={language} gatewayOrigin={apiBase.replace(/\/v1\/?$/, "")} demo={DEMO_MODE} />;
+      case "cloud": return <CloudSyncView />;
       case "settings": return <SettingsView />;
       default: return <OverviewView />;
     }
@@ -604,6 +756,10 @@ export default function App() {
   }
 
   function OverviewView() {
+    const overviewProviders = DEMO_MODE ? DEMO_PROVIDERS : providers;
+    const overviewKeys = DEMO_MODE ? DEMO_KEYS : keys;
+    const overviewTotalModels = DEMO_MODE ? 128 : totalModels;
+    const overviewActiveKeys = DEMO_MODE ? 8 : activeKeys;
     const hasSuccessfulClientRequest = activeKeys > 0 && lastClientRequestStatus === "ok";
     const firstActiveKey = keys.find((key) => key.enabled);
     const nextStep = !providers.length
@@ -615,18 +771,19 @@ export default function App() {
           : !hasSuccessfulClientRequest && firstActiveKey
             ? { label: tr("测试本地连接", "Test local connection"), action: () => void testClientKey(firstActiveKey), icon: "check" }
             : { label: tr("管理客户端 Key", "Manage client keys"), action: () => navigate("keys"), icon: "key" };
-    const boundRoutes = keys.filter((key) => key.enabled).map((key) => ({ key, provider: providerById(key.providerId) })).filter((item) => item.provider);
+    const overviewProviderById = (id: string) => overviewProviders.find((provider) => provider.id === id);
+    const boundRoutes = overviewKeys.filter((key) => key.enabled).map((key) => ({ key, provider: overviewProviderById(key.providerId) })).filter((item) => item.provider);
     return <>
       <section className="welcome-panel">
       <div className="welcome-copy"><div className="eyebrow accent"><span className="live-pulse" />{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h2>{tr("把上游线路，变成", "One secure connection center for your ")}<em>{tr("一个好用的 AI 连接中心", "AI routes")}</em></h2><p>{tr("在这里管理中转站、模型目录和客户端 Key。上游密钥只留在本机，Cherry 只需要连接一个本地地址。", "Manage routes, model catalogs, and client keys here. Upstream secrets stay on this PC while Cherry connects to one local endpoint.")}</p><div className="welcome-actions"><button className="button button-primary" onClick={nextStep.action}><Icon name={nextStep.icon} size={15} />{nextStep.label}</button></div></div>
         <div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core-orb"><Icon name="route" size={34} /></div><span className="visual-caption">{tr("本地连接", "LOCAL CONNECT")}</span><strong>127.0.0.1</strong><small>PORT {gatewayPort}</small></div>
       </section>
-      <div className="metric-grid"><Metric icon="route" tone="purple" value={String(providers.length)} label={tr("中转站线路", "Upstream routes")} note={tr("可绑定客户端 Key", "Ready for key binding")} /><Metric icon="layers" tone="blue" value={String(totalModels)} label={tr("已同步模型", "Synced models")} note={tr("来自上游目录", "From upstream catalogs")} /><Metric icon="key" tone="green" value={String(activeKeys)} label={tr("有效客户端 Key", "Active client keys")} note={tr("仅显示本地凭证", "Local credentials only")} /><Metric icon="spark" tone="amber" value={levelLabel(settings.forcedLevel)} label={tr("默认思考强度", "Default reasoning")} note={tr("真实写入转发请求", "Written into requests")} /></div>
+      <div className="metric-grid"><Metric icon="route" tone="purple" value={String(overviewProviders.length === 3 && DEMO_MODE ? 12 : overviewProviders.length)} label={tr("中转站线路", "Upstream routes")} note={tr("可绑定客户端 Key", "Ready for key binding")} /><Metric icon="layers" tone="blue" value={String(overviewTotalModels)} label={tr("已同步模型", "Synced models")} note={tr("来自上游目录", "From upstream catalogs")} /><Metric icon="key" tone="green" value={String(overviewActiveKeys)} label={tr("有效客户端 Key", "Active client keys")} note={tr("仅显示本地凭证", "Local credentials only")} /><Metric icon="spark" tone="amber" value={levelLabel(settings.forcedLevel)} label={tr("默认思考强度", "Default reasoning")} note={tr("真实写入转发请求", "Written into requests")} /></div>
       <div className="overview-columns stable-overview-columns">
-        <section className="panel default-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section>
-        <section className="panel connection-panel"><PanelHeading kicker={tr("连接状态", "CONNECTION STATUS")} title={tr("本地连接脉搏", "Local connection pulse")} description={tr("集中查看本地入口和最近一次请求，不占用配置引导空间。", "See the local endpoint and latest request without permanent onboarding clutter.")} /><div className="connection-pulse-grid"><button type="button" onClick={() => void copyApiAddress()}><span className="connection-pulse-icon"><Icon name="copy" size={16} /></span><span><small>{tr("本地 API 地址", "Local API URL")}</small><strong>{apiBase}</strong></span></button><div><span className={`connection-pulse-icon status-${lastClientRequestStatus}`}><Icon name={lastClientRequestStatus === "ok" ? "check" : lastClientRequestStatus === "error" ? "shield" : "refresh"} size={16} /></span><span><small>{tr("最近请求", "Latest request")}</small><strong>{lastClientRequestStatus === "ok" ? tr("转发成功", "Forwarded") : lastClientRequestStatus === "error" ? tr("转发失败", "Failed") : tr("等待请求", "Waiting")}</strong><em>{lastClientRequestModel || formatDate(lastClientRequestAt, language)}</em></span></div></div><div className="connection-panel-footer"><span><i className="gold-dot" />{tr(`${providers.length} 条线路 · ${activeKeys} 个有效 Key`, `${providers.length} routes · ${activeKeys} active keys`)}</span><button className="text-button" onClick={() => navigate("usage")}>{tr("查看使用记录", "View usage")} <Icon name="arrow" size={13} /></button></div></section>
+        <section className="panel routing-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section>
+        <section className="panel connection-panel"><PanelHeading kicker={tr("连接状态", "CONNECTION STATUS")} title={tr("本地连接状态", "Local connection status")} description={tr("集中查看本地入口和最近一次请求，不占用配置引导空间。", "See the local endpoint and latest request without permanent onboarding clutter.")} /><div className="connection-pulse-grid"><button type="button" onClick={() => void copyApiAddress()}><span className="connection-pulse-icon"><Icon name="copy" size={16} /></span><span><small>{tr("本地 API 地址", "Local API URL")}</small><strong>{apiBase}</strong></span></button><div><span className={`connection-pulse-icon status-${lastClientRequestStatus}`}><Icon name={lastClientRequestStatus === "ok" ? "check" : lastClientRequestStatus === "error" ? "shield" : "refresh"} size={16} /></span><span><small>{tr("最近请求", "Latest request")}</small><strong>{lastClientRequestStatus === "ok" ? tr("转发成功", "Forwarded") : lastClientRequestStatus === "error" ? tr("转发失败", "Failed") : tr("等待请求", "Waiting")}</strong><em>{lastClientRequestModel || formatDate(lastClientRequestAt, language)}</em></span></div></div><div className="connection-panel-footer"><span><i className="gold-dot" />{tr(`${DEMO_MODE ? 12 : providers.length} 条线路 · ${DEMO_MODE ? 8 : activeKeys} 个有效 Key`, `${DEMO_MODE ? 12 : providers.length} routes · ${DEMO_MODE ? 8 : activeKeys} active keys`)}</span><button className="text-button" onClick={() => navigate("usage")}>{tr("查看使用记录", "View usage")} <Icon name="arrow" size={13} /></button></div></section>
       </div>
-      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{providers.length ? <div className="route-list compact-route-list">{providers.slice(0, 3).map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
+      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{overviewProviders.length ? <div className="route-list compact-route-list">{overviewProviders.map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
     </>;
   }
 
@@ -654,7 +811,7 @@ export default function App() {
       <PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型；每个分组可以独立展开或折叠。", "Models are grouped by route; every group can expand or collapse independently.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("刷新中", "Refreshing") : tr("刷新全部模型", "Refresh all models")}</button>} />
       {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在刷新 ${syncProgress.current}/${syncProgress.total}`, `Refreshing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
       {!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路刷新失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}
-      <div className="catalog-toolbar"><label className="select-control"><span>{tr("线路", "Route")}</span><select value={modelFilter} onChange={(event) => setModelFilter(event.target.value)}><option value="all">{tr("全部线路", "All routes")}</option>{providers.map((provider) => <option value={provider.id} key={provider.id}>{provider.name || provider.id}</option>)}</select></label><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
+      <div className="catalog-toolbar"><div className="select-control"><span>{tr("线路", "Route")}</span><MenuSelect className="catalog-route-menu" value={modelFilter} options={[{ value: "all", label: tr("全部线路", "All routes") }, ...providers.map((provider) => ({ value: provider.id, label: provider.name || provider.id }))]} onChange={setModelFilter} ariaLabel={tr("选择线路", "Choose route")} /></div><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
       {groups.length ? <div className="model-groups">{groups.map(({ provider, models }) => {
         const collapsed = collapsedModelGroups.has(provider.id) && !modelQuery.trim();
         return <section className={`model-group ${collapsed ? "is-collapsed" : ""}`} key={provider.id}>
@@ -675,19 +832,16 @@ export default function App() {
 
   function SettingsView() {
     return <section className="page-view">
-      <PageIntro kicker={tr("设置", "PREFERENCES")} description={tr("控制请求策略、桌面行为、更新和界面语言；所有设置修改后立即生效。", "Control request policy, desktop behavior, updates, and language; changes apply immediately.")} action={undefined} />
+      <PageIntro kicker={tr("设置", "PREFERENCES")} description={tr("控制请求策略、桌面行为和本机安全；语言与云同步已移到独立入口。", "Control request policy, desktop behavior, and local security; language and cloud sync have their own entry points.")} action={undefined} />
       <div className="settings-layout">
         <div className="settings-column">
         <article className="settings-card">
           <SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} />
-          <div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。", "Saved immediately; existing keys keep their own level.")}</small></div><select name="forcedLevel" value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></div>
-          <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${settings.forcedLevel.toUpperCase()} 应用到 ${keys.length} 个已有 Key`, `Apply ${settings.forcedLevel.toUpperCase()} to ${keys.length} existing key(s)`)}</button>
+          <div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。选择 UNCHANGED 则保留客户端原始策略。", "Saved immediately; existing keys keep their own level. UNCHANGED preserves each client's original strategy.")}</small></div><MenuSelect className="settings-level-menu" value={settings.forcedLevel} options={levels.map((level) => ({ value: level, label: reasoningOptionLabel(level, language) }))} onChange={(value) => void changeDefaultReasoning(value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} ariaLabel={tr("默认思考强度", "Default reasoning level")} /></div>
+          <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${reasoningOptionLabel(settings.forcedLevel, "zh")} 应用到 ${keys.length} 个已有 Key`, `Apply ${reasoningOptionLabel(settings.forcedLevel, "en")} to ${keys.length} existing key(s)`)}</button>
           <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
         </article>
-        <article className="settings-card compact-settings">
-          <SettingsHeading icon="globe" title={tr("界面语言", "Interface language")} description={tr("切换后界面和托盘菜单立即更新。", "Updates the interface and tray menu immediately.")} />
-          <div className="language-options"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")}>简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")}>English</button></div>
-        </article>
+        <UpdateCard language={language} currentVersion={VERSION} />
         </div>
         <div className="settings-column">
         <article className="settings-card">
@@ -698,16 +852,21 @@ export default function App() {
         </article>
         <article className="settings-card compact-settings">
           <SettingsHeading icon="shield" title={tr("安全与连接", "Security & connection")} description={tr("上游密钥使用本机加密保存；Cherry 只连接下面的本地地址。", "Upstream keys are encrypted locally; Cherry only connects to this local address.")} />
-          <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
+          <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button settings-copy-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
           <div className="connection-note"><Icon name="refresh" size={13} /><span>{tr("“重置连接服务”会停止旧监听器并切换到新的随机端口，用来避开端口冲突；线路、模型、统计和客户端 Key 都会保留。", "Resetting the connection service switches to a random port to avoid conflicts; routes, models, analytics, and client keys are preserved.")}</span></div>
           <button type="button" className="button button-secondary full-width" onClick={openDataFolder}><Icon name="folder" size={15} />{tr("打开数据目录", "Open data folder")}</button>
           <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版的数据与缓存统一保存在安装目录下的 data 文件夹；安装到 D 盘时不会把主要缓存留在 C 盘。", "Packaged data and caches live in the data folder beside the app. Installing on drive D keeps the main cache off drive C.")}</span></div>
           <div className="settings-note warning-note"><Icon name="shield" size={14} /><span>{tr("请勿误删、移动或覆盖 data 及其中的记录文件。删除整个软件文件夹会同时删除缓存、线路、客户端 Key、永久统计和未同步数据。", "Do not accidentally delete, move, or overwrite data or its record files. Deleting the app folder also removes caches, routes, client keys, lifetime analytics, and unsynced data.")}</span></div>
         </article>
         </div>
-        <CloudSyncCard language={language} requestConfirmation={requestConfirmation} />
-        <UpdateCard language={language} currentVersion={VERSION} />
       </div>
+    </section>;
+  }
+
+  function CloudSyncView() {
+    return <section className="page-view cloud-sync-workspace">
+      <PageIntro kicker={tr("云同步", "CLOUD SYNC")} description={tr("独立管理 GitHub 连接、同步状态、数据保护和版本记录。用量可独立同步，中转站 API 仅在主动开启后加密同步。", "Manage the GitHub connection, sync status, data protection, and version history in one workspace. Usage syncs independently; upstream APIs are encrypted only when enabled.")} action={undefined} />
+      <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} />
     </section>;
   }
 
@@ -763,6 +922,7 @@ export default function App() {
       <NavItem icon="layers" label={tr("模型目录", "Models")} active={view === "models"} onClick={() => navigate("models")} />
       <NavItem icon="key" label={tr("客户端 Key", "Client keys")} active={view === "keys"} onClick={() => navigate("keys")} />
       <NavItem icon="chart" label={tr("使用统计", "Usage")} active={view === "usage"} onClick={() => navigate("usage")} />
+      <NavItem icon="cloud" label={tr("云同步", "Cloud sync")} active={view === "cloud"} onClick={() => navigate("cloud")} />
       <div className="nav-label nav-spaced">{tr("系统", "SYSTEM")}</div>
       <NavItem icon="settings" label={tr("设置", "Settings")} active={view === "settings"} onClick={() => navigate("settings")} />
       <div className="sidebar-grow" />
@@ -770,20 +930,20 @@ export default function App() {
       <div className="sidebar-footer"><span>Cherry AI 连接中心</span><span>{VERSION}</span></div>
     </aside>
     <main className="main-scroll">
-      <header className="topbar"><div><div className="top-eyebrow">{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h1>{tr(pageTitle[view][0], pageTitle[view][1])}</h1></div><div className="top-actions"><button type="button" className={`endpoint-pill endpoint-copy-button ${gatewayResetting ? "is-restarting" : ""}`} onClick={() => void copyApiAddress()} disabled={gatewayResetting} aria-live="polite" title={tr("复制本地 API 地址", "Copy local API address")}><span className="status-dot" />{gatewayResetting ? tr("连接服务重启中…", "Connection service restarting…") : `127.0.0.1:${gatewayPort}`}<Icon name="copy" size={13} /></button><label className={`reasoning-control ${reasoningUpdating ? "is-updating" : ""}`} title={tr("修改默认思考强度；已有客户端 Key 保持独立设置", "Change the default reasoning level; existing client keys keep their own setting")}><Icon name="spark" size={14} /><span>{tr("默认思考", "Default")}</span><select value={settings.forcedLevel} onChange={(event) => void changeDefaultReasoning(event.target.value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} aria-label={tr("默认思考强度", "Default reasoning level")}>{levels.map((level) => <option value={level} key={level}>{level.toUpperCase()}</option>)}</select></label><button className="top-reset-button" onClick={() => void handleResetGateway()} disabled={loading || gatewayResetting} title={tr("重置连接服务并随机端口；旧 API 地址会失效", "Reset connection service and randomize port; the old API address will stop working")} aria-label={tr("重置连接服务并随机端口", "Reset connection service and randomize port")}><Icon name="refresh" size={15} /><span>{tr("重置连接服务", "Reset connection service")}</span></button><button className="language-pill" onClick={() => void changeLanguage(language === "zh" ? "en" : "zh")} title={tr("切换语言", "Switch language")}>{language === "zh" ? "EN" : "中"}</button></div></header>
-      <div className="content-wrap">{renderView()}</div>
+      <header className="topbar"><div><div className="top-eyebrow">{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h1>{tr(pageTitle[view][0], pageTitle[view][1])}</h1></div><div className="top-actions"><button type="button" className={`endpoint-pill endpoint-copy-button ${gatewayResetting ? "is-restarting" : ""}`} onClick={() => void copyApiAddress()} disabled={gatewayResetting} aria-live="polite" title={tr("复制本地 API 地址", "Copy local API address")}><span className="status-dot" />{gatewayResetting ? tr("连接服务重启中…", "Connection service restarting…") : `127.0.0.1:${gatewayPort}`}<Icon name="copy" size={13} /></button><div className={`reasoning-control custom-reasoning-control ${reasoningMenuOpen ? "is-open" : ""} ${reasoningUpdating ? "is-updating" : ""}`} title={tr("修改默认思考强度；已有客户端 Key 保持独立设置", "Change the default reasoning level; existing client keys keep their own setting")}><Icon name="spark" size={14} /><span>{tr("默认思考", "Default")}</span><button type="button" className="reasoning-select-trigger" onClick={() => setReasoningMenuOpen((open) => !open)} disabled={reasoningUpdating || gatewayResetting} aria-haspopup="listbox" aria-expanded={reasoningMenuOpen} aria-label={tr("默认思考强度", "Default reasoning level")}><span>{reasoningOptionLabel(settings.forcedLevel, language)}</span><Icon name="chevron" size={12} /></button>{reasoningMenuOpen && <div className="reasoning-menu" role="listbox" aria-label={tr("默认思考强度选项", "Default reasoning level options")}>{levels.map((level) => <button type="button" role="option" aria-selected={settings.forcedLevel === level} className={settings.forcedLevel === level ? "selected" : ""} onClick={() => { setReasoningMenuOpen(false); void changeDefaultReasoning(level); }} key={level}><span>{reasoningOptionLabel(level, language)}</span>{settings.forcedLevel === level && <Icon name="check" size={13} />}</button>)}</div>}</div><button className="top-reset-button" onClick={() => void handleResetGateway()} disabled={loading || gatewayResetting} title={tr("重置连接服务并随机端口；旧 API 地址会失效", "Reset connection service and randomize port; the old API address will stop working")} aria-label={tr("重置连接服务并随机端口", "Reset and randomize connection service")}><Icon name="refresh" size={15} /><span>{tr("重置连接服务", "Reset connection service")}</span></button><div className="language-switcher"><button className={`language-pill ${languageMenuOpen ? "is-open" : ""}`} onClick={() => setLanguageMenuOpen((open) => !open)} title={tr("选择界面语言", "Choose interface language")} aria-haspopup="menu" aria-expanded={languageMenuOpen}>{language === "zh" ? "中" : "EN"}</button>{languageMenuOpen && <div className="language-menu" role="menu"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")} role="menuitem">简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")} role="menuitem">English</button></div>}</div></div></header>
+      <div className="content-wrap">{DEMO_MODE && <div className="demo-data-banner">演示数据：仅当前浏览器页面临时显示，不会写入本地或云端 · Demo data: browser-only, no local or cloud writes</div>}{renderView()}</div>
     </main>
     <Modal />
     <ConfirmDialog />
     {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
   </div>;
 
-  function Metric({ icon, tone, value, label, note }: { icon: string; tone: string; value: string; label: string; note: string }) { return <div className="metric-card"><span className={`metric-icon ${tone}`}><Icon name={icon} size={17} /></span><span><small>{label}</small><strong>{value}</strong><em>{note}</em></span></div>; }
+  function Metric({ icon, tone, value, label, note }: { icon: string; tone: string; value: string; label: string; note: string }) { return <div className="metric-card"><span className={`metric-icon ${tone}`}><Icon name={icon} size={17} /></span><span><small>{label}</small><strong>{value}</strong><em>{note}</em></span><span className="metric-sparks" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</span></div>; }
   function PanelHeading({ kicker, title, description, action }: { kicker: string; title: string; description?: string; action?: ReactNode }) { return <div className="panel-heading"><div><div className="section-kicker">{kicker}</div><h3>{title}</h3>{description && <p>{description}</p>}</div>{action}</div>; }
   function PageIntro({ kicker, description, action }: { kicker: string; description: string; action: ReactNode }) { return <div className="page-intro"><div><div className="section-kicker">{kicker}</div><p>{description}</p></div><div className="page-intro-action">{action}</div></div>; }
   function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
   function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
-  function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span></button>; }
+  function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span><span className="nav-fireflies" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</span></button>; }
   function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} /></label>; }
   function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-primary" disabled={disabled}>{submit}</button></div>; }
   function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }

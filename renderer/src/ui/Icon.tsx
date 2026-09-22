@@ -19,6 +19,7 @@ const iconPaths: Record<string, ReactNode> = {
   power: <><path d="M12 3v9" /><path d="M6.4 5.7a8 8 0 1 0 11.2 0" /></>,
   check: <path d="m5 12 4.5 4.5L19 7" />,
   shield: <><path d="M12 3 20 6v5c0 5.2-3.4 8.5-8 10-4.6-1.5-8-4.8-8-10V6z" /><path d="m8.5 12 2.3 2.3 4.8-5" /></>,
+  "safe-update": <><path d="M12 3 20 6v5c0 5.2-3.4 8.5-8 10-4.6-1.5-8-4.8-8-10V6z" /><path d="M12 7v7" /><path d="m9 11 3 3 3-3" /></>,
   lock: <><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3" /></>,
   monitor: <><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8M12 17v4" /></>,
   globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" /></>,
@@ -29,6 +30,7 @@ const iconPaths: Record<string, ReactNode> = {
   external: <><path d="M14 5h5v5" /><path d="m19 5-8 8" /><path d="M18 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 10v6M12 7.5v.1" /></>,
   chart: <><path d="M4 19V5" /><path d="M4 19h16" /><path d="m7 15 4-5 3 3 5-7" /></>,
+  cloud: <><path d="M7 18h10a4 4 0 0 0 .7-7.9A6 6 0 0 0 6.2 8.7 4.7 4.7 0 0 0 7 18Z" /><path d="m9 14 3-3 3 3M12 11v8" /></>,
 };
 
 export function Icon({ name, size = 17 }: { name: string; size?: number }) {

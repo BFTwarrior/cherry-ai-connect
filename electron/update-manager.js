@@ -84,7 +84,18 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot }) {
   const backupRoot = path.resolve(String(pointer.backupRoot));
   const manifest = readJson(path.join(backupRoot, "recovery-manifest.json"));
   if (!manifest || path.resolve(String(manifest.backupRoot || "")) !== backupRoot) return { restored: false, reason: "invalid-update-backup" };
-  if (criticalDataIsPresent(destination)) return { restored: false, reason: "current-data-preserved", backupRoot };
+  const settingsBackup = path.join(backupRoot, "desktop-settings.json");
+  const settingsDestination = path.join(destination, "desktop-settings.json");
+  // 中文：安装器可能保留 data，却重建桌面设置；只要备份存在，就恢复更新前的用户选择。
+  // English: An installer may preserve data while recreating desktop settings; restore the exact
+  // pre-update choices whenever the backup contains them.
+  let settingsRestored = false;
+  if (fs.existsSync(settingsBackup)) {
+    fs.mkdirSync(destination, { recursive: true });
+    fs.copyFileSync(settingsBackup, settingsDestination);
+    settingsRestored = true;
+  }
+  if (criticalDataIsPresent(destination)) return { restored: settingsRestored, reason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored };
   const sourceGateway = path.join(backupRoot, "gateway-data");
   if (!criticalDataIsPresent(backupRoot)) return { restored: false, reason: "backup-data-incomplete", backupRoot };
   const destinationGateway = path.join(destination, "gateway-data");
@@ -93,8 +104,6 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot }) {
   }
   fs.mkdirSync(destination, { recursive: true });
   fs.cpSync(sourceGateway, destinationGateway, { recursive: true, errorOnExist: false });
-  const settingsBackup = path.join(backupRoot, "desktop-settings.json");
-  const settingsDestination = path.join(destination, "desktop-settings.json");
   if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsBackup, settingsDestination);
   if (!criticalDataIsPresent(destination)) throw new Error("update_restore_verification_failed");
   atomicJson(recoveryPointerFile(legacyUserDataRoot), { ...manifest, restoredAt: new Date().toISOString(), restoredTo: destination });
