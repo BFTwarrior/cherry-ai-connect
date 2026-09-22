@@ -52,7 +52,7 @@
 
 ## 发布结果
 
-状态：本地构建与自动回归已完成；GitHub 发布和真实 Windows 启动验收需以最终公开 Release 与安装机证据为准。
+状态：1.32 已发布为 GitHub Latest；本地构建、自动回归和 GitHub 资产核对已完成；真实 Windows 启动验收仍需在安装机上完成。
 
 本地构建证据：
 
@@ -71,7 +71,8 @@ Web Demo SHA-256：`CE3C965407D9019201911CBAD28D75784F97BC7C4D80E863023F7668BE0B
 `latest.yml` SHA-256：`3DBD13A6F23591F1B9745FD37364FE2C5DC8599DD18365119A5B2A5C0D3EEFF9`
 安装包 SHA-512（latest.yml）：`H1JpDA85DzDZJ4KJtpnqfuXg2EejExR5UL7zacJe0VpiCnE6skoCJ58PTBggb1to+GEhJLC/u4guMPgVVOR3WA==`
 
-GitHub Release：待上传后填写公开地址和最终资产核对结果。
-1.31 撤回：必须在 v1.32 发布成功后将 v1.31 标记为不可用/非当前有效版本，保留历史提交和本地文件。
+GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.32`
+GitHub 资产核对：4 项均为 `uploaded`；安装包、blockmap、Web Demo 和 `latest.yml` 的 GitHub SHA-256 与本地构建值一致。
+1.31 撤回：已在 v1.32 发布成功后将 v1.31 Release 转为 `Draft`，其 v1.31 安装包直链返回 404；历史 tag、提交和 Release 资产记录保留。
 未完成项：真实 Windows 安装启动、1.31 已消费恢复指针现场升级、无上游 API Key 的完整更新链路、GitHub 真实同步成功与断网恢复。
-风险与后续动作：发布后核对 Latest、v1.32 四项资产、README 直链和 v1.31 撤回状态；任何一项不一致都不得宣称正式版完成。
+风险与后续动作：正式使用前在 Windows 安装机执行启动、更新和本地数据保留验收；若发现现场仍为 1.31，必须先卸载/替换为 v1.32，不能继续使用旧安装包。
