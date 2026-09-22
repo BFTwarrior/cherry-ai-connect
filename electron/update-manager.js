@@ -43,6 +43,17 @@ function safeVersion(value) {
   return clean;
 }
 
+function compareVersions(left, right) {
+  const a = safeVersion(left).split(".").map(Number);
+  const b = safeVersion(right).split(".").map(Number);
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const nextA = a[index] || 0;
+    const nextB = b[index] || 0;
+    if (nextA !== nextB) return nextA > nextB ? 1 : -1;
+  }
+  return 0;
+}
+
 function recoveryPointerFile(legacyUserDataRoot) {
   return path.join(path.resolve(legacyUserDataRoot), POINTER_NAME);
 }
@@ -77,13 +88,28 @@ function createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDat
   return manifest;
 }
 
-function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot }) {
+function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion = "" }) {
   const destination = path.resolve(runtimeDataRoot);
   const pointer = readJson(recoveryPointerFile(legacyUserDataRoot));
   if (!pointer?.backupRoot) return { restored: false, reason: "no-update-backup" };
   const backupRoot = path.resolve(String(pointer.backupRoot));
   const manifest = readJson(path.join(backupRoot, "recovery-manifest.json"));
   if (!manifest || path.resolve(String(manifest.backupRoot || "")) !== backupRoot) return { restored: false, reason: "invalid-update-backup" };
+  // 中文：恢复指针是一次性事务。首次启动已经消费后，后续启动绝不能再次用旧备份覆盖新数据。
+  // English: A recovery pointer is a one-shot transaction. Once consumed, later launches must never
+  // reuse the old backup to overwrite newer local data.
+  if (pointer.restoredAt) {
+    if (!criticalDataIsPresent(destination)) throw new Error("update_recovery_data_missing_after_consumption");
+    return { restored: false, reason: "update-backup-already-consumed", backupRoot };
+  }
+  const targetVersion = safeVersion(manifest.targetVersion || pointer.targetVersion);
+  if (currentVersion) {
+    const versionRelation = compareVersions(targetVersion, currentVersion);
+    if (versionRelation !== 0) {
+      if (!criticalDataIsPresent(destination)) throw new Error("update_recovery_version_mismatch");
+      return { restored: false, reason: versionRelation < 0 ? "stale-update-backup" : "future-update-backup", backupRoot, targetVersion };
+    }
+  }
   const settingsBackup = path.join(backupRoot, "desktop-settings.json");
   const settingsDestination = path.join(destination, "desktop-settings.json");
   // 中文：安装器可能保留 data，却重建桌面设置；只要备份存在，就恢复更新前的用户选择。
@@ -95,7 +121,15 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot }) {
     fs.copyFileSync(settingsBackup, settingsDestination);
     settingsRestored = true;
   }
-  if (criticalDataIsPresent(destination)) return { restored: settingsRestored, reason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored };
+  if (criticalDataIsPresent(destination)) {
+    atomicJson(recoveryPointerFile(legacyUserDataRoot), {
+      ...manifest,
+      restoredAt: new Date().toISOString(),
+      restoredTo: destination,
+      restoreReason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved",
+    });
+    return { restored: settingsRestored, reason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored };
+  }
   const sourceGateway = path.join(backupRoot, "gateway-data");
   if (!criticalDataIsPresent(backupRoot)) return { restored: false, reason: "backup-data-incomplete", backupRoot };
   const destinationGateway = path.join(destination, "gateway-data");
@@ -106,8 +140,13 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot }) {
   fs.cpSync(sourceGateway, destinationGateway, { recursive: true, errorOnExist: false });
   if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsBackup, settingsDestination);
   if (!criticalDataIsPresent(destination)) throw new Error("update_restore_verification_failed");
-  atomicJson(recoveryPointerFile(legacyUserDataRoot), { ...manifest, restoredAt: new Date().toISOString(), restoredTo: destination });
-  return { restored: true, backupRoot, targetVersion: String(manifest.targetVersion || "") };
+  atomicJson(recoveryPointerFile(legacyUserDataRoot), {
+    ...manifest,
+    restoredAt: new Date().toISOString(),
+    restoredTo: destination,
+    restoreReason: "gateway-data-restored",
+  });
+  return { restored: true, backupRoot, targetVersion };
 }
 
 function normalizeSha256(value) {

@@ -15,12 +15,12 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(projectRoot, "renderer", "dist");
 const target = resolve(projectRoot, "dist-web-demo");
 const archiveDirectory = resolve(projectRoot, "dist");
-const archive = resolve(archiveDirectory, "Cherry-AI-Connect-Web-Demo-1.30.zip");
+const archive = resolve(archiveDirectory, "Cherry-AI-Connect-Web-Demo-1.31.zip");
 
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 cpSync(source, target, { recursive: true });
-writeFileSync(resolve(target, "README.txt"), `Cherry AI Connect web demo 1.30\n\nOpen this build with the query string: ?demo=1\n\nRecommended local preview:\n  python -m http.server 4174\nThen visit:\n  http://127.0.0.1:4174/?demo=1\n\nThis page uses fictional data for visual and interaction review. It does not call the local gateway, desktop bridge, GitHub sync, or encryption storage.\n\nFor public hosting, upload the contents of this folder to any static hosting service and share the resulting URL with ?demo=1 appended.\n`, "utf8");
+writeFileSync(resolve(target, "README.txt"), `Cherry AI Connect web demo 1.31\n\nOpen this build with the query string: ?demo=1\n\nRecommended local preview:\n  python -m http.server 4174\nThen visit:\n  http://127.0.0.1:4174/?demo=1\n\nThis page uses fictional data for visual and interaction review. It does not call the local gateway, desktop bridge, GitHub sync, or encryption storage.\n\nFor public hosting, upload the contents of this folder to any static hosting service and share the resulting URL with ?demo=1 appended.\n`, "utf8");
 
 mkdirSync(archiveDirectory, { recursive: true });
 execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Compress-Archive -Path '${target}\\*' -DestinationPath '${archive}' -Force`], { stdio: "inherit" });

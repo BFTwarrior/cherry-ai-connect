@@ -1,0 +1,49 @@
+# Cherry AI Connect 1.31 正式版：更新恢复回滚修复验收
+
+## 版本目标
+
+- 产品正式版本：`1.31.0`
+- 网关健康检查版本：`1.31`
+- 发布标签：`v1.31`
+- 修复范围：更新恢复指针的版本绑定、一次性消费和重复启动保护。
+
+## 已确认根因
+
+v1.30 启动时读取了遗留的 `targetVersion: 1.21` 恢复指针。在安装目录数据被覆盖后，程序把 1.21 旧备份恢复到运行目录，导致本地 `usage.db` 回滚。恢复指针在数据已恢复后仍可被再次读取，存在重复覆盖风险。
+
+## 1.31 修复
+
+- 恢复指针必须与当前程序版本匹配；旧版本或未来版本备份不自动恢复。
+- 恢复完成后写入 `restoredAt`，后续启动只返回已消费，不重复复制旧备份。
+- 即使当前 `gateway-data` 已存在，恢复桌面设置后也会消费指针，避免每次启动重复处理。
+- 版本不匹配或已消费的指针遇到空/不完整数据目录时，程序保护性阻止继续启动，不以空目录生成新数据。
+- 保留原有安全边界：不删除旧备份，不覆盖非空的部分数据目录，发现不完整状态时保护性停止并等待人工检查。
+
+## 验收标准
+
+- 更新恢复单元测试覆盖：正常恢复、设置恢复、旧版本拒绝、未来版本拒绝、重复启动不恢复。
+- `npm run check`、`npm test`、`npm run renderer:build` 通过。
+- `npm run dist` 生成版本为 1.31 的 Windows x64 安装包。
+- 安装包启动后 `/health` 返回 `version: 1.31`。
+- `latest.yml` 的版本、文件大小和 SHA-512 与安装包一致。
+- GitHub v1.31 Release 包含唯一正确的安装包、blockmap、Web Demo 和 `latest.yml`。
+
+## 数据恢复说明
+
+- v1.30 的旧恢复目录和历史 Release 保留，不删除、不覆盖。
+- 本次现场核对确认 GitHub `cherry-sync` Release 仍有较新的同步 manifest 与用量资产；本地恢复操作需在 1.31 修复后单独执行，不能在未核对前直接覆盖当前数据。
+
+## 发布证据
+
+- 自动测试：32 项通过，0 失败。
+- `npm run check`：通过。
+- `npm run renderer:build`：通过。
+- `npm run dist`：通过，生成 Windows x64 NSIS 安装包。
+- `npm run web-demo:build`：通过。
+- 解包程序健康检查：HTTP 200，返回 `version: 1.31`；测试进程已停止。
+- 安装包：`dist/Cherry-AI-Connect-Setup-1.31.exe`，103025034 bytes。
+- 安装包 SHA-256：`CC4C3BBD5FA8FEE24621CBEAE84688D5D95DBC47510CC2B69DC3065439F67291`。
+- 安装包 SHA-512：`voPEQN6w45hdRYerXtLGWRBi3G5ZOy1uHJWr+/13bMr9+ovC6jyEcZcVCl5uXwSWaHM4DJ8y8thn59+xBn7qFQ==`。
+- blockmap：`dist/Cherry-AI-Connect-Setup-1.31.exe.blockmap`，107444 bytes。
+- Web Demo：`dist/Cherry-AI-Connect-Web-Demo-1.31.zip`，141083 bytes。
+- `latest.yml` 已核对版本 `1.31.0`、安装包大小和 SHA-512 一致。

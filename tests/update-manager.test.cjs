@@ -41,7 +41,7 @@ test("update backup restores data and completed onboarding after an overwrite", 
     const backup = createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.2" });
     assert.ok(fs.existsSync(path.join(backup.backupRoot, "gateway-data", ".gateway-secret")));
     fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
-    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot });
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.2.0" });
     assert.equal(restored.restored, true);
     assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", ".gateway-secret"), "utf8"), "local-secret");
     assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).setupCompleted, true);
@@ -58,10 +58,51 @@ test("update recovery restores desktop startup settings even when data survived"
   try {
     createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.23" });
     fs.writeFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), JSON.stringify({ autoLaunch: false, startHidden: false }), "utf8");
-    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot });
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.23.0" });
     assert.equal(restored.restored, true);
     assert.equal(restored.reason, "desktop-settings-restored");
     assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).setupCompleted, true);
+    const pointer = JSON.parse(fs.readFileSync(path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json"), "utf8"));
+    assert.ok(pointer.restoredAt);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("stale recovery backups never replace a newer empty runtime", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-stale-test-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.21" });
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    assert.throws(
+      () => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31.0" }),
+      /update_recovery_version_mismatch/,
+    );
+    assert.equal(fs.existsSync(path.join(runtimeDataRoot, "gateway-data", ".gateway-secret")), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("consumed recovery pointers are one-shot", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-once-test-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.31" });
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    const first = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31" });
+    assert.equal(first.restored, true);
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    assert.throws(
+      () => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.31" }),
+      /update_recovery_data_missing_after_consumption/,
+    );
+    assert.equal(fs.existsSync(path.join(runtimeDataRoot, "gateway-data", ".gateway-secret")), false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

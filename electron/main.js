@@ -41,7 +41,7 @@ const { runtimeDataRoot, browserCacheRoot, gatewayDataRoot, updateRecoveryRoot }
 // 中文：在网关读取配置前恢复更新备份；同机升级不能因空目录而刷新客户端 Key。
 // English: Restore update data before the gateway reads configuration so an empty post-update folder
 // never rotates client keys on the same device.
-const updateRestoreResult = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot });
+const updateRestoreResult = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: app.getVersion() });
 if (updateRestoreResult.restored) console.info(`已恢复更新前数据：${updateRestoreResult.backupRoot}`);
 fs.mkdirSync(runtimeDataRoot, { recursive: true });
 app.setPath("userData", runtimeDataRoot);
