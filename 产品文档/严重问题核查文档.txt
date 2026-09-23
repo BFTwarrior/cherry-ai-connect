@@ -106,7 +106,7 @@
 
 ### 1.31 已消费恢复指针导致启动崩溃
 
-状态：1.32 修复中。`update_recovery_data_missing_after_consumption` 不得再以 Electron 未捕获异常阻断主进程；必须验证备份版本、完整性、空目录条件和一次性修复次数后再决定恢复或停止。
+状态：1.32 已修复并发布；1.33 自动回归继续通过。`update_recovery_data_missing_after_consumption` 不得以 Electron 未捕获异常阻断主进程；修复恢复仍须验证备份版本、完整性、空目录条件和一次性修复次数。目标 Windows 设备覆盖更新后的启动仍待现场确认。
 
 ### 已发布版本的本地记录恢复
 
