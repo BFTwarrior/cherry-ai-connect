@@ -1,7 +1,7 @@
-# Cherry AI Connect 1.2 Sync Protocol
+# Cherry AI Connect Cloud Sync Protocol — Schema 1
 
-> 中文：本文是 1.2 使用的云同步协议；数据格式仍为 schema 1，并兼容 1.1。
-> English: This is the sync contract used by version 1.2. The data schema remains schema 1 and stays compatible with 1.1.
+> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前 v1.35）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
+> English: This document describes the compatible cloud-sync data contract. The product version (currently v1.35) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
 
 ## 1. Safety boundary / 安全边界
 
@@ -175,7 +175,7 @@ Retries have a maximum count. Exit sync has a short deadline and leaves durable 
 
 ## 11. Compatibility / 兼容性
 
-- `schemaVersion = 1` remains the data schema. Version 1.2 does not raise `minReaderVersion` or `minWriterVersion` because it adds no incompatible cloud fields.
+- `schemaVersion = 1` remains the data schema. Product releases do not raise `minReaderVersion` or `minWriterVersion` unless an incompatible cloud-format change is explicitly designed and migrated.
 - Readers reject a manifest with a higher `minReaderVersion`.
 - Writers refuse to overwrite a manifest with a higher `minWriterVersion`.
 - Future optional fields must have safe defaults.

@@ -16,7 +16,12 @@ const {
 const {
   createUpdateBackup,
   canRepairConsumedRecovery,
+  criticalDataIsPresent,
+  connectedSyncNeedsCredential,
+  inspectManualUpdateRecovery,
+  migrateLegacyInstallDataIfNeeded,
   normalizeSha256,
+  restoreUpdateBackupWithConsent,
   restoreUpdateBackupIfNeeded,
   safeVersion,
   sha256File,
@@ -29,6 +34,7 @@ function seedRuntime(root) {
   fs.writeFileSync(path.join(gateway, "config.json"), JSON.stringify({ forcedLevel: "high", clientKeys: [{ id: "same-device-key" }] }), "utf8");
   fs.writeFileSync(path.join(gateway, ".gateway-secret"), "local-secret", "utf8");
   fs.writeFileSync(path.join(gateway, "device.json"), JSON.stringify({ deviceId: "device-local" }), "utf8");
+  fs.writeFileSync(path.join(gateway, "usage.db"), "test-ledger", "utf8");
   fs.writeFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), JSON.stringify({ setupCompleted: true }), "utf8");
   return runtimeDataRoot;
 }
@@ -185,6 +191,125 @@ test("recovery repair is limited to the same or immediate next minor version", (
   assert.equal(canRepairConsumedRecovery("1.31", "1.32"), true);
   assert.equal(canRepairConsumedRecovery("1.21", "1.32"), false);
   assert.equal(canRepairConsumedRecovery("2.31", "1.32"), false);
+});
+
+test("legacy install data moves to a sibling directory without replacing newer data", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-migrate-"));
+  const legacyInstallDataRoot = seedRuntime(root);
+  const runtimeDataRoot = path.join(root, "install-data");
+  fs.writeFileSync(path.join(legacyInstallDataRoot, "gateway-data", "usage.db"), "original-usage");
+  try {
+    const first = migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot, runtimeDataRoot });
+    assert.equal(first.migrated, true);
+    assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", "usage.db"), "utf8"), "original-usage");
+    assert.equal(fs.readFileSync(path.join(legacyInstallDataRoot, "gateway-data", "usage.db"), "utf8"), "original-usage");
+    fs.writeFileSync(path.join(runtimeDataRoot, "gateway-data", "usage.db"), "newer-usage");
+    assert.equal(migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot, runtimeDataRoot }).migrated, false);
+    assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", "usage.db"), "utf8"), "newer-usage");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("migration and manual recovery refuse a nonempty partial current gateway", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-partial-"));
+  const legacyInstallDataRoot = seedRuntime(root);
+  const runtimeDataRoot = path.join(root, "install-data");
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  fs.mkdirSync(gateway, { recursive: true });
+  fs.writeFileSync(path.join(gateway, "usage.db"), "newer-partial-usage");
+  try {
+    assert.throws(() => migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot, runtimeDataRoot }), /update_recovery_partial_data_needs_review/);
+    assert.equal(fs.readFileSync(path.join(gateway, "usage.db"), "utf8"), "newer-partial-usage");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("an existing device without its usage ledger is incomplete and cannot silently reset statistics", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-ledger-"));
+  const legacyInstallDataRoot = seedRuntime(root);
+  try {
+    fs.rmSync(path.join(legacyInstallDataRoot, "gateway-data", "usage.db"));
+    assert.equal(criticalDataIsPresent(legacyInstallDataRoot), false);
+    fs.writeFileSync(path.join(legacyInstallDataRoot, "gateway-data", "usage.db"), "");
+    assert.equal(criticalDataIsPresent(legacyInstallDataRoot), false);
+    assert.throws(() => createUpdateBackup({
+      runtimeDataRoot: legacyInstallDataRoot,
+      updateRecoveryRoot: path.join(root, "recovery"),
+      legacyUserDataRoot: path.join(root, "pointer"),
+      targetVersion: "1.35",
+    }), /update_source_data_incomplete/);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("consumed pointer repairs only a missing sync credential for the same device", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-consumed-token-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    fs.writeFileSync(path.join(gateway, "sync-state.json"), JSON.stringify({ enabled: true }));
+    fs.writeFileSync(path.join(gateway, ".github-token"), "protected-token");
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot, targetVersion: "1.35" });
+    const pointerFile = path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json");
+    const pointer = JSON.parse(fs.readFileSync(pointerFile, "utf8"));
+    fs.writeFileSync(pointerFile, JSON.stringify({ ...pointer, restoredAt: "2026-09-24T00:00:00Z" }));
+    fs.rmSync(path.join(gateway, ".github-token"));
+    assert.equal(connectedSyncNeedsCredential(gateway), true);
+    assert.equal(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.35" }).reason, "sync-credential-restored");
+    assert.equal(fs.readFileSync(path.join(gateway, ".github-token"), "utf8"), "protected-token");
+    assert.equal(connectedSyncNeedsCredential(gateway), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("an old consumed pointer is offered for explicit recovery and never silently overwrites data", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-manual-"));
+  const legacyInstallDataRoot = seedRuntime(root);
+  const runtimeDataRoot = path.join(root, "install-data");
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  fs.writeFileSync(path.join(legacyInstallDataRoot, "gateway-data", "usage.db"), "backup-usage");
+  try {
+    const backup = createUpdateBackup({ runtimeDataRoot: legacyInstallDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.32" });
+    const pointerFile = path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json");
+    const pointer = JSON.parse(fs.readFileSync(pointerFile, "utf8"));
+    fs.writeFileSync(pointerFile, JSON.stringify({ ...pointer, restoredAt: "2026-09-22T00:00:00Z", recoveryRepairAt: "2026-09-23T00:00:00Z" }));
+    const options = { runtimeDataRoot, legacyUserDataRoot, updateRecoveryRoot, legacyInstallDataRoot };
+    assert.throws(() => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.35" }), /update_recovery_data_missing_after_consumption/);
+    assert.equal(inspectManualUpdateRecovery(options).available, true);
+    const result = restoreUpdateBackupWithConsent(options);
+    assert.equal(result.reason, "manual-update-backup-restored");
+    assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", "usage.db"), "utf8"), "backup-usage");
+    assert.equal(fs.existsSync(path.join(backup.backupRoot, "gateway-data", "usage.db")), true);
+    assert.ok(JSON.parse(fs.readFileSync(pointerFile, "utf8")).manualRecoveryAt);
+    assert.equal(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.35" }).restored, false);
+    assert.equal(inspectManualUpdateRecovery(options).available, false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("manual recovery rejects pointers outside the recovery directory", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-manual-path-"));
+  const legacyInstallDataRoot = seedRuntime(root);
+  const updateRecoveryRoot = path.join(root, "recovery");
+  const legacyUserDataRoot = path.join(root, "pointer");
+  const runtimeDataRoot = path.join(root, "install-data");
+  try {
+    createUpdateBackup({ runtimeDataRoot: legacyInstallDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.32" });
+    const options = { runtimeDataRoot, legacyUserDataRoot, updateRecoveryRoot: path.join(root, "other-recovery"), legacyInstallDataRoot };
+    assert.equal(inspectManualUpdateRecovery(options).reason, "backup-outside-recovery-root");
+    assert.throws(() => restoreUpdateBackupWithConsent(options), /backup-outside-recovery-root/);
+    assert.equal(fs.existsSync(path.join(runtimeDataRoot, "gateway-data")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("an interrupted pointer replacement remains discoverable through its previous copy", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-pointer-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const legacyUserDataRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot, targetVersion: "1.35" });
+    const pointerFile = path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json");
+    fs.copyFileSync(pointerFile, `${pointerFile}.previous`);
+    fs.rmSync(pointerFile);
+    assert.equal(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.35" }).reason, "current-data-preserved");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("update helpers reject unsafe versions and normalize trusted checksums", () => {

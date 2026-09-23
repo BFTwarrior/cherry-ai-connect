@@ -8,9 +8,14 @@ function resolveRuntimePaths({ isPackaged, executablePath, moduleDirectory }) {
   const applicationRoot = isPackaged
     ? path.dirname(path.resolve(executablePath))
     : path.resolve(moduleDirectory, "..");
-  const runtimeDataRoot = path.join(applicationRoot, isPackaged ? "data" : ".runtime-data");
+  // The NSIS installer replaces the application directory. Keep user data beside that directory.
+  const legacyInstallDataRoot = path.join(applicationRoot, "data");
+  const runtimeDataRoot = isPackaged
+    ? path.join(path.dirname(applicationRoot), `${path.basename(applicationRoot)}-data`)
+    : path.join(applicationRoot, ".runtime-data");
   return {
     applicationRoot,
+    legacyInstallDataRoot,
     runtimeDataRoot,
     browserCacheRoot: path.join(runtimeDataRoot, "browser-cache"),
     gatewayDataRoot: path.join(runtimeDataRoot, "gateway-data"),

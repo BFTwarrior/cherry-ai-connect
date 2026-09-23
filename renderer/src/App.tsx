@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.34";
+const VERSION = "1.35";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
 const DEMO_PROVIDERS: Provider[] = [
@@ -841,7 +841,7 @@ export default function App() {
           <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button settings-copy-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
           <div className="connection-note"><Icon name="refresh" size={13} /><span>{tr("“重置连接服务”会停止旧监听器并切换到新的随机端口，用来避开端口冲突；线路、模型、统计和客户端 Key 都会保留。", "Resetting the connection service switches to a random port to avoid conflicts; routes, models, analytics, and client keys are preserved.")}</span></div>
           <button type="button" className="button button-secondary full-width" onClick={openDataFolder}><Icon name="folder" size={15} />{tr("打开数据目录", "Open data folder")}</button>
-          <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版的数据与缓存统一保存在安装目录下的 data 文件夹；安装到 D 盘时不会把主要缓存留在 C 盘。", "Packaged data and caches live in the data folder beside the app. Installing on drive D keeps the main cache off drive C.")}</span></div>
+          <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版数据保存在安装程序目录旁的独立数据文件夹，覆盖更新不会清理它；安装到 D 盘时主要数据也保留在 D 盘。", "Packaged data stays in a separate folder beside the app directory, outside the installer's cleanup area. Installing on drive D keeps primary data on drive D.")}</span></div>
           <div className="settings-note warning-note"><Icon name="shield" size={14} /><span>{tr("请勿误删、移动或覆盖 data 及其中的记录文件。删除整个软件文件夹会同时删除缓存、线路、客户端 Key、永久统计和未同步数据。", "Do not accidentally delete, move, or overwrite data or its record files. Deleting the app folder also removes caches, routes, client keys, lifetime analytics, and unsynced data.")}</span></div>
         </article>
         </div>

@@ -2,7 +2,7 @@
  * 中文：Electron 主进程负责创建桌面窗口、托盘、开机启动和本地网关生命周期。
  * English: The Electron main process owns the desktop window, tray, auto-start, and local gateway lifecycle.
  */
-const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard, safeStorage, powerMonitor } = require("electron");
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, clipboard, safeStorage, powerMonitor, dialog } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const https = require("node:https");
@@ -11,7 +11,17 @@ const { promisify } = require("node:util");
 const { pathToFileURL } = require("node:url");
 const { chooseGatewayPort } = require("./port-selector");
 const { resolveRuntimePaths } = require("./runtime-paths");
-const { createUpdateBackup, downloadVerifiedInstaller, restoreUpdateBackupIfNeeded } = require("./update-manager");
+const {
+  createUpdateBackup,
+  criticalDataIsPresent,
+  connectedSyncNeedsCredential,
+  downloadVerifiedInstaller,
+  hasPartialGatewayData,
+  inspectManualUpdateRecovery,
+  migrateLegacyInstallDataIfNeeded,
+  restoreUpdateBackupIfNeeded,
+  restoreUpdateBackupWithConsent,
+} = require("./update-manager");
 const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
 
 const execFileAsync = promisify(execFile);
@@ -33,19 +43,77 @@ let updateRun;
 // 中文：正式版把运行数据放在安装目录旁，用户选择 D 盘后不会把主要缓存留在 C 盘。
 // English: Packaged builds keep runtime data beside the installation so a D-drive install stays on D.
 const legacyUserDataRoot = app.getPath("userData");
-const { runtimeDataRoot, browserCacheRoot, gatewayDataRoot, updateRecoveryRoot } = resolveRuntimePaths({
+const { runtimeDataRoot, legacyInstallDataRoot, browserCacheRoot, gatewayDataRoot, updateRecoveryRoot } = resolveRuntimePaths({
   isPackaged: app.isPackaged,
   executablePath: process.execPath,
   moduleDirectory: __dirname,
 });
-// 中文：在网关读取配置前恢复更新备份；同机升级不能因空目录而刷新客户端 Key。
-// English: Restore update data before the gateway reads configuration so an empty post-update folder
-// never rotates client keys on the same device.
-const updateRestoreResult = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: app.getVersion() });
-if (updateRestoreResult.restored) console.info(`已恢复更新前数据：${updateRestoreResult.backupRoot}`);
-fs.mkdirSync(runtimeDataRoot, { recursive: true });
-app.setPath("userData", runtimeDataRoot);
-app.setPath("sessionData", browserCacheRoot);
+// Keep runtime data outside the installer-owned directory. Migrate surviving data before reading
+// the recovery pointer; a stale, consumed pointer must never replace a newer local copy.
+let updateRestoreResult = { restored: false, reason: "not-attempted" };
+let startupRecoveryError = null;
+const manualRecoveryOptions = { runtimeDataRoot, legacyUserDataRoot, updateRecoveryRoot, legacyInstallDataRoot };
+try {
+  if (app.isPackaged) migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot, runtimeDataRoot });
+  migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot: legacyUserDataRoot, runtimeDataRoot });
+  updateRestoreResult = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: app.getVersion() });
+  if (hasPartialGatewayData(runtimeDataRoot)
+    || (!criticalDataIsPresent(runtimeDataRoot) && updateRestoreResult.reason !== "no-update-backup")) {
+    throw new Error(hasPartialGatewayData(runtimeDataRoot) ? "runtime_data_incomplete" : updateRestoreResult.reason);
+  }
+  if (criticalDataIsPresent(runtimeDataRoot) && connectedSyncNeedsCredential(gatewayDataRoot)) {
+    throw new Error("update_recovery_sync_credential_missing");
+  }
+  if (updateRestoreResult.restored) console.info(`已恢复更新前数据：${updateRestoreResult.backupRoot}`);
+} catch (error) {
+  startupRecoveryError = error;
+  console.error("Update recovery needs attention:", error);
+}
+try {
+  fs.mkdirSync(runtimeDataRoot, { recursive: true });
+  app.setPath("userData", runtimeDataRoot);
+  app.setPath("sessionData", browserCacheRoot);
+} catch (error) {
+  startupRecoveryError ||= error;
+  console.error("Runtime data path needs attention:", error);
+}
+
+async function resolveStartupRecovery() {
+  if (!startupRecoveryError) return true;
+  let candidate;
+  try { candidate = inspectManualUpdateRecovery(manualRecoveryOptions); }
+  catch (error) { candidate = { available: false, reason: String(error?.message || error) }; }
+  const buttons = candidate.available ? ["退出并保留现场", "恢复旧备份并启动"] : ["退出并保留现场"];
+  const detail = candidate.available
+    ? `当前数据目录不完整。找到 ${candidate.targetVersion} 版更新备份（${candidate.createdAt || "时间未知"}）。备份之后产生的本地记录可能不在其中；恢复只会写入空数据目录，不会删除备份。\n\n备份位置：${candidate.backupRoot}`
+    : `当前数据目录不完整，未找到可安全自动恢复的备份。现有文件均已保留，请先核对数据目录和旧备份。\n\n错误：${String(startupRecoveryError?.message || startupRecoveryError)}\n备份状态：${candidate.reason}`;
+  const { response } = await dialog.showMessageBox({
+    type: "warning",
+    title: "Cherry AI 连接中心：本地数据保护",
+    message: "检测到更新后的本地数据缺失，已暂停启动",
+    detail,
+    buttons,
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  if (!candidate.available || response !== 1) { app.quit(); return false; }
+  try {
+    updateRestoreResult = restoreUpdateBackupWithConsent(manualRecoveryOptions);
+    startupRecoveryError = null;
+    return true;
+  } catch (error) {
+    await dialog.showMessageBox({
+      type: "error",
+      title: "Cherry AI 连接中心：恢复未完成",
+      message: "备份恢复失败，程序已停止以保护现有文件",
+      detail: String(error?.message || error),
+      buttons: ["确定"],
+    });
+    app.quit();
+    return false;
+  }
+}
 
 function copyDirectoryIfMissing(source, destination) {
   if (!fs.existsSync(source) || fs.existsSync(destination)) return false;
@@ -70,7 +138,6 @@ function migrateLegacyDataOnce() {
   }
 }
 
-migrateLegacyDataOnce();
 const singleInstance = app.requestSingleInstanceLock();
 
 app.setAppUserModelId("com.bftwarrior.cherry-ai-connect");
@@ -509,6 +576,8 @@ if (!singleInstance) app.quit();
 else {
   app.on("second-instance", () => mainWindow?.show());
   app.whenReady().then(async () => {
+    if (!await resolveStartupRecovery()) return;
+    migrateLegacyDataOnce();
     const settings = readDesktopSettings();
     configureAutoLaunch(settings.autoLaunch);
     await startGateway();

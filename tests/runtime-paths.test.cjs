@@ -4,15 +4,16 @@ const path = require("node:path");
 const test = require("node:test");
 const { resolveRuntimePaths } = require("../electron/runtime-paths");
 
-test("packaged runtime data follows the selected installation drive", () => {
+test("packaged runtime data stays beside the installer-owned directory", () => {
   const paths = resolveRuntimePaths({
     isPackaged: true,
     executablePath: "D:\\Cherry AI Connect\\Cherry AI 连接中心.exe",
     moduleDirectory: "C:\\ignored\\electron",
   });
-  assert.equal(paths.runtimeDataRoot, path.resolve("D:\\Cherry AI Connect\\data"));
-  assert.equal(paths.browserCacheRoot, path.resolve("D:\\Cherry AI Connect\\data\\browser-cache"));
-  assert.equal(paths.gatewayDataRoot, path.resolve("D:\\Cherry AI Connect\\data\\gateway-data"));
+  assert.equal(paths.legacyInstallDataRoot, path.resolve("D:\\Cherry AI Connect\\data"));
+  assert.equal(paths.runtimeDataRoot, path.resolve("D:\\Cherry AI Connect-data"));
+  assert.equal(paths.browserCacheRoot, path.resolve("D:\\Cherry AI Connect-data\\browser-cache"));
+  assert.equal(paths.gatewayDataRoot, path.resolve("D:\\Cherry AI Connect-data\\gateway-data"));
 });
 
 test("development runtime data stays inside the project", () => {

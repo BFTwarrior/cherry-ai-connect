@@ -27,8 +27,16 @@ function atomicJson(file, value) {
     fs.renameSync(temporary, file);
   } catch (error) {
     if (!fs.existsSync(file)) throw error;
+    // Preserve the previous recovery pointer if Windows cannot replace the target in place.
+    // A crash between removing the target and renaming the temporary file must remain recoverable.
+    fs.copyFileSync(file, `${file}.previous`);
     fs.rmSync(file, { force: true });
-    fs.renameSync(temporary, file);
+    try { fs.renameSync(temporary, file); }
+    catch (replaceError) {
+      try { fs.copyFileSync(`${file}.previous`, file); }
+      catch { /* the .previous copy remains available for startup recovery */ }
+      throw replaceError;
+    }
   }
 }
 
@@ -68,11 +76,114 @@ function recoveryPointerFile(legacyUserDataRoot) {
   return path.join(path.resolve(legacyUserDataRoot), POINTER_NAME);
 }
 
+function readRecoveryPointer(legacyUserDataRoot) {
+  const file = recoveryPointerFile(legacyUserDataRoot);
+  return readJson(file) || readJson(`${file}.previous`);
+}
+
+function nonEmptyFile(file) {
+  try { const info = fs.statSync(file); return info.isFile() && info.size > 0; }
+  catch { return false; }
+}
+
 function criticalDataIsPresent(runtimeDataRoot) {
   const gateway = path.join(runtimeDataRoot, "gateway-data");
   return fs.existsSync(path.join(gateway, "config.json"))
     && fs.existsSync(path.join(gateway, ".gateway-secret"))
-    && fs.existsSync(path.join(gateway, "device.json"));
+    && fs.existsSync(path.join(gateway, "device.json"))
+    // An existing device without its ledger must not silently start with empty usage history.
+    && (nonEmptyFile(path.join(gateway, "usage.db")) || nonEmptyFile(path.join(gateway, "usage.json")));
+}
+
+function hasPartialGatewayData(runtimeDataRoot) {
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  return fs.existsSync(gateway) && fs.readdirSync(gateway).length > 0 && !criticalDataIsPresent(runtimeDataRoot);
+}
+
+// Copy to a staging directory, verify it, then rename only into an absent or empty gateway directory.
+// Never replace a current gateway, and never delete the source snapshot.
+function copyGatewayIntoEmptyDestination(sourceRoot, destinationRoot) {
+  if (!criticalDataIsPresent(sourceRoot)) throw new Error("update_recovery_backup_incomplete");
+  if (connectedSyncNeedsCredential(path.join(sourceRoot, "gateway-data"))) {
+    throw new Error("update_recovery_sync_credential_missing");
+  }
+  const destinationGateway = path.join(destinationRoot, "gateway-data");
+  if (fs.existsSync(destinationGateway) && fs.readdirSync(destinationGateway).length) {
+    throw new Error("update_recovery_partial_data_needs_review");
+  }
+  fs.mkdirSync(destinationRoot, { recursive: true });
+  const stagingGateway = path.join(destinationRoot, `.gateway-data-${process.pid}-${crypto.randomBytes(4).toString("hex")}.tmp`);
+  try {
+    fs.cpSync(path.join(sourceRoot, "gateway-data"), stagingGateway, { recursive: true, errorOnExist: true });
+    for (const name of ["config.json", ".gateway-secret", "device.json"]) {
+      if (!fs.existsSync(path.join(stagingGateway, name))) throw new Error("update_recovery_copy_incomplete");
+    }
+    if (!nonEmptyFile(path.join(stagingGateway, "usage.db")) && !nonEmptyFile(path.join(stagingGateway, "usage.json"))) {
+      throw new Error("update_recovery_usage_missing");
+    }
+    if (fs.existsSync(destinationGateway)) fs.rmdirSync(destinationGateway);
+    fs.renameSync(stagingGateway, destinationGateway);
+    const settingsSource = path.join(sourceRoot, "desktop-settings.json");
+    const settingsDestination = path.join(destinationRoot, "desktop-settings.json");
+    if (fs.existsSync(settingsSource) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsSource, settingsDestination);
+    if (!criticalDataIsPresent(destinationRoot)) throw new Error("update_recovery_copy_incomplete");
+  } finally {
+    if (fs.existsSync(stagingGateway)) fs.rmSync(stagingGateway, { recursive: true, force: true });
+  }
+}
+
+function migrateLegacyInstallDataIfNeeded({ legacyInstallDataRoot, runtimeDataRoot }) {
+  const source = path.resolve(legacyInstallDataRoot);
+  const destination = path.resolve(runtimeDataRoot);
+  if (source === destination || !fs.existsSync(source) || criticalDataIsPresent(destination)) {
+    return { migrated: false };
+  }
+  if (!criticalDataIsPresent(source)) {
+    if (hasPartialGatewayData(source)) throw new Error("update_legacy_install_data_incomplete");
+    return { migrated: false };
+  }
+  copyGatewayIntoEmptyDestination(source, destination);
+  return { migrated: true, source };
+}
+
+function inspectManualUpdateRecovery({ runtimeDataRoot, legacyUserDataRoot, updateRecoveryRoot, legacyInstallDataRoot }) {
+  const destination = path.resolve(runtimeDataRoot);
+  if (criticalDataIsPresent(destination)) return { available: false, reason: "current-data-present" };
+  if (hasPartialGatewayData(destination)) return { available: false, reason: "partial-current-data-needs-review" };
+  const pointer = readRecoveryPointer(legacyUserDataRoot);
+  if (!pointer?.backupRoot) return { available: false, reason: "no-update-backup" };
+  const backupRoot = path.resolve(String(pointer.backupRoot));
+  const relative = path.relative(path.resolve(updateRecoveryRoot), backupRoot);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return { available: false, reason: "backup-outside-recovery-root" };
+  }
+  const manifest = readJson(path.join(backupRoot, "recovery-manifest.json"));
+  if (!manifest || path.resolve(String(manifest.backupRoot || "")) !== backupRoot) {
+    return { available: false, reason: "invalid-update-backup" };
+  }
+  if (compareVersions(manifest.targetVersion, pointer.targetVersion) !== 0) {
+    return { available: false, reason: "update-backup-version-mismatch" };
+  }
+  if (legacyInstallDataRoot && path.resolve(String(manifest.sourceRuntimeDataRoot || "")) !== path.resolve(legacyInstallDataRoot)) {
+    return { available: false, reason: "update-backup-source-mismatch" };
+  }
+  if (!criticalDataIsPresent(backupRoot) || connectedSyncNeedsCredential(path.join(backupRoot, "gateway-data"))) {
+    return { available: false, reason: "update-backup-incomplete" };
+  }
+  return { available: true, backupRoot, targetVersion: safeVersion(manifest.targetVersion), createdAt: manifest.createdAt };
+}
+
+function restoreUpdateBackupWithConsent(options) {
+  const candidate = inspectManualUpdateRecovery(options);
+  if (!candidate.available) throw new Error(candidate.reason);
+  copyGatewayIntoEmptyDestination(candidate.backupRoot, path.resolve(options.runtimeDataRoot));
+  const pointerFile = recoveryPointerFile(options.legacyUserDataRoot);
+  atomicJson(pointerFile, {
+    ...readRecoveryPointer(options.legacyUserDataRoot),
+    manualRecoveryAt: new Date().toISOString(),
+    manuallyRecoveredTo: path.resolve(options.runtimeDataRoot),
+  });
+  return { restored: true, reason: "manual-update-backup-restored", ...candidate };
 }
 
 function connectedSyncNeedsCredential(gatewayRoot) {
@@ -126,7 +237,7 @@ function createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDat
 
 function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion = "" }) {
   const destination = path.resolve(runtimeDataRoot);
-  const pointer = readJson(recoveryPointerFile(legacyUserDataRoot));
+  const pointer = readRecoveryPointer(legacyUserDataRoot);
   if (!pointer?.backupRoot) return { restored: false, reason: "no-update-backup" };
   const backupRoot = path.resolve(String(pointer.backupRoot));
   const manifest = readJson(path.join(backupRoot, "recovery-manifest.json"));
@@ -144,17 +255,8 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, curr
       if (pointer.recoveryRepairAt || !canRepairConsumedRecovery(pointer.targetVersion || manifest.targetVersion, currentVersion)) {
         throw new Error("update_recovery_data_missing_after_consumption");
       }
-      const sourceGateway = path.join(backupRoot, "gateway-data");
       if (!criticalDataIsPresent(backupRoot)) throw new Error("update_recovery_backup_incomplete");
-      const destinationGateway = path.join(destination, "gateway-data");
-      if (fs.existsSync(destinationGateway) && fs.readdirSync(destinationGateway).length) {
-        throw new Error("update_recovery_partial_data_after_consumption");
-      }
-      fs.mkdirSync(destination, { recursive: true });
-      fs.cpSync(sourceGateway, destinationGateway, { recursive: true, errorOnExist: false });
-      const settingsBackup = path.join(backupRoot, "desktop-settings.json");
-      const settingsDestination = path.join(destination, "desktop-settings.json");
-      if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsBackup, settingsDestination);
+      copyGatewayIntoEmptyDestination(backupRoot, destination);
       if (!criticalDataIsPresent(destination)) throw new Error("update_recovery_repair_verification_failed");
       atomicJson(recoveryPointerFile(legacyUserDataRoot), {
         ...manifest,
@@ -165,7 +267,9 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, curr
       });
       return { restored: true, reason: "gateway-data-repaired-after-consumption", backupRoot, targetVersion };
     }
-    return { restored: false, reason: "update-backup-already-consumed", backupRoot };
+    const syncCredentialRestored = restoreMissingSyncCredential(backupRoot, destination);
+    if (connectedSyncNeedsCredential(path.join(destination, "gateway-data"))) throw new Error("update_recovery_sync_credential_missing");
+    return { restored: syncCredentialRestored, reason: syncCredentialRestored ? "sync-credential-restored" : "update-backup-already-consumed", backupRoot };
   }
   if (currentVersion) {
     const versionRelation = compareVersions(targetVersion, currentVersion);
@@ -194,15 +298,11 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, curr
     });
     return { restored: settingsRestored || syncCredentialRestored, reason: syncCredentialRestored ? "sync-credential-restored" : settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored, syncCredentialRestored };
   }
-  const sourceGateway = path.join(backupRoot, "gateway-data");
   if (!criticalDataIsPresent(backupRoot)) return { restored: false, reason: "backup-data-incomplete", backupRoot };
-  const destinationGateway = path.join(destination, "gateway-data");
-  if (fs.existsSync(destinationGateway) && fs.readdirSync(destinationGateway).length) {
+  if (hasPartialGatewayData(destination)) {
     return { restored: false, reason: "partial-current-data-needs-review", backupRoot };
   }
-  fs.mkdirSync(destination, { recursive: true });
-  fs.cpSync(sourceGateway, destinationGateway, { recursive: true, errorOnExist: false });
-  if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) fs.copyFileSync(settingsBackup, settingsDestination);
+  copyGatewayIntoEmptyDestination(backupRoot, destination);
   if (!criticalDataIsPresent(destination)) throw new Error("update_restore_verification_failed");
   atomicJson(recoveryPointerFile(legacyUserDataRoot), {
     ...manifest,
@@ -278,9 +378,14 @@ async function downloadVerifiedInstaller({ asset, destination, onProgress }) {
 module.exports = {
   createUpdateBackup,
   criticalDataIsPresent,
+  connectedSyncNeedsCredential,
   downloadVerifiedInstaller,
+  hasPartialGatewayData,
+  inspectManualUpdateRecovery,
+  migrateLegacyInstallDataIfNeeded,
   normalizeSha256,
   recoveryPointerFile,
+  restoreUpdateBackupWithConsent,
   restoreUpdateBackupIfNeeded,
   canRepairConsumedRecovery,
   safeVersion,

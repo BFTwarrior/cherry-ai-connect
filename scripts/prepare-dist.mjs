@@ -1,5 +1,5 @@
 /**
- * 中文：打包前只删除 dist 内的临时解包目录和构建残留，保留历代正式安装包。
+ * 中文：打包前只删除 dist 内的临时解包目录和构建残留，保留历代正式发布资产。
  * 这样既能阻止上一次测试产生的 data/缓存进入新包，也不会误删旧版本交付物。
  * English: Before packaging, remove temporary unpacked output and build leftovers only, while
  * preserving released installers. This prevents test data from leaking without erasing history.
@@ -18,7 +18,10 @@ fs.mkdirSync(distRoot, { recursive: true });
 for (const entry of fs.readdirSync(distRoot, { withFileTypes: true })) {
   const target = path.resolve(distRoot, entry.name);
   if (path.dirname(target) !== distRoot) throw new Error("refusing_to_clean_unexpected_dist_entry");
-  const keepReleasedInstaller = entry.isFile() && /^Cherry-AI-Connect-Setup-[0-9.]+\.exe$/i.test(entry.name);
-  if (!keepReleasedInstaller) fs.rmSync(target, { recursive: true, force: true });
+  const keepReleasedAsset = entry.isFile() && (
+    /^Cherry-AI-Connect-Setup-[0-9.]+\.exe(?:\.blockmap)?$/i.test(entry.name)
+    || /^Cherry-AI-Connect-Web-Demo-[0-9.]+\.zip$/i.test(entry.name)
+  );
+  if (!keepReleasedAsset) fs.rmSync(target, { recursive: true, force: true });
 }
-console.log(`Prepared build output and preserved released installers: ${distRoot}`);
+console.log(`Prepared build output and preserved released assets: ${distRoot}`);
