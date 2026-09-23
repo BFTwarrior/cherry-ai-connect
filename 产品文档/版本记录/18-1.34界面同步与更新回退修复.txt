@@ -23,7 +23,8 @@
 
 - 安装包构建：已通过。
 - 安装包/Web Demo 文件名、大小、SHA-256、SHA-512：本地核对通过。
-- GitHub Release、tag、Latest、资产和下载链接：待发布后核验。
+- GitHub Release：<https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.34>；已公开、非预发布、Latest，tag `v1.34`。
+- 远端附件逐项回读通过（名称、字节数、SHA-256）：安装包 103,139,473 bytes / `7ec1604570fdb027844687c9e0ed9a2401051a6e084707303173f387dd6ea571`；blockmap 107,492 bytes / `f0930b274b1af2ee7cc9d4b4e07ae9a3e472cc90a64065036829ae4d076fa847`；Web Demo 143,375 bytes / `efc1cbd6c4f354e7dd5a8dc3e10c1f59dad145627d5193819713c11913b86d79`；`latest.yml` 362 bytes / `b602756d025202b005f90a99048c154784db9f715d199bd560b1636e24450bd4`。`latest.yml` 内 SHA-512 与本地安装包一致；安装包下载链接返回 HTTP 302。
 - 目标用户 Windows 覆盖安装、启动、数据、同步现场验收：待用户设备现场核对。
 
 ## 证据与风险
