@@ -22,7 +22,8 @@
 
 ## 发布验收状态
 
-- 用户已明确要求发布。
+- GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.33`；已发布，`draft=false`、`prerelease=false`，`/releases/latest` 指向 v1.33。
+- 4 项远端附件（安装包、blockmap、Web Demo、latest.yml）名称、大小与 digest 均与本地核对一致；安装包直链返回 302。
+- v1.31 安装包直链返回 404；历史 tag 仍保留，v1.32 发布正文记载其已转 Draft。
 - 目标用户 Windows 环境覆盖安装未在本机实测，用户现有安装目录及数据未触碰；发布后仍应在目标机现场确认升级、设置、云同步、统计、重启和托盘。
-- GitHub Release、Latest、资产下载与远端 SHA-256：发布完成后补记。
-- v1.31：应继续保持 Draft/非公开有效入口；不删除历史 tag 或本地安装包。
+- 安装包直达链接：`https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.33/Cherry-AI-Connect-Setup-1.33.exe`
