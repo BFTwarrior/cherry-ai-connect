@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.32";
+const VERSION = "1.33";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
 const DEMO_PROVIDERS: Provider[] = [
@@ -95,11 +95,23 @@ function initials(name: string) {
   return (parts.length > 1 ? `${parts[0][0]}${parts[1][0]}` : name.slice(0, 2)).toUpperCase() || "CG";
 }
 
+// Keep these component identities stable across App state changes. Otherwise opening a menu
+// remounts whole sections and restarts every border and particle animation on the page.
+function Metric({ icon, tone, value, label, note }: { icon: string; tone: string; value: string; label: string; note: string }) { return <div className="metric-card"><span className={`metric-icon ${tone}`}><Icon name={icon} size={17} /></span><span><small>{label}</small><strong>{value}</strong><em>{note}</em></span><span className="metric-sparks" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</span></div>; }
+function PanelHeading({ kicker, title, description, action }: { kicker: string; title: string; description?: string; action?: ReactNode }) { return <div className="panel-heading"><div><div className="section-kicker">{kicker}</div><h3>{title}</h3>{description && <p>{description}</p>}</div>{action}</div>; }
+function PageIntro({ kicker, description, action }: { kicker: string; description: string; action: ReactNode }) { return <div className="page-intro"><div><div className="section-kicker">{kicker}</div><p>{description}</p></div><div className="page-intro-action">{action}</div></div>; }
+function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
+function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
+function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span><span className="nav-fireflies" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</span></button>; }
+function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} /></label>; }
+function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }
+
 export default function App() {
   const [language, setLanguage] = useState<Language>(() => (localStorage.getItem("cherry-language") as Language) || "zh");
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [reasoningMenuOpen, setReasoningMenuOpen] = useState(false);
   const [view, setView] = useState<View>("overview");
+  const [settingsVisit, setSettingsVisit] = useState(0);
   const [providers, setProviders] = useState<Provider[]>(DEMO_MODE ? DEMO_PROVIDERS : []);
   const [keys, setKeys] = useState<ClientKey[]>(DEMO_MODE ? DEMO_KEYS : []);
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "unchanged", defaultProvider: "" });
@@ -273,6 +285,7 @@ export default function App() {
   const activeKeys = useMemo(() => keys.filter((key) => key.enabled).length, [keys]);
 
   const navigate = (nextView: View) => {
+    if (nextView === "settings") setSettingsVisit((visit) => visit + 1);
     setView(nextView);
     document.querySelector(".main-scroll")?.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -689,13 +702,13 @@ export default function App() {
 
   const renderView = () => {
     switch (view) {
-      case "providers": return <ProvidersView />;
-      case "models": return <ModelsView />;
-      case "keys": return <KeysView />;
+      case "providers": return ProvidersView();
+      case "models": return ModelsView();
+      case "keys": return KeysView();
       case "usage": return <UsageView language={language} gatewayOrigin={apiBase.replace(/\/v1\/?$/, "")} demo={DEMO_MODE} />;
-      case "cloud": return <CloudSyncView />;
-      case "settings": return <SettingsView />;
-      default: return <OverviewView />;
+      case "cloud": return CloudSyncView();
+      case "settings": return SettingsView();
+      default: return OverviewView();
     }
   };
 
@@ -814,7 +827,7 @@ export default function App() {
           <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${reasoningOptionLabel(settings.forcedLevel, "zh")} 应用到 ${keys.length} 个已有 Key`, `Apply ${reasoningOptionLabel(settings.forcedLevel, "en")} to ${keys.length} existing key(s)`)}</button>
           <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
         </article>
-        <UpdateCard language={language} currentVersion={VERSION} />
+        <UpdateCard language={language} currentVersion={VERSION} checkTrigger={settingsVisit} />
         </div>
         <div className="settings-column">
         <article className="settings-card">
@@ -911,15 +924,7 @@ export default function App() {
     {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
   </div>;
 
-  function Metric({ icon, tone, value, label, note }: { icon: string; tone: string; value: string; label: string; note: string }) { return <div className="metric-card"><span className={`metric-icon ${tone}`}><Icon name={icon} size={17} /></span><span><small>{label}</small><strong>{value}</strong><em>{note}</em></span><span className="metric-sparks" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <i key={index} />)}</span></div>; }
-  function PanelHeading({ kicker, title, description, action }: { kicker: string; title: string; description?: string; action?: ReactNode }) { return <div className="panel-heading"><div><div className="section-kicker">{kicker}</div><h3>{title}</h3>{description && <p>{description}</p>}</div>{action}</div>; }
-  function PageIntro({ kicker, description, action }: { kicker: string; description: string; action: ReactNode }) { return <div className="page-intro"><div><div className="section-kicker">{kicker}</div><p>{description}</p></div><div className="page-intro-action">{action}</div></div>; }
-  function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
-  function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
-  function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span><span className="nav-fireflies" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</span></button>; }
-  function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} /></label>; }
   function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-primary" disabled={disabled}>{submit}</button></div>; }
-  function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }
   function ConfirmDialog() {
     if (!confirmDialog) return null;
     const tone = confirmDialog.tone || "primary";

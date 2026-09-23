@@ -455,7 +455,7 @@ function createWindow() {
     show: !(process.argv.includes("--hidden") || settings.startMinimized),
     backgroundColor: "#0d0d12",
     title: "Cherry AI 连接中心",
-    icon: path.join(__dirname, "assets", "app.ico"),
+    icon: path.join(__dirname, "assets", "app-1.33.ico"),
     autoHideMenuBar: true,
     // 中文：保留 Windows 原生窗口按钮，但让标题栏颜色和应用内容成为一个整体。
     // English: Keep native Windows controls while visually merging the title bar with the app.

@@ -1,6 +1,6 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.32.0",
+  "version": "1.33.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
@@ -39,19 +39,23 @@
       "sync/*.mjs",
       "renderer/dist/**/*"
     ],
+    "extraResources": [
+      { "from": "electron/assets/app-1.33.ico", "to": "app-1.33.ico" }
+    ],
     "electronDist": "node_modules/electron/dist",
     "win": {
       "target": "nsis",
-      "icon": "electron/assets/app.ico",
+      "icon": "electron/assets/app-1.33.ico",
       "signExecutable": false,
-      "artifactName": "Cherry-AI-Connect-Setup-1.32.${ext}"
+      "artifactName": "Cherry-AI-Connect-Setup-1.33.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "include": "scripts/installer-icon.nsh"
     }
   },
   "dependencies": {

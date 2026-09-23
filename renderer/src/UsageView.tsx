@@ -29,6 +29,7 @@ type UsageResponse = {
   summary: UsageTotals;
   series: UsagePoint[];
   records: UsageRecord[];
+  recordPagination?: { total: number; offset: number; limit: number };
   filters: { providers: Array<{ id: string; name: string }>; models: string[] };
   range: RangeKey;
   updatedAt: string;
@@ -68,7 +69,7 @@ const DEMO_USAGE: UsageResponse = (() => {
     detailCache: { count: records.length, bytes: 12_845_312, maxBytes: 50 * 1024 * 1024, targetBytes: 45 * 1024 * 1024, pageLimit: 200 },
     lifetime: { requests: 432, errors: 9, inputTokens: 57_595_034, outputTokens: 103_339, totalTokens: 57_698_373, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: new Date(base - 30 * 86400000).toISOString(), lastRequestAt: series[series.length - 1]?.at },
     summary: { requests: 48, errors: 1, inputTokens: 57_595_034, outputTokens: 10_817, totalTokens: 57_605_851, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: series[0].at, lastRequestAt: series[series.length - 1]?.at },
-    series, records, filters: { providers: [{ id: "DEMO-NORTH", name: "北境中转（演示）" }, { id: "DEMO-AURORA", name: "极光线路（演示）" }, { id: "DEMO-LOAD", name: "本地压测线（演示）" }], models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "codex-auto-review"] }, range: "24h", updatedAt: "2026-09-19T02:05:00.000Z",
+    series, records, recordPagination: { total: records.length, offset: 0, limit: 200 }, filters: { providers: [{ id: "DEMO-NORTH", name: "北境中转（演示）" }, { id: "DEMO-AURORA", name: "极光线路（演示）" }, { id: "DEMO-LOAD", name: "本地压测线（演示）" }], models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "codex-auto-review"] }, range: "24h", updatedAt: "2026-09-19T02:05:00.000Z",
   };
 })();
 
@@ -184,6 +185,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
   const [providerId, setProviderId] = useState("");
   const [model, setModel] = useState("");
   const [status, setStatus] = useState("all");
+  const [recordsOffset, setRecordsOffset] = useState(0);
   const [data, setData] = useState<UsageResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -204,7 +206,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
         setError("");
         return;
       }
-      const query = new URLSearchParams({ range, limit: "200", status });
+      const query = new URLSearchParams({ range, limit: "200", recordsOffset: String(recordsOffset), status });
       if (providerId) query.set("providerId", providerId);
       if (model) query.set("model", model);
       const response = await fetch(`${gatewayOrigin}/admin/api/usage?${query}`, { cache: "no-store" });
@@ -215,7 +217,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally { if (!silent) setLoading(false); }
-  }, [demo, gatewayOrigin, model, providerId, range, status]);
+  }, [demo, gatewayOrigin, model, providerId, range, recordsOffset, status]);
 
   useEffect(() => { void loadUsage(); }, [loadUsage]);
   useEffect(() => {
@@ -225,6 +227,9 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
 
   const lifetime = data?.lifetime || emptyTotals;
   const summary = data?.summary || emptyTotals;
+  const recordPage = data?.recordPagination || { total: data?.records.length || 0, offset: 0, limit: 200 };
+  const recordStart = recordPage.total ? recordPage.offset + 1 : 0;
+  const recordEnd = Math.min(recordPage.offset + recordPage.limit, recordPage.total);
   const successRate = summary.requests ? Math.max(0, ((summary.requests - summary.errors) / summary.requests) * 100) : 0;
   const selectedLabel = useMemo(() => ranges.find((item) => item.key === range)?.[language] || range, [language, range]);
 
@@ -240,9 +245,9 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     <div className="usage-toolbar">
       <div className="range-tabs">{ranges.map((item) => <button type="button" className={range === item.key ? "active" : ""} key={item.key} onClick={() => setRange(item.key)}>{language === "zh" ? item.zh : item.en}</button>)}</div>
       <div className="usage-filters">
-        <UsageFilterSelect label={tr("线路筛选", "Route filter")} value={providerId} options={[{ value: "", label: tr("全部线路", "All routes") }, ...(data?.filters.providers || []).map((provider) => ({ value: provider.id, label: provider.name }))]} onChange={setProviderId} />
-        <UsageFilterSelect label={tr("模型筛选", "Model filter")} value={model} options={[{ value: "", label: tr("全部模型", "All models") }, ...(data?.filters.models || []).map((item) => ({ value: item, label: item }))]} onChange={setModel} />
-        <UsageFilterSelect label={tr("状态筛选", "Status filter")} value={status} options={[{ value: "all", label: tr("全部状态", "All status") }, { value: "success", label: tr("仅成功", "Success only") }, { value: "error", label: tr("仅失败", "Errors only") }]} onChange={setStatus} />
+        <UsageFilterSelect label={tr("线路筛选", "Route filter")} value={providerId} options={[{ value: "", label: tr("全部线路", "All routes") }, ...(data?.filters.providers || []).map((provider) => ({ value: provider.id, label: provider.name }))]} onChange={(value) => { setProviderId(value); setRecordsOffset(0); }} />
+        <UsageFilterSelect label={tr("模型筛选", "Model filter")} value={model} options={[{ value: "", label: tr("全部模型", "All models") }, ...(data?.filters.models || []).map((item) => ({ value: item, label: item }))]} onChange={(value) => { setModel(value); setRecordsOffset(0); }} />
+        <UsageFilterSelect label={tr("状态筛选", "Status filter")} value={status} options={[{ value: "all", label: tr("全部状态", "All status") }, { value: "success", label: tr("仅成功", "Success only") }, { value: "error", label: tr("仅失败", "Errors only") }]} onChange={(value) => { setStatus(value); setRecordsOffset(0); }} />
         <button type="button" className="usage-refresh" onClick={() => void loadUsage()} disabled={loading}><TinyIcon name="refresh" />{tr("刷新", "Refresh")}</button>
       </div>
     </div>
@@ -259,8 +264,9 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     <article className="usage-panel chart-panel"><header><div><span>{tr("使用趋势", "USAGE TREND")}</span><h3>{selectedLabel}</h3></div><small>{tr("悬停折线查看具体时间点", "Hover the lines for exact values")}</small></header>{loading && !data ? <div className="usage-loading">{tr("正在读取统计…", "Loading analytics…")}</div> : data?.series.length ? <UsageChart points={data.series} language={language} range={range} /> : <div className="usage-loading">{tr("该时间范围暂无请求", "No requests in this period")}</div>}</article>
 
     <article className="usage-panel records-panel">
-      <header><div><span>{tr("实时请求记录", "LIVE REQUEST LOG")}</span><h3>{tr("最新 200 条（单页）", "Latest 200 (one page)")}</h3></div><div className="records-header-actions"><div className="record-density-toggle" role="group" aria-label={tr("请求记录显示方式", "Request record layout")}><button type="button" className={recordDensity === "compact" ? "active" : ""} onClick={() => changeRecordDensity("compact")}>{tr("单行", "Single line")}</button><button type="button" className={recordDensity === "detailed" ? "active" : ""} onClick={() => changeRecordDensity("detailed")}>{tr("双行", "Two lines")}</button></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`)}</small></div></header>
+      <header><div><span>{tr("历史请求记录", "REQUEST HISTORY")}</span><h3>{tr(`第 ${recordStart}–${recordEnd} 条，共 ${recordPage.total} 条`, `Records ${recordStart}–${recordEnd} of ${recordPage.total}`)}</h3></div><div className="records-header-actions"><div className="record-density-toggle" role="group" aria-label={tr("请求记录显示方式", "Request record layout")}><button type="button" className={recordDensity === "compact" ? "active" : ""} onClick={() => changeRecordDensity("compact")}>{tr("单行", "Single line")}</button><button type="button" className={recordDensity === "detailed" ? "active" : ""} onClick={() => changeRecordDensity("detailed")}>{tr("双行", "Two lines")}</button></div><small>{tr(`本机明细缓存 ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`, `Local detail cache ${megabytes(data?.detailCache.bytes)} / ${megabytes(data?.detailCache.maxBytes || 50 * 1024 * 1024)} MB`)}</small></div></header>
       <UsageRecordsTable records={data?.records || []} language={language} density={recordDensity} />
+      {recordPage.total > recordPage.limit && <nav className="usage-record-pagination" aria-label={tr("历史记录分页", "History pages")}><button type="button" disabled={recordPage.offset === 0 || loading} onClick={() => setRecordsOffset(Math.max(0, recordPage.offset - recordPage.limit))}>{tr("较新记录", "Newer")}</button><span>{recordStart}–{recordEnd} / {recordPage.total}</span><button type="button" disabled={recordPage.offset + recordPage.limit >= recordPage.total || loading} onClick={() => setRecordsOffset(recordPage.offset + recordPage.limit)}>{tr("更早记录", "Older")}</button></nav>}
     </article>
   </section>;
 }

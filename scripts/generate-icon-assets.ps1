@@ -1,5 +1,6 @@
 param(
-  [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot)
+  [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
+  [string]$IconVersion = '1.33'
 )
 
 Add-Type -AssemblyName System.Drawing
@@ -35,21 +36,43 @@ $starPen = New-Object System.Drawing.Pen([System.Drawing.Color]::White, 7)
 $starPen.LineJoin = [System.Drawing.Drawing2D.LineJoin]::Round
 $graphics.DrawPath($starPen, $star)
 
-$appIconPath = Join-Path $ProjectRoot 'electron\assets\app.ico'
-$pngStream = New-Object System.IO.MemoryStream
-$bitmap.Save($pngStream, [System.Drawing.Imaging.ImageFormat]::Png)
-$pngBytes = $pngStream.ToArray()
+$appIconPath = Join-Path $ProjectRoot "electron\assets\app-$IconVersion.ico"
+$frames = New-Object 'System.Collections.Generic.List[byte[]]'
+foreach ($frameSize in @(16, 24, 32, 48, 64, 128, 256)) {
+  $frame = New-Object System.Drawing.Bitmap($frameSize, $frameSize, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $frameGraphics = [System.Drawing.Graphics]::FromImage($frame)
+  $frameGraphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $frameGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $frameGraphics.DrawImage($bitmap, (New-Object System.Drawing.Rectangle(0, 0, $frameSize, $frameSize)))
+  $frameStream = New-Object System.IO.MemoryStream
+  $frame.Save($frameStream, [System.Drawing.Imaging.ImageFormat]::Png)
+  $frames.Add($frameStream.ToArray())
+  $frameStream.Dispose()
+  $frameGraphics.Dispose()
+  $frame.Dispose()
+}
 $icoStream = [System.IO.File]::Open($appIconPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write)
 $writer = New-Object System.IO.BinaryWriter($icoStream)
-$writer.Write([byte[]](0, 0, 1, 0, 1, 0))
-$writer.Write([byte[]](0, 0, 0, 0, 1, 0, 32, 0))
-$writer.Write([System.BitConverter]::GetBytes([UInt32]$pngBytes.Length))
-$writer.Write([System.BitConverter]::GetBytes([UInt32]22))
-$writer.Write($pngBytes)
+$writer.Write([UInt16]0)
+$writer.Write([UInt16]1)
+$writer.Write([UInt16]$frames.Count)
+$offset = 6 + 16 * $frames.Count
+for ($index = 0; $index -lt $frames.Count; $index++) {
+  $frameSize = @(16, 24, 32, 48, 64, 128, 256)[$index]
+  $writer.Write([byte]($frameSize % 256))
+  $writer.Write([byte]($frameSize % 256))
+  $writer.Write([byte]0)
+  $writer.Write([byte]0)
+  $writer.Write([UInt16]1)
+  $writer.Write([UInt16]32)
+  $writer.Write([UInt32]$frames[$index].Length)
+  $writer.Write([UInt32]$offset)
+  $offset += $frames[$index].Length
+}
+foreach ($frameBytes in $frames) { $writer.Write($frameBytes) }
 $writer.Flush()
 $writer.Dispose()
 $icoStream.Dispose()
-$pngStream.Dispose()
 
 $trayBitmap = New-Object System.Drawing.Bitmap(32, 32, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
 $trayGraphics = [System.Drawing.Graphics]::FromImage($trayBitmap)

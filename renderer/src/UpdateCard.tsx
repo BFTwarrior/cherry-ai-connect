@@ -3,7 +3,7 @@
  * English: One-click updater card. It presents the source and size while the main process owns
  * verification, pre-update sync, offline backup, and installer launch.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "./ui/Icon";
 
 type Language = "zh" | "en";
@@ -31,7 +31,7 @@ function readableUpdateError(reason: unknown, language: Language) {
   return match ? tr(match[1], match[2]) : raw;
 }
 
-export function UpdateCard({ language, currentVersion }: { language: Language; currentVersion: string }) {
+export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { language: Language; currentVersion: string; checkTrigger?: number }) {
   const tr = (zh: string, en: string) => language === "zh" ? zh : en;
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -47,14 +47,19 @@ export function UpdateCard({ language, currentVersion }: { language: Language; c
     }
   }), [language]);
 
-  const check = async () => {
+  const check = useCallback(async () => {
     if (!window.desktop?.checkForUpdates) return setError(tr("当前环境不支持检查更新", "Update checks are unavailable in this environment"));
     setChecking(true);
     setError("");
     try { setResult(await window.desktop.checkForUpdates()); }
     catch (reason) { setError(readableUpdateError(reason, language)); }
     finally { setChecking(false); }
-  };
+  }, [language]);
+
+  // Entering Settings checks availability only; it never downloads or installs automatically.
+  useEffect(() => {
+    if (checkTrigger > 0 && window.desktop?.checkForUpdates) void check();
+  }, [checkTrigger, check]);
 
   const install = async () => {
     if (!window.desktop?.downloadAndInstallUpdate || installing) return;

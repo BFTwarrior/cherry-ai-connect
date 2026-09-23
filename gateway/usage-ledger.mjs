@@ -409,6 +409,7 @@ export class UsageLedger {
     const model = String(url.searchParams.get("model") || "");
     const statusFilter = String(url.searchParams.get("status") || "all");
     const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
+    const recordsOffset = Math.max(0, Math.min(1_000_000, Number(url.searchParams.get("recordsOffset") || 0) || 0));
     const conditions = ["occurred_at_utc >= ?"];
     const parameters = [startAt];
     if (providerId) { conditions.push("provider_id = ?"); parameters.push(providerId); }
@@ -422,7 +423,17 @@ export class UsageLedger {
       COALESCE(SUM(total_tokens),0) totalTokens, COALESCE(SUM(cache_read_tokens),0) cacheReadTokens,
       COALESCE(SUM(cache_write_tokens),0) cacheWriteTokens, MIN(occurred_at_utc) firstRequestAt,
       MAX(occurred_at_utc) lastRequestAt FROM usage_events WHERE ${where}`).get(...parameters);
-    const rows = this.db.prepare(`SELECT * FROM usage_events WHERE ${where} ORDER BY occurred_at_utc DESC LIMIT ?`).all(...parameters, limit);
+    // 中文：图表按所选时段汇总；历史记录独立于图表时段，避免默认 24 小时隐藏旧请求。
+    // English: Keep chart aggregation range-bound while request history spans all retained local events.
+    const recordConditions = [];
+    const recordParameters = [];
+    if (providerId) { recordConditions.push("provider_id = ?"); recordParameters.push(providerId); }
+    if (model) { recordConditions.push("model = ?"); recordParameters.push(model); }
+    if (statusFilter === "success") recordConditions.push("http_status < 400");
+    if (statusFilter === "error") recordConditions.push("http_status >= 400");
+    const recordsWhere = recordConditions.length ? recordConditions.join(" AND ") : "1=1";
+    const recordTotal = Number(this.db.prepare(`SELECT COUNT(*) count FROM usage_events WHERE ${recordsWhere}`).get(...recordParameters).count || 0);
+    const rows = this.db.prepare(`SELECT * FROM usage_events WHERE ${recordsWhere} ORDER BY occurred_at_utc DESC, event_id DESC LIMIT ? OFFSET ?`).all(...recordParameters, limit, recordsOffset);
     const bucketRows = this.db.prepare(`SELECT * FROM usage_events WHERE ${where} ORDER BY occurred_at_utc ASC`).all(...parameters);
     const alignedStart = Math.floor((now - range.durationMs) / range.bucketMs) * range.bucketMs;
     const series = [];
@@ -457,6 +468,7 @@ export class UsageLedger {
       summary: totalsView(aggregate),
       series,
       records: rows.map(rowToRecord),
+      recordPagination: { total: recordTotal, offset: recordsOffset, limit },
       filters: { providers: providers.map((item) => ({ id: item.id, name: item.name || item.id })), models },
       range: range.key,
       updatedAt: new Date().toISOString(),

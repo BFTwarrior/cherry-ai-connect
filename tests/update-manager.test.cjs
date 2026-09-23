@@ -26,7 +26,7 @@ function seedRuntime(root) {
   const runtimeDataRoot = path.join(root, "install", "data");
   const gateway = path.join(runtimeDataRoot, "gateway-data");
   fs.mkdirSync(gateway, { recursive: true });
-  fs.writeFileSync(path.join(gateway, "config.json"), JSON.stringify({ clientKeys: [{ id: "same-device-key" }] }), "utf8");
+  fs.writeFileSync(path.join(gateway, "config.json"), JSON.stringify({ forcedLevel: "high", clientKeys: [{ id: "same-device-key" }] }), "utf8");
   fs.writeFileSync(path.join(gateway, ".gateway-secret"), "local-secret", "utf8");
   fs.writeFileSync(path.join(gateway, "device.json"), JSON.stringify({ deviceId: "device-local" }), "utf8");
   fs.writeFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), JSON.stringify({ setupCompleted: true }), "utf8");
@@ -51,7 +51,7 @@ test("update backup restores data and completed onboarding after an overwrite", 
   }
 });
 
-test("update recovery restores desktop startup settings even when data survived", () => {
+test("update recovery preserves desktop settings changed after backup", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-settings-test-"));
   const runtimeDataRoot = seedRuntime(root);
   const updateRecoveryRoot = path.join(root, "recovery");
@@ -60,14 +60,59 @@ test("update recovery restores desktop startup settings even when data survived"
     createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: "1.23" });
     fs.writeFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), JSON.stringify({ autoLaunch: false, startHidden: false }), "utf8");
     const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, currentVersion: "1.23.0" });
-    assert.equal(restored.restored, true);
-    assert.equal(restored.reason, "desktop-settings-restored");
-    assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).setupCompleted, true);
+    assert.equal(restored.restored, false);
+    assert.equal(restored.reason, "current-data-preserved");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).autoLaunch, false);
     const pointer = JSON.parse(fs.readFileSync(path.join(legacyUserDataRoot, "cherry-ai-connect-update-recovery.json"), "utf8"));
     assert.ok(pointer.restoredAt);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("update recovery restores a missing desktop settings file but preserves saved reasoning", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-missing-settings-"));
+  const runtimeDataRoot = seedRuntime(root);
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: path.join(root, "pointer"), targetVersion: "1.33" });
+    fs.rmSync(path.join(runtimeDataRoot, "desktop-settings.json"));
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: path.join(root, "pointer"), currentVersion: "1.33" });
+    assert.equal(restored.reason, "desktop-settings-restored");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "desktop-settings.json"), "utf8")).setupCompleted, true);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", "config.json"), "utf8")).forcedLevel, "high");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("update recovery restores a missing protected GitHub token without replacing current settings", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-token-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  try {
+    fs.writeFileSync(path.join(gateway, "sync-state.json"), JSON.stringify({ enabled: true, owner: "sample" }));
+    fs.writeFileSync(path.join(gateway, ".github-token"), "protected-credential");
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: path.join(root, "pointer"), targetVersion: "1.33" });
+    fs.rmSync(path.join(gateway, ".github-token"));
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: path.join(root, "pointer"), currentVersion: "1.33" });
+    assert.equal(restored.reason, "sync-credential-restored");
+    assert.equal(fs.readFileSync(path.join(gateway, ".github-token"), "utf8"), "protected-credential");
+    assert.equal(JSON.parse(fs.readFileSync(path.join(gateway, "config.json"), "utf8")).forcedLevel, "high");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("update recovery honors a deliberate cloud-sync disconnect", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-disconnect-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  try {
+    fs.writeFileSync(path.join(gateway, "sync-state.json"), JSON.stringify({ enabled: true }));
+    fs.writeFileSync(path.join(gateway, ".github-token"), "protected-credential");
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: path.join(root, "pointer"), targetVersion: "1.33" });
+    fs.rmSync(path.join(gateway, ".github-token"));
+    fs.writeFileSync(path.join(gateway, "sync-state.json"), JSON.stringify({ enabled: false }));
+    const restored = restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: path.join(root, "pointer"), currentVersion: "1.33" });
+    assert.equal(restored.restored, false);
+    assert.equal(fs.existsSync(path.join(gateway, ".github-token")), false);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
 test("stale recovery backups never replace a newer empty runtime", () => {

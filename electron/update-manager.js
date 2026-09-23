@@ -75,10 +75,36 @@ function criticalDataIsPresent(runtimeDataRoot) {
     && fs.existsSync(path.join(gateway, "device.json"));
 }
 
+function connectedSyncNeedsCredential(gatewayRoot) {
+  const state = readJson(path.join(gatewayRoot, "sync-state.json"), {});
+  return state?.enabled === true && !fs.existsSync(path.join(gatewayRoot, ".github-token"));
+}
+
+function restoreMissingSyncCredential(backupRoot, destination) {
+  const backupGateway = path.join(backupRoot, "gateway-data");
+  const destinationGateway = path.join(destination, "gateway-data");
+  const backupState = readJson(path.join(backupGateway, "sync-state.json"), {});
+  if (backupState?.enabled !== true) return false;
+  const credentialBackup = path.join(backupGateway, ".github-token");
+  if (!fs.existsSync(credentialBackup)) throw new Error("update_recovery_sync_credential_missing");
+  const oldDevice = readJson(path.join(backupGateway, "device.json"), {});
+  const currentDevice = readJson(path.join(destinationGateway, "device.json"), {});
+  if (!oldDevice.deviceId || oldDevice.deviceId !== currentDevice.deviceId) return false;
+  const destinationStateFile = path.join(destinationGateway, "sync-state.json");
+  const destinationState = readJson(destinationStateFile);
+  // An explicit disconnect after backup is newer user intent; never reconnect it silently.
+  if (destinationState && destinationState.enabled !== true) return false;
+  if (fs.existsSync(path.join(destinationGateway, ".github-token"))) return false;
+  if (!destinationState) fs.copyFileSync(path.join(backupGateway, "sync-state.json"), destinationStateFile);
+  fs.copyFileSync(credentialBackup, path.join(destinationGateway, ".github-token"));
+  return true;
+}
+
 function createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion }) {
   const version = safeVersion(targetVersion);
   const sourceRoot = path.resolve(runtimeDataRoot);
   if (!criticalDataIsPresent(sourceRoot)) throw new Error("update_source_data_incomplete");
+  if (connectedSyncNeedsCredential(path.join(sourceRoot, "gateway-data"))) throw new Error("update_source_sync_credential_missing");
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
   const backupRoot = path.join(path.resolve(updateRecoveryRoot), `backup-${stamp}-v${version}`);
   if (fs.existsSync(backupRoot)) throw new Error("update_backup_already_exists");
@@ -150,23 +176,23 @@ function restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot, curr
   }
   const settingsBackup = path.join(backupRoot, "desktop-settings.json");
   const settingsDestination = path.join(destination, "desktop-settings.json");
-  // 中文：安装器可能保留 data，却重建桌面设置；只要备份存在，就恢复更新前的用户选择。
-  // English: An installer may preserve data while recreating desktop settings; restore the exact
-  // pre-update choices whenever the backup contains them.
+  // Existing settings may have changed since backup; only restore files the installer removed.
   let settingsRestored = false;
-  if (fs.existsSync(settingsBackup)) {
+  if (fs.existsSync(settingsBackup) && !fs.existsSync(settingsDestination)) {
     fs.mkdirSync(destination, { recursive: true });
     fs.copyFileSync(settingsBackup, settingsDestination);
     settingsRestored = true;
   }
   if (criticalDataIsPresent(destination)) {
+    const syncCredentialRestored = restoreMissingSyncCredential(backupRoot, destination);
+    if (connectedSyncNeedsCredential(path.join(destination, "gateway-data"))) throw new Error("update_recovery_sync_credential_missing");
     atomicJson(recoveryPointerFile(legacyUserDataRoot), {
       ...manifest,
       restoredAt: new Date().toISOString(),
       restoredTo: destination,
-      restoreReason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved",
+      restoreReason: syncCredentialRestored ? "sync-credential-restored" : settingsRestored ? "desktop-settings-restored" : "current-data-preserved",
     });
-    return { restored: settingsRestored, reason: settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored };
+    return { restored: settingsRestored || syncCredentialRestored, reason: syncCredentialRestored ? "sync-credential-restored" : settingsRestored ? "desktop-settings-restored" : "current-data-preserved", backupRoot, settingsRestored, syncCredentialRestored };
   }
   const sourceGateway = path.join(backupRoot, "gateway-data");
   if (!criticalDataIsPresent(backupRoot)) return { restored: false, reason: "backup-data-incomplete", backupRoot };

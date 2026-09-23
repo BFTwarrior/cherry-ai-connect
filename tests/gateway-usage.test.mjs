@@ -119,7 +119,8 @@ test("usage ledger and route-following key names survive the complete flow", asy
     }
 
     const usage = await api("/admin/api/usage?range=24h&limit=20");
-    assert.equal(usage.records.length, 2);
+    assert.equal(usage.records.length, 3);
+    assert.ok(usage.records.some((record) => record.id === "expired-detail"), "history includes retained records outside the chart's 24-hour range");
     assert.equal(usage.summary.requests, 2);
     assert.equal(usage.summary.totalTokens, 150);
     assert.equal(usage.summary.cacheReadTokens, 35);
@@ -157,7 +158,7 @@ test("usage ledger and route-following key names survive the complete flow", asy
     const restored = reopenedLedger.snapshot(new URL("http://local/usage?range=24h&limit=20"));
     assert.equal(restored.lifetime.totalTokens, 200);
     assert.equal(restored.lifetime.requests, 3);
-    assert.equal(restored.records.length, 2);
+    assert.equal(restored.records.length, 3);
     reopenedLedger.close();
     assert.ok(fs.existsSync(path.join(dataDir, "usage.db")));
     assert.ok(fs.readdirSync(path.join(dataDir, "backups")).some((name) => name.startsWith("usage-legacy-")));
