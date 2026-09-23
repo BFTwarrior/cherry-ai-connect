@@ -362,7 +362,9 @@ test("sync manager protects a legacy local copy before offering keep-local confl
     assert.equal(connected.status.state, "CONFLICT");
     assert.match(connected.recoveryCode, /^CGRC-/);
     assert.equal(connected.status.vault.initialized, true);
-    const resolved = await manager.resolveConflict({ choice: "local", password: "local-password" });
+    // The local vault was initialized and unlocked during connect; choosing the local copy
+    // must not require the user to re-enter a password (or mistake it for an API key).
+    const resolved = await manager.resolveConflict({ choice: "local" });
     assert.equal(resolved.ok, true);
     assert.equal(resolved.status.state, "IDLE");
     assert.equal((await readLatestManifest(provider, sharedDataset)).manifest.configRevision.deviceId, "dev_local");

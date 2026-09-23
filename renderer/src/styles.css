@@ -931,6 +931,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .update-error { display: grid; gap: 4px; margin-bottom: 12px; padding: 11px 12px; border: 1px solid #713649; border-radius: 9px; background: #301b24; color: #ff9ab0; font-size: 10px; }
 .update-error strong { font-size: 11px; }
 .update-error small { color: #b87988; }
+.update-site-link { justify-self: start; margin-top: 4px; padding: 0; border: 0; background: transparent; color: #e5c477; font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.update-site-link:hover { color: #ffe3a0; }
 .update-actions { display: flex; gap: 8px; }
 .update-actions .button svg { width: 14px; height: 14px; }
 

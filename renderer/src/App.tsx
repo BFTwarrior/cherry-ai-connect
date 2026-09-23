@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.33";
+const VERSION = "1.34";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
 const DEMO_PROVIDERS: Provider[] = [
@@ -823,7 +823,7 @@ export default function App() {
         <div className="settings-column">
         <article className="settings-card">
           <SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} />
-          <div className="setting-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。选择 UNCHANGED 则保留客户端原始策略。", "Saved immediately; existing keys keep their own level. UNCHANGED preserves each client's original strategy.")}</small></div><MenuSelect className="settings-level-menu" value={settings.forcedLevel} options={levels.map((level) => ({ value: level, label: reasoningOptionLabel(level, language) }))} onChange={(value) => void changeDefaultReasoning(value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} ariaLabel={tr("默认思考强度", "Default reasoning level")} /></div>
+          <div className="setting-line settings-reasoning-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。选择 UNCHANGED 则保留客户端原始策略。", "Saved immediately; existing keys keep their own level. UNCHANGED preserves each client's original strategy.")}</small></div><MenuSelect className="settings-level-menu" value={settings.forcedLevel} options={levels.map((level) => ({ value: level, label: reasoningOptionLabel(level, language) }))} onChange={(value) => void changeDefaultReasoning(value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} ariaLabel={tr("默认思考强度", "Default reasoning level")} /></div>
           <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${reasoningOptionLabel(settings.forcedLevel, "zh")} 应用到 ${keys.length} 个已有 Key`, `Apply ${reasoningOptionLabel(settings.forcedLevel, "en")} to ${keys.length} existing key(s)`)}</button>
           <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
         </article>

@@ -153,6 +153,13 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false }: {
 
   const resolveConflict = async (choice: "local" | "remote") => {
     if (!window.desktop?.resolveSyncConflict) return setError(tr("当前版本无法处理同步冲突", "This build cannot resolve sync conflicts"));
+    const localVaultNeedsCredential = !status.vault.initialized || !status.vault.unlocked;
+    const enteredCredential = conflictCredential.trim();
+    if (choice === "remote" && !enteredCredential) return setError(tr("恢复云端配置需要云端保险库密码或 CGRC 恢复码；这不是上游 API Key。", "Restoring the cloud copy requires its vault password or CGRC recovery code; this is not an upstream API key."));
+    if (choice === "local" && localVaultNeedsCredential && !enteredCredential) return setError(status.vault.initialized
+      ? tr("本机保险库尚未解锁，请输入本机保险库密码或 CGRC 恢复码。", "Unlock the local vault with its password or CGRC recovery code.")
+      : tr("首次保护本机配置需要设置至少 8 位的保险库密码；这不是上游 API Key。", "Protecting this local copy for the first time requires a vault password of at least 8 characters; this is not an upstream API key."));
+    if (choice === "local" && !status.vault.initialized && enteredCredential.length < 8) return setError(tr("保险库密码至少需要 8 位。", "Vault passwords must be at least 8 characters."));
     const confirmed = await requestConfirmation({
       title: choice === "local" ? tr("使用本机配置？", "Use this PC's configuration?") : tr("使用云端配置？", "Use the cloud configuration?"),
       message: choice === "local"
@@ -170,7 +177,10 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false }: {
         setConflictCredential("");
         return;
       }
-      const credential = conflictCredential.trim();
+      // 中文：已解锁的本机保险库可以直接保留；不把输入框里的云端密码误传给本机策略。
+      // English: An unlocked local vault can be kept directly; do not pass a cloud password into
+      // the local policy when no local credential is needed.
+      const credential = choice === "local" && !localVaultNeedsCredential ? "" : enteredCredential;
       const isRecoveryCode = /^CGRC-/i.test(credential);
       const result = await window.desktop.resolveSyncConflict({
         choice,
@@ -230,7 +240,11 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false }: {
       {(error || (status.state !== "CONFLICT" && status.error)) && <div className="sync-error">{error || status.error}<small>{status.errorCode}</small></div>}
       {status.warning && <div className="sync-warning">{status.warning === "sync_disabled_with_pending_data" ? tr("自动同步已关闭，但仍有本地数据等待下次上传。", "Automatic sync is off, but local changes are still waiting to upload.") : status.warning === "sync_vault_unavailable_usage_only" ? tr("本次已同步用量数据；中转站地址和上游 API Key 等待解锁本机保险库后同步。", "Usage data synced; upstream routes and API keys will sync after the local vault is unlocked.") : status.warning}</div>}
       {status.vault.initialized && !status.vault.unlocked && <div className="sync-conflict-panel"><div><strong>{tr("本机同步保险库需要解锁", "Unlock the local sync vault")}</strong><p>{tr("用量仍可独立同步；解锁后才能继续同步中转站地址和上游 API Key。请输入原来的备份加密密码，或输入 CGRC 恢复码。", "Usage can sync independently; unlock the vault to sync upstream routes and API keys. Enter the original backup vault password or a CGRC recovery code.")}</p></div><label><span>{tr("备份加密密码或 CGRC 恢复码", "Vault password or CGRC recovery code")}</span><input type="password" value={vaultCredential} onChange={(event) => setVaultCredential(event.target.value)} autoComplete="off" /></label><div><button type="button" className="button button-primary" onClick={() => void unlockVault()} disabled={busy}>{tr("解锁并同步", "Unlock and sync")}</button></div></div>}
-      {status.state === "CONFLICT" && <div className="sync-conflict-panel"><div><strong>{tr("检测到两份不同的线路配置", "Two different route configurations were found")}</strong><p>{tr("为保护上游 Key，程序已暂停配置上传。请选择保留本机还是恢复云端；使用量会继续按事件去重合并。", "Configuration upload is paused to protect upstream keys. Choose this PC or the cloud copy; usage events continue to merge safely.")}</p></div><label><span>{tr("加密密码或 CGRC 恢复码", "Vault password or CGRC recovery code")}</span><input type="password" value={conflictCredential} onChange={(event) => setConflictCredential(event.target.value)} autoComplete="off" /><small>{tr("恢复云端时输入云端密码或恢复码；首次保留本机时请输入至少 8 位的新密码。", "For cloud restore, enter the cloud password or recovery code. To keep an unprotected local copy for the first time, enter a new password of at least 8 characters.")}</small></label><div><button type="button" className="button button-secondary" onClick={() => void resolveConflict("local")} disabled={busy}>{tr("保留本机配置", "Keep this PC")}</button><button type="button" className="button button-primary" onClick={() => void resolveConflict("remote")} disabled={busy}>{tr("恢复云端配置", "Restore cloud copy")}</button></div></div>}
+      {status.state === "CONFLICT" && <div className="sync-conflict-panel"><div><strong>{tr("检测到两份不同的线路配置", "Two different route configurations were found")}</strong><p>{tr("为保护上游 Key，程序已暂停配置上传。请选择保留本机还是恢复云端；使用量会继续按事件去重合并。这里的密码只用于配置保险库加密，不是上游 API Key。", "Configuration upload is paused to protect upstream keys. Choose this PC or the cloud copy; usage events continue to merge. This password is only for the encrypted configuration vault, not an upstream API key.")}</p></div><label><span>{tr("保险库密码或 CGRC 恢复码", "Vault password or CGRC recovery code")}</span><input type="password" value={conflictCredential} onChange={(event) => setConflictCredential(event.target.value)} autoComplete="off" /><small>{!status.vault.initialized
+        ? tr("首次保留本机配置时设置至少 8 位的新密码；恢复云端时使用云端密码或恢复码。", "Set a new password of at least 8 characters to protect this local copy; use the cloud password or recovery code to restore cloud.")
+        : !status.vault.unlocked
+          ? tr("保留本机需解锁本机保险库；恢复云端需云端密码或恢复码。已解锁并保留本机时无需填写。", "Keeping this PC requires unlocking its vault; restoring cloud requires the cloud password or recovery code. Keeping an already-unlocked local vault needs no password.")
+          : tr("恢复云端时才需要输入云端密码或恢复码；本机保险库已解锁，保留本机无需填写。", "Only cloud restore needs the cloud password or recovery code; this PC's vault is unlocked, so keeping it needs no password.")}</small></label><div><button type="button" className="button button-secondary" onClick={() => void resolveConflict("local")} disabled={busy}>{tr("保留本机配置", "Keep this PC")}</button><button type="button" className="button button-primary" onClick={() => void resolveConflict("remote")} disabled={busy}>{tr("恢复云端配置", "Restore cloud copy")}</button></div></div>}
       <div className="sync-actions"><button type="button" className="button button-secondary" onClick={() => void toggle()} disabled={busy}><SyncIcon name="cloud" />{status.enabled ? tr("关闭自动同步", "Turn off automatic sync") : tr("开启自动同步", "Turn on automatic sync")}</button><button type="button" className="button button-primary" onClick={() => void syncNow()} disabled={busy || status.state === "SYNCING"}><SyncIcon name="refresh" />{status.state === "SYNCING" ? tr("同步中…", "Syncing…") : tr("立即同步", "Sync now")}</button><button type="button" className="button button-ghost sync-disconnect" onClick={() => void disconnect()} disabled={busy}>{tr("断开账户", "Disconnect account")}</button></div>
     </>}
 

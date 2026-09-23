@@ -399,7 +399,7 @@
 
 /* Keep the longest reasoning label fully visible beside the chevron. */
 .reasoning-select-trigger {
-  min-width: 104px !important;
+  min-width: 0 !important;
   flex: 0 0 auto;
   white-space: nowrap;
 }
@@ -576,6 +576,17 @@
 .settings-level-menu {
   position: relative;
   z-index: 30 !important;
+}
+
+.settings-reasoning-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: 12px;
+}
+
+.settings-reasoning-line > div {
+  width: 100%;
 }
 
 .settings-level-menu .menu-select-menu {

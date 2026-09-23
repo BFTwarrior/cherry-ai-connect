@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.33` 为当前 GitHub Latest 正式版。修复圆角多尺寸图标与升级后快捷方式刷新、同步凭证和用户设置保留、统计历史列表被默认时段隐藏、菜单展开导致动画重播、设置页自动检查更新及工作台液态菜单效果。1.31 已撤回公开有效版本路径，历史 tag 与提交仍保留。
+`1.34` 为当前 GitHub Latest 正式版。修复思考强度菜单多余留白、设置页选择器对齐、同步冲突时保险库凭证误解，以及更新失败缺少官方发布入口。1.33 保留图标与用户数据升级保护、完整统计历史及液态菜单动画；1.31 已撤回公开有效版本路径，历史 tag 与提交仍保留。
 
-Version `1.33` is the current GitHub Latest release. It updates the rounded multi-size icon and installed shortcuts, preserves sync credentials and user settings across updates, restores access to the complete local usage history, prevents menu expansion from restarting page animations, checks for updates whenever Settings opens, and refines the liquid gold/purple navigation effect. v1.31 is withdrawn from the active public release path while its tag and commit history remain preserved.
+Version `1.34` is the current GitHub Latest release. It removes excess reasoning-menu whitespace, centers the settings selector, clarifies that sync-vault credentials are not upstream API keys, and provides an official release-page fallback after update failures. v1.33's icon, upgrade-data protection, complete usage history, and liquid-menu motion remain included. v1.31 is withdrawn from the active public release path while its tag and commit history remain preserved.
 
 ## 它能做什么 / Features
 
@@ -47,11 +47,11 @@ Version `1.33` is the current GitHub Latest release. It updates the rounded mult
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.33/Cherry-AI-Connect-Setup-1.33.exe)
-- 当前公开 Release 为 1.33，并标记为 Latest；1.31 已撤回公开有效版本路径。下载前请核对文件名和 SHA-256。
-- The current public Release is v1.33 and is marked Latest; v1.31 has been withdrawn from the active public release path. Verify the filename and SHA-256 before installing.
-- 安装包 SHA-256：`0CED89BF9010F2BBA38E3BF5F26DC53834D4F515FF1FDC7ABA8D4A67372CA10D`
-- Installer SHA-256: `0CED89BF9010F2BBA38E3BF5F26DC53834D4F515FF1FDC7ABA8D4A67372CA10D`
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.34/Cherry-AI-Connect-Setup-1.34.exe)
+- 当前公开 Release 为 1.34，并标记为 Latest；1.31 已撤回公开有效版本路径。下载前请核对文件名和 SHA-256。
+- The current public Release is v1.34 and is marked Latest; v1.31 has been withdrawn from the active public release path. Verify the filename and SHA-256 before installing.
+- 安装包 SHA-256：`7EC1604570FDB027844687C9E0ED9A2401051A6E084707303173F387DD6EA571`
+- Installer SHA-256: `7EC1604570FDB027844687C9E0ED9A2401051A6E084707303173F387DD6EA571`
 
 ## 安全边界 / Security boundary
 
@@ -259,27 +259,27 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 **中文说明**
 
-当前稳定版 v1.33 的安装包和发布说明位于：
+当前稳定版 v1.34 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.33 安装包直达地址：[Cherry-AI-Connect-Setup-1.33.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.33/Cherry-AI-Connect-Setup-1.33.exe)。
+当前 1.34 安装包直达地址：[Cherry-AI-Connect-Setup-1.34.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.34/Cherry-AI-Connect-Setup-1.34.exe)。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
-SHA-256：`0CED89BF9010F2BBA38E3BF5F26DC53834D4F515FF1FDC7ABA8D4A67372CA10D`。
+SHA-256：`7EC1604570FDB027844687C9E0ED9A2401051A6E084707303173F387DD6EA571`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
 **English**
 
-The installer and release notes for the current stable v1.33 are available here:
+The installer and release notes for the current stable v1.34 are available here:
 
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-Direct download: [Cherry-AI-Connect-Setup-1.33.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.33/Cherry-AI-Connect-Setup-1.33.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `0CED89BF9010F2BBA38E3BF5F26DC53834D4F515FF1FDC7ABA8D4A67372CA10D`.
+Direct download: [Cherry-AI-Connect-Setup-1.34.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.34/Cherry-AI-Connect-Setup-1.34.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `7EC1604570FDB027844687C9E0ED9A2401051A6E084707303173F387DD6EA571`.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
-The v1.33 installer is published as a GitHub Release asset. Verify the SHA-256 before installation. The v1.31 release is withdrawn from the active public download path to avoid directing users to the startup-crashing build.
+The v1.34 installer is published as a GitHub Release asset. Verify the SHA-256 before installation. The v1.31 release is withdrawn from the active public download path to avoid directing users to the startup-crashing build.
 
 ## 开发与构建 / Development and build
 

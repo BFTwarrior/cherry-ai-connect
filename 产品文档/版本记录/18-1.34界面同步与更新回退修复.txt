@@ -1,0 +1,33 @@
+# Cherry AI Connect 1.34：界面、保险库提示与更新失败回退
+
+## 版本范围
+
+- 产品版本：1.34.0
+- Release tag：v1.34
+- 修复：顶部思考强度控件过宽；设置页思考强度选择器居中；同步冲突时区分保险库凭证与上游 API Key，并允许已解锁本机保险库无需再次输入即可保留本机；更新失败或缺少可信校验值时提供 GitHub 官方发布页入口。
+- 不更改使用统计菜单，不覆盖用户设置、客户端 Key、同步凭证或本地记录，不删除历史版本。
+
+## 自动化验收
+
+- `npm run check`：通过。
+- `npm test`：37 项通过；同步经理回归验证已解锁保险库保留本机时无需重复输入密码。
+- `npm run renderer:build`：通过。
+- `git diff --check`：通过。
+- `npm run dist`：Windows x64 NSIS 安装包构建通过。
+- Installer: `Cherry-AI-Connect-Setup-1.34.exe`, 103,139,473 bytes; SHA-256 `7EC1604570FDB027844687C9E0ED9A2401051A6E084707303173F387DD6EA571`; SHA-512 `AB62B4883029FBF65B0C310E9FF764A36D629D63927A7B0AB8E425FC7FEC06C46D0180DCD065DE99805DC7D1B8DD0619B0B9719BD5E92C5132DD8F907D5811D6`.
+- Blockmap: 107,492 bytes; SHA-256 `F0930B274B1AF2EE7CC9D4B4E07AE9A3E472CC90A64065036829AE4D076FA847`.
+- Web Demo: 143,375 bytes; SHA-256 `EFC1CBD6C4F354E7DD5A8DC3E10C1F59DAD145627D5193819713C11913B86D79`.
+- `latest.yml`: 362 bytes; SHA-256 `B602756D025202B005F90A99048C154784DB9F715D199BD560B1636E24450BD4`; embedded SHA-512 matches the installer.
+
+## 构建与发布核验
+
+- 安装包构建：已通过。
+- 安装包/Web Demo 文件名、大小、SHA-256、SHA-512：本地核对通过。
+- GitHub Release、tag、Latest、资产和下载链接：待发布后核验。
+- 目标用户 Windows 覆盖安装、启动、数据、同步现场验收：待用户设备现场核对。
+
+## 证据与风险
+
+- 发布执行计划：`../1.34/文档/发布执行计划.md`。
+- 本地开发根目录：`软件/开发文件`。
+- 保险库仍强制加密；恢复云端时必须提供正确的云端密码或 CGRC 恢复码。已解锁本机策略仅省去重复输入，不改变加密边界。
