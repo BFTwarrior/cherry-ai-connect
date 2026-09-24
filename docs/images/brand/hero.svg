@@ -1,0 +1,90 @@
+<svg width="1400" height="620" viewBox="0 0 1400 620" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Cherry AI Connect product overview</title>
+  <desc id="desc">A dark, purple and gold product hero showing AI routes, client keys, analytics and private sync.</desc>
+  <defs>
+    <linearGradient id="bg" x1="90" y1="30" x2="1310" y2="590" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#110F1A"/>
+      <stop offset="0.52" stop-color="#211633"/>
+      <stop offset="1" stop-color="#101016"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="210" y1="72" x2="1170" y2="510" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A855F7" stop-opacity=".9"/>
+      <stop offset=".48" stop-color="#D9AD62" stop-opacity=".54"/>
+      <stop offset="1" stop-color="#A855F7" stop-opacity=".08"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#282037"/>
+      <stop offset="1" stop-color="#17151F"/>
+    </linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="42"/>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity=".42"/>
+    </filter>
+  </defs>
+
+  <rect width="1400" height="620" rx="32" fill="url(#bg)"/>
+  <circle cx="1140" cy="96" r="170" fill="#A855F7" fill-opacity=".2" filter="url(#blur)"/>
+  <circle cx="310" cy="560" r="150" fill="#D9AD62" fill-opacity=".13" filter="url(#blur)"/>
+  <path d="M-40 510C206 370 354 590 588 438C829 281 953 420 1440 178" stroke="url(#glow)" stroke-width="2" stroke-opacity=".55"/>
+  <path d="M-20 550C225 411 367 626 609 471C841 323 1020 438 1430 232" stroke="#A855F7" stroke-width="1" stroke-opacity=".24"/>
+
+  <g transform="translate(84 72)">
+    <rect width="530" height="174" rx="28" fill="#0D0C12" fill-opacity=".7" stroke="#D9AD62" stroke-opacity=".38"/>
+    <rect x="28" y="28" width="54" height="54" rx="16" fill="#A855F7" fill-opacity=".22" stroke="#D9AD62" stroke-opacity=".72"/>
+    <path d="M47 57C47 48 55 42 63 46C69 49 72 56 69 63C66 71 56 74 49 69C46 66 45 62 47 57Z" fill="#D9AD62"/>
+    <path d="M58 47C61 39 68 38 72 43C69 44 66 48 65 52" stroke="#F4D18C" stroke-width="3" stroke-linecap="round"/>
+    <text x="104" y="57" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="29" font-weight="700">Cherry AI Connect</text>
+    <text x="104" y="91" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="15">LOCAL AI ROUTES  •  CLIENT KEYS  •  PRIVATE SYNC</text>
+    <rect x="28" y="125" width="474" height="1" fill="#FFFFFF" fill-opacity=".12"/>
+    <circle cx="39" cy="151" r="5" fill="#54E0B2"/>
+    <text x="54" y="157" fill="#E9E1F4" font-family="Inter,Segoe UI,sans-serif" font-size="14">127.0.0.1 · protected local gateway</text>
+  </g>
+
+  <g transform="translate(734 70)" filter="url(#shadow)">
+    <rect width="568" height="410" rx="24" fill="url(#card)" stroke="#D9AD62" stroke-opacity=".38"/>
+    <rect x="24" y="24" width="520" height="44" rx="12" fill="#0F0E15" stroke="#FFFFFF" stroke-opacity=".1"/>
+    <circle cx="48" cy="46" r="6" fill="#54E0B2"/>
+    <text x="66" y="52" fill="#D6CBE4" font-family="Inter,Segoe UI,sans-serif" font-size="15">127.0.0.1:27891</text>
+    <rect x="378" y="33" width="145" height="26" rx="13" fill="#A855F7" fill-opacity=".23"/>
+    <text x="395" y="51" fill="#F4D18C" font-family="Inter,Segoe UI,sans-serif" font-size="12" font-weight="700">HIGH · READY</text>
+
+    <text x="28" y="106" fill="#F7F0FF" font-family="Inter,Segoe UI,sans-serif" font-size="20" font-weight="700">One local control plane</text>
+    <text x="28" y="132" fill="#AFA4BF" font-family="Inter,Segoe UI,sans-serif" font-size="13">Keep routes, client access and usage data in one place.</text>
+
+    <g transform="translate(28 162)">
+      <rect width="158" height="104" rx="16" fill="#171421" stroke="#A855F7" stroke-opacity=".45"/>
+      <text x="18" y="31" fill="#BBAED0" font-family="Inter,Segoe UI,sans-serif" font-size="12">UPSTREAM ROUTES</text>
+      <text x="18" y="66" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="28" font-weight="700">08</text>
+      <text x="18" y="88" fill="#54E0B2" font-family="Inter,Segoe UI,sans-serif" font-size="12">connected &amp; queued</text>
+    </g>
+    <g transform="translate(205 162)">
+      <rect width="158" height="104" rx="16" fill="#171421" stroke="#D9AD62" stroke-opacity=".45"/>
+      <text x="18" y="31" fill="#BBAED0" font-family="Inter,Segoe UI,sans-serif" font-size="12">CLIENT KEYS</text>
+      <text x="18" y="66" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="28" font-weight="700">12</text>
+      <text x="18" y="88" fill="#D9AD62" font-family="Inter,Segoe UI,sans-serif" font-size="12">one route each</text>
+    </g>
+    <g transform="translate(382 162)">
+      <rect width="158" height="104" rx="16" fill="#171421" stroke="#A855F7" stroke-opacity=".45"/>
+      <text x="18" y="31" fill="#BBAED0" font-family="Inter,Segoe UI,sans-serif" font-size="12">PRIVATE SYNC</text>
+      <text x="18" y="66" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="23" font-weight="700">READY</text>
+      <text x="18" y="88" fill="#54E0B2" font-family="Inter,Segoe UI,sans-serif" font-size="12">encrypted vault</text>
+    </g>
+
+    <rect x="28" y="294" width="512" height="82" rx="16" fill="#A855F7" fill-opacity=".1" stroke="#A855F7" stroke-opacity=".34"/>
+    <path d="M52 335H208M234 335H390M416 335H516" stroke="#D9AD62" stroke-width="3" stroke-linecap="round" stroke-opacity=".78"/>
+    <circle cx="52" cy="335" r="7" fill="#D9AD62"/>
+    <circle cx="234" cy="335" r="7" fill="#A855F7"/>
+    <circle cx="416" cy="335" r="7" fill="#54E0B2"/>
+    <text x="40" y="363" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="11">ROUTE</text>
+    <text x="220" y="363" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="11">GATEWAY</text>
+    <text x="398" y="363" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="11">CLIENT</text>
+  </g>
+
+  <text x="88" y="330" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="22" font-weight="600">A calmer way to operate AI connections.</text>
+  <text x="88" y="366" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="15">Route traffic. Issue access. Understand usage. Keep control local.</text>
+  <rect x="88" y="411" width="178" height="42" rx="21" fill="#A855F7" fill-opacity=".25" stroke="#A855F7" stroke-opacity=".72"/>
+  <text x="116" y="438" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="14" font-weight="700">OPEN SOURCE · MIT</text>
+  <text x="88" y="532" fill="#8E829F" font-family="Inter,Segoe UI,sans-serif" font-size="13">Cherry AI Connect · v1.37 · Windows x64</text>
+</svg>
