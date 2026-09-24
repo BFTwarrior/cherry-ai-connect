@@ -93,7 +93,7 @@
 - 验证云端恢复失败、本地保险库锁定、取消及重试时不静默覆盖本机数据；避免把可选方向误解为完整同步策略，按现有同步引擎分别核对用量和保险库结果。
 - `npm run check`、`npm test`（44/44）、前端与安装包构建通过。Codex Security 已完成本次差异扫描，0 个发现、7/7 变更项已核查；报告提示两个审查回执未进入归档目录，审查范围仅为本次差异，不代表全仓库或目标设备验证。
 - 现场必须检查旧设置、默认思考强度、客户端 Key、统计记录、同步 token 和 vault 保留；真机实测前不得关闭历史数据保护待办。
-- 证据：`../文档/v1.36-请求策略与同步冲突修复.txt`；GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.36`。远端 Latest、tag、四个附件和下载入口已回读，目标 Windows 设备与本地历史记录连续性仍待实测。
+- 证据：`../历史/文档/v1.36-请求策略与同步冲突修复.txt`；GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.36`。远端 Latest、tag、四个附件和下载入口已回读，目标 Windows 设备与本地历史记录连续性仍待实测。
 
 ### v1.36 云同步冲突面板挤压下方按钮
 

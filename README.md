@@ -333,17 +333,17 @@ tests/          自动回归、故障注入和视觉验收入口 / Automated reg
 
 ## 文档入口 / Documentation
 
-- `产品文档/00-文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version facts, and file boundaries.
+- `产品文档/文档/00-文档索引.txt`：当前文档入口、版本口径和文件边界。/ Current document index, version facts, and file boundaries.
 - `产品文档/01-使用说明.txt`：普通用户安装、配置、GitHub 同步和安全提醒。/ End-user setup, GitHub sync, and safety notes.
-- `产品文档/流程与规范/10-版本开发、测试与GitHub发布流程.txt`：最高优先级的开发、测试和发布防错流程。/ Highest-priority development, testing, and release safeguards.
-- `产品文档/流程与规范/02-开发维护规则.txt`：代码分层、注释、数据规则和安全边界。/ Code structure, comments, data rules, and security boundaries.
-- `产品文档/流程与规范/03-测试与验收.txt`：本项目自动测试、浏览器验收和真实环境验收。/ Project-specific automated, browser, and real-environment acceptance.
-- `产品文档/流程与规范/05-待验收与后续计划.txt`：当前待验收事项和下个版本问题登记。/ Current acceptance items and next-version issue tracking.
-- `产品文档/流程与规范/08-浏览器软件测试通用提示词.txt`：通用的浏览器启动、运行和自主测试路径提示词。/ Generic browser launch, runtime, and self-generated test-path prompt.
-- `产品文档/版本记录/09-1.22更新校验问题.txt`：1.22 已发布的专项修复记录。/ Published v1.22 focused fix record.
-- `产品文档/版本记录/15-1.31更新恢复回滚修复验收.txt`：1.31 更新恢复回滚修复与历史验收。/ v1.31 update-recovery rollback fix and historical acceptance.
-- `产品文档/版本记录/16-1.32安全更新与菜单修复验收.txt`：1.32 启动恢复、安全更新和菜单修复验收。/ v1.32 startup recovery, safe-update, and menu-fix acceptance.
-- `产品文档/版本记录/11-1.23修复计划.txt`：1.23 首个待修复问题。/ First planned v1.23 fix.
+- `产品文档/文档/流程与规范/10-版本开发、测试与GitHub发布流程.txt`：最高优先级的开发、测试和发布防错流程。/ Highest-priority development, testing, and release safeguards.
+- `产品文档/文档/流程与规范/02-开发维护规则.txt`：代码分层、注释、数据规则和安全边界。/ Code structure, comments, data rules, and security boundaries.
+- `产品文档/文档/流程与规范/03-测试与验收.txt`：本项目自动测试、浏览器验收和真实环境验收。/ Project-specific automated, browser, and real-environment acceptance.
+- `产品文档/文档/流程与规范/05-待验收与后续计划.txt`：当前待验收事项和下个版本问题登记。/ Current acceptance items and next-version issue tracking.
+- `产品文档/文档/流程与规范/08-浏览器软件测试通用提示词.txt`：通用的浏览器启动、运行和自主测试路径提示词。/ Generic browser launch, runtime, and self-generated test-path prompt.
+- `产品文档/历史/文档/版本记录/09-1.22更新校验问题.txt`：1.22 已发布的专项修复记录。/ Published v1.22 focused fix record.
+- `产品文档/历史/文档/版本记录/15-1.31更新恢复回滚修复验收.txt`：1.31 更新恢复回滚修复与历史验收。/ v1.31 update-recovery rollback fix and historical acceptance.
+- `产品文档/历史/文档/版本记录/16-1.32安全更新与菜单修复验收.txt`：1.32 启动恢复、安全更新和菜单修复验收。/ v1.32 startup recovery, safe-update, and menu-fix acceptance.
+- `产品文档/历史/文档/版本记录/11-1.23修复计划.txt`：1.23 首个待修复问题。/ First planned v1.23 fix.
 
 ## 双语注释 / Bilingual comments
 
