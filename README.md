@@ -6,9 +6,9 @@ A local AI connection manager for Cherry Studio and other OpenAI-compatible clie
 
 ## 项目状态 / Project status
 
-`1.35` 为当前 GitHub Latest 正式版。修复旧恢复指针和本地数据缺失共同导致的启动崩溃；运行数据移至安装目录同级的独立文件夹，旧备份只在用户确认后恢复。1.34 的界面与更新改进继续保留，但其故障安装包已撤回公开入口；1.31 也已撤回，历史 tag 与提交仍保留。
+`1.36` 为当前 GitHub Latest 正式版。除保留 v1.35 的启动恢复与数据目录保护外，本版修复请求策略思考强度选择框的右侧布局，并允许同步冲突时先选保留本机或使用云端，再按需输入保险库凭证。v1.34 故障安装包已撤回公开入口；v1.31 没有公开 Release/安装包，历史 tag 与提交仍保留。
 
-Version `1.35` is the current GitHub Latest release. It prevents a stale, consumed recovery pointer plus missing local data from crashing the main process. Runtime data now lives in a separate sibling folder, and restoring an older backup requires explicit consent. v1.34's UI and update improvements remain included, but its faulty installer and v1.31 are withdrawn from public download paths; tags and commit history remain preserved.
+Version `1.36` is the current GitHub Latest release. In addition to v1.35's startup recovery and data-directory protections, it aligns the Request Strategy reasoning selector on the right and lets users choose Keep Local or Use Cloud before entering vault credentials when resolving sync conflicts. The faulty v1.34 installer is withdrawn; v1.31 has no public Release or installer, while historical tags and commits remain preserved.
 
 ## 它能做什么 / Features
 
@@ -26,7 +26,7 @@ Version `1.35` is the current GitHub Latest release. It prevents a stale, consum
 - 线路检测和模型刷新会自动排队同步；同一设备更新或同步不会刷新客户端 Key。
 - 检查到新版后可由用户确认下载、校验、备份并启动覆盖安装。
 - 重置连接服务时使用安全随机方式从 29,000 个候选端口中选择可用端口。
-- 可将加密后的线路配置和压缩但不加密的匿名使用量同步到用户自己的 GitHub 私有 Release。
+- 可将加密后的线路配置和压缩但不加密的使用量/请求元数据同步到用户自己的 GitHub 私有 Release；元数据可能包含设备标识、线路/客户端名称、模型、接口、时间与状态，请勿在名称中填写敏感信息。
 
 **English**
 
@@ -42,16 +42,16 @@ Version `1.35` is the current GitHub Latest release. It prevents a stale, consum
 - Queue cloud sync after route tests and model refreshes; updates and normal sync never rotate same-device client keys.
 - After user confirmation, download, verify, back up, and start an in-place update.
 - Reset the local connection service by securely selecting an available port from 29,000 candidates.
-- Sync encrypted route configuration and compressed, non-encrypted anonymous usage totals to the user’s own private GitHub Release.
+- Sync encrypted route configuration and compressed but unencrypted usage/request metadata to the user’s own private GitHub Release. Metadata may include device identifiers, route/client labels, model, endpoint, timestamps, and status; do not put sensitive information in names.
 
 ## 快速下载 / Quick download
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
-- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.35/Cherry-AI-Connect-Setup-1.35.exe)
-- 当前公开 Release 为 1.35，并标记为 Latest；1.34 和 1.31 的故障安装包已撤回公开入口。下载前请核对文件名和 SHA-256。
-- The current public Release is v1.35 and is marked Latest; the faulty v1.34 and v1.31 installers are withdrawn from public download paths. Verify the filename and SHA-256 before installing.
-- 安装包 SHA-256：`EACC7623FE997E4F5CA489FA32386F300AF3290CE4E697FEA653D888A31DBB16`
-- Installer SHA-256: `EACC7623FE997E4F5CA489FA32386F300AF3290CE4E697FEA653D888A31DBB16`
+- [Windows x64 安装包 / Windows x64 installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.36/Cherry-AI-Connect-Setup-1.36.exe)
+- 当前公开 Release 为 1.36，并标记为 Latest。v1.34 故障安装包已撤回；v1.31 没有公开 Release 或安装包。下载前请核对文件名和 SHA-256。
+- The current public Release is v1.36 and is marked Latest. The faulty v1.34 installer is withdrawn; v1.31 has no public Release or installer. Verify the filename and SHA-256 before installing.
+- 安装包 SHA-256：`cb1187c959653d10154a772a59c8a29083e861ffc258cbb02180cf64b134a089`
+- Installer SHA-256: `cb1187c959653d10154a772a59c8a29083e861ffc258cbb02180cf64b134a089`
 
 ## 安全边界 / Security boundary
 
@@ -59,7 +59,7 @@ Version `1.35` is the current GitHub Latest release. It prevents a stale, consum
 
 - 连接服务只监听 `127.0.0.1`，不会直接开放到局域网或互联网。
 - 上游 API Key 使用本机加密保存；完整客户端 Key、聊天正文、密码、恢复码和 GitHub 令牌不会上传。
-- 云端敏感配置使用 Argon2id + AES-256-GCM 信封加密；用量记录只压缩，不依赖敏感配置解密即可同步。
+- 云端敏感配置使用 Argon2id + AES-256-GCM 信封加密；使用/请求元数据未加密，只压缩后即可同步。元数据可能包含设备标识、线路/客户端名称、模型、接口、时间和状态；私有仓库不等同于加密，请勿将个人或敏感内容写入名称。
 - GitHub 仓库必须为私有；发现公开仓库时同步会保护性停止。
 - GitHub 访问令牌由 Windows 安全存储保护，不写入源码、日志或云端附件。
 
@@ -67,7 +67,7 @@ Version `1.35` is the current GitHub Latest release. It prevents a stale, consum
 
 - The service listens only on `127.0.0.1`.
 - Upstream keys are encrypted locally. Full client keys, prompts, responses, passwords, recovery codes, and GitHub tokens never upload.
-- Cloud secrets use Argon2id plus AES-256-GCM envelope encryption.
+- Cloud secrets use Argon2id plus AES-256-GCM envelope encryption. Usage/request metadata is not encrypted and may include device identifiers, route/client labels, model, endpoint, timestamps, and status; a private repository is not encryption, so avoid sensitive or personal values in labels.
 - Sync stops if the selected GitHub repository is public.
 - Windows secure storage protects the local GitHub credential.
 
@@ -259,27 +259,27 @@ Common errors: `401` usually means an expired, revoked, or mistyped token; `403`
 
 **中文说明**
 
-当前稳定版 v1.35 的安装包和发布说明位于：
+当前稳定版 v1.36 的安装包和发布说明位于：
 
 - [Release 页面 / Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-当前 1.35 安装包直达地址：[Cherry-AI-Connect-Setup-1.35.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.35/Cherry-AI-Connect-Setup-1.35.exe)。
+当前 1.36 安装包直达地址：[Cherry-AI-Connect-Setup-1.36.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.36/Cherry-AI-Connect-Setup-1.36.exe)。
 如果未来某个版本的 Release 页面没有对应附件，说明该版本尚未完成发布，不能把直达地址当作已可下载。
-SHA-256：`EACC7623FE997E4F5CA489FA32386F300AF3290CE4E697FEA653D888A31DBB16`。
+SHA-256：`cb1187c959653d10154a772a59c8a29083e861ffc258cbb02180cf64b134a089`。
 
 程序尚未进行商业代码签名，Windows SmartScreen 可能显示“未知发布者”。只应从本项目官方 Release 下载，并在安装前核对 SHA-256。
 
 **English**
 
-The installer and release notes for the current stable v1.35 are available here:
+The installer and release notes for the current stable v1.36 are available here:
 
 - [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/latest)
 
-Direct download: [Cherry-AI-Connect-Setup-1.35.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.35/Cherry-AI-Connect-Setup-1.35.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `EACC7623FE997E4F5CA489FA32386F300AF3290CE4E697FEA653D888A31DBB16`.
+Direct download: [Cherry-AI-Connect-Setup-1.36.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.36/Cherry-AI-Connect-Setup-1.36.exe). If a future Release page does not contain its installer asset, that version has not been fully published and its direct-download link should not be treated as available. SHA-256: `cb1187c959653d10154a772a59c8a29083e861ffc258cbb02180cf64b134a089`.
 
 The installer is not commercially code-signed, so Windows SmartScreen may show “Unknown publisher.” Download only from this project’s official Release page and verify the SHA-256 before installation.
 
-The v1.35 installer is published as a GitHub Release asset. Verify the SHA-256 before installation. v1.34 and v1.31 are withdrawn from public download paths to avoid directing users to startup-crashing builds.
+The v1.36 installer is published as a GitHub Release asset. Verify the SHA-256 before installation. The faulty v1.34 installer is withdrawn, and v1.31 has no public Release or installer; historical tags and commits remain available.
 
 ## 开发与构建 / Development and build
 

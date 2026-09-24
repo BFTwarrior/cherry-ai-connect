@@ -1,6 +1,6 @@
 # Cherry AI Connect v1.36 请求策略布局与同步冲突选择修复
 
-状态：本地实现与构建完成；GitHub 发布尚未完成。仅包含本记录列出的两项修复。
+状态：v1.36 已发布为 GitHub Latest；目标 Windows 设备与真实同步验收待现场完成。仅包含本记录列出的两项修复。
 
 ## 范围
 
@@ -31,10 +31,14 @@
 - `npm run web-demo:build`：通过。
 - `npm run dist`：通过，生成 Windows x64 NSIS 安装包。
 - `git diff --check`：通过。
-- Codex Security：本次变更未发现已验证问题；覆盖回执缺失，报告覆盖状态为 partial，不视为完整安全审查通过。
+- Codex Security：差异扫描已完成，0 个发现，7/7 变更项已核查；报告指出两个审查回执未进入归档目录。本结论仅限本次差异，不代表全仓库审计或目标设备验收。
 - 当前没有 React 组件交互测试；界面行为已做源码审阅及构建验证，冲突恢复仍需目标 Windows 设备实测。
 
-## 预期发布资产（发布前本地核验）
+## GitHub 发布与远端验收（2026-09-24）
+
+- Release：<https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.36>；公开、非草稿、非预发布，并标记 Latest。
+- `main` 与 `v1.36` tag 均指向提交 `a23ce276e2204b7cb7833907895c78053ba1db97`。
+- 远端四个附件名称、大小及 GitHub SHA-256 均与本地一致；四个公开下载端点 HEAD 均返回 HTTP 200。
 
 | 文件 | 字节 | SHA-256 |
 |---|---:|---|
@@ -43,10 +47,21 @@
 | `Cherry-AI-Connect-Web-Demo-1.36.zip` | 144099 | `ed5b607d5952429cb229bc7b84832fab49cbe52a7eff6fcb9c4945d6d7e627e0` |
 | `latest.yml` | 362 | `5028c885012278b7e26d811f08a14cbaa9ca6aaeff6f8bd6fc400cfdc88510eb` |
 
-`latest.yml` 中安装包大小与 SHA-512 和本地安装包一致。上述仅为本地产物核验，不代表已上传。
+`latest.yml` 中安装包大小与 SHA-512 和本地安装包一致。上述为 GitHub API 与公开下载端点回读结果。
+
+## 发布资产（发布前本地核验）
+
+| 文件 | 字节 | SHA-256 |
+|---|---:|---|
+| `Cherry-AI-Connect-Setup-1.36.exe` | 103141711 | `cb1187c959653d10154a772a59c8a29083e861ffc258cbb02180cf64b134a089` |
+| `Cherry-AI-Connect-Setup-1.36.exe.blockmap` | 107524 | `bc35f93d651899ea6fcb27df3c3fc256e74e50e21b7865a2d4f46a342e7cd909` |
+| `Cherry-AI-Connect-Web-Demo-1.36.zip` | 144099 | `ed5b607d5952429cb229bc7b84832fab49cbe52a7eff6fcb9c4945d6d7e627e0` |
+| `latest.yml` | 362 | `5028c885012278b7e26d811f08a14cbaa9ca6aaeff6f8bd6fc400cfdc88510eb` |
+
+`latest.yml` 中安装包大小与 SHA-512 和本地安装包一致；发布后远端 SHA-256 已逐项复核，见上表。
 
 ## 发布后记录
 
-- GitHub Latest、v1.36 tag、Release 正文、下载链接与远端附件：待发布及远端回读。
-- 目标 Windows 设备更新后设置排版、无需先输密码即可选择同步方向、凭证按需使用、原有设置/统计/客户端 Key 保留：待现场验收。
-- 后续发布的版本记录需补入远端附件大小与哈希；不得把构建结果或公开列表未显示 v1.36 写作已发布。
+- 目标 Windows 设备更新后检查设置排版、同步方向选择与凭证按需使用；确认既有设置、保险库、GitHub 凭证、使用统计、客户端 Key 保留。
+- 用既有私有仓库实测同步冲突、取消、错误与重试，并核对同步成功、代次与历史记录；不清空 `data/` 或重置 Key。
+- v1.31 当前在 GitHub 只有历史 tag，没有对应 Release 或安装包；tag/提交仍保留，不得宣称已删除或屏蔽源代码 tag。
