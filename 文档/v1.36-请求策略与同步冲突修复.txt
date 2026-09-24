@@ -37,7 +37,7 @@
 ## GitHub 发布与远端验收（2026-09-24）
 
 - Release：<https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.36>；公开、非草稿、非预发布，并标记 Latest。
-- `main` 与 `v1.36` tag 均指向提交 `a23ce276e2204b7cb7833907895c78053ba1db97`。
+- `v1.36` tag 指向发布提交 `a23ce276e2204b7cb7833907895c78053ba1db97`；发布后文档更新提交 `734373644183637db066898dd1b6367ac1cd6bf7` 已推送至 `main`。
 - 远端四个附件名称、大小及 GitHub SHA-256 均与本地一致；四个公开下载端点 HEAD 均返回 HTTP 200。
 
 | 文件 | 字节 | SHA-256 |
