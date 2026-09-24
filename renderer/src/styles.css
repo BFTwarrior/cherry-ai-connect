@@ -995,6 +995,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .sync-conflict-panel label { display: grid; gap: 7px; color: var(--muted); font-size: 9px; }
 .sync-conflict-panel label input { min-width: 0; }
 .sync-conflict-panel > div:last-child { display: flex; gap: 8px; }
+.sync-conflict-resolution-panel { grid-template-columns: minmax(0, 1fr) auto; gap: 14px 18px; align-items: center; }
+.sync-conflict-resolution-panel .sync-conflict-options { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.sync-conflict-options .is-selected { border-color: #d5ad59; background: linear-gradient(108deg, rgb(91 61 35 / 78%), rgb(61 40 79 / 82%)); color: #f4d486; }
+.sync-conflict-resolution-panel .sync-conflict-choice-details { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(min(240px, 100%), .9fr) auto; gap: 14px; align-items: end; padding-top: 14px; border-top: 1px solid rgb(231 191 113 / 18%); }
+.sync-conflict-choice-details > div:first-child { min-width: 0; }
+.sync-conflict-choice-details .sync-conflict-credential-note { color: var(--muted); font-size: 10px; }
+.sync-conflict-resolution-panel .sync-conflict-confirm-actions { display: flex; justify-content: flex-end; }
 
 .sync-account-row { display: grid; grid-template-columns: auto minmax(115px, .8fr) minmax(220px, 1.5fr) minmax(70px, .5fr) auto; align-items: center; gap: 12px; margin-bottom: 11px; padding: 13px; border: 1px solid #34303e; border-radius: 11px; background: #14141a; }
 .account-avatar { display: grid; width: 36px; height: 36px; place-items: center; overflow: hidden; border: 1px solid #4a3c60; border-radius: 10px; background: #2d213d; color: #c4a1ff; }
@@ -1066,9 +1073,16 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .sync-actions { align-items: stretch; flex-direction: column; }
   .sync-actions .button { width: 100%; justify-content: center; margin-left: 0; }
   .sync-conflict-panel { grid-template-columns: 1fr; }
-  .sync-conflict-panel > div:last-child { align-items: stretch; flex-direction: column; }
+  .sync-conflict-panel > div:last-child:not(.sync-conflict-choice-details) { align-items: stretch; flex-direction: column; }
+  .sync-conflict-resolution-panel .sync-conflict-choice-details { grid-template-columns: 1fr; }
+  .sync-conflict-resolution-panel .sync-conflict-options, .sync-conflict-resolution-panel .sync-conflict-confirm-actions { justify-content: stretch; flex-direction: column; }
   .recovery-panel { grid-template-columns: 1fr; }
   .recovery-panel > .text-button { justify-self: start; }
+}
+
+@media (min-width: 681px) and (max-width: 920px) {
+  .sync-conflict-resolution-panel .sync-conflict-choice-details { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .sync-conflict-resolution-panel .sync-conflict-confirm-actions { grid-column: 1 / -1; }
 }
 
 /* 1.2 视觉与交互收口 / 1.2 visual and interaction refinements ----------- */

@@ -17,7 +17,7 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.35";
+const gatewayVersion = "1.36";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 

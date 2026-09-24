@@ -580,14 +580,17 @@
 
 .settings-reasoning-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  justify-items: center;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(138px, 138px);
+  align-items: center;
+  justify-items: stretch;
+  gap: 14px;
 }
 
 .settings-reasoning-line > div {
-  width: 100%;
+  width: auto;
 }
+
+.settings-reasoning-line > .settings-level-menu { justify-self: end; width: 138px; }
 
 .settings-level-menu .menu-select-menu {
   right: 0;
