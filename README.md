@@ -85,14 +85,14 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 ```mermaid
 flowchart LR
-    A[Upstream routes] --> B[Local gateway\n127.0.0.1]
+    A[Upstream routes] --> B[Local gateway<br/>127.0.0.1]
     B --> C[Client Key]
     C --> D[Cherry Studio]
     C --> E[CC Switch]
     B --> F[Usage ledger]
     F --> G[Trends & request history]
     B --> H[Private GitHub sync]
-    H --> I[Encrypted vault\nseparate metadata path]
+    H --> I[Encrypted vault<br/>separate metadata path]
 ```
 
 The key boundary is intentional: clients talk to the local gateway, the gateway owns route selection and accounting, and sync is an explicit protected path rather than an implicit upload of everything on disk.
