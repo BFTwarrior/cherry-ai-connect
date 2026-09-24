@@ -22,4 +22,4 @@
 
 - `npm test`：47 项通过；`npm run check`、`npm run renderer:build`、`npm run dist`、`npm run web-demo:build`：通过。最终安装包为 Windows x64 NSIS：`dist/Cherry-AI-Connect-Setup-1.37.exe`，103,144,978 字节；SHA-256：`412378416AEFF9236C94313C1CDC61A648B34E948E8A64170C4EB05F062E4B18`。Web Demo 为 146,819 字节；blockmap 为 107,477 字节。`dist/latest.yml` 中 SHA-512、版本和大小与构建产物对应。
 - 本地浏览器已目视检查导入按钮布局、两类效果的实际计算样式，以及同步冲突展开版式。没有执行导入，不连接 Cherry Studio/CC Switch，不触发真实云同步。
-- 已按用户明确指令发布到 GitHub；尚需完成目标客户端导入验收、Cherry Studio 模型拉取实测、设备粒子复测、历史统计界面验收及更新/数据保留验收。安装包未在目标设备运行或安装，因此不能标记为全量验收完成。
+- 已按用户明确指令发布到 GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.37`；远端为公开 Latest，四个资产数量、文件大小和 SHA-256 均与本地产物一致。尚需完成目标客户端导入验收、Cherry Studio 模型拉取实测、设备粒子复测、历史统计界面验收及更新/数据保留验收。安装包未在目标设备运行或安装，因此不能标记为全量验收完成。
