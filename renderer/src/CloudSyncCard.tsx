@@ -52,7 +52,7 @@ function displayBackupVersion(value: string, generation: number, language: Langu
   return generation > 0 ? `${stamp} · #${generation}` : stamp;
 }
 
-export function CloudSyncCard({ language, requestConfirmation, demo = false }: { language: Language; requestConfirmation: ConfirmRequest; demo?: boolean }) {
+export function CloudSyncCard({ language, requestConfirmation, demo = false, demoConflict = false }: { language: Language; requestConfirmation: ConfirmRequest; demo?: boolean; demoConflict?: boolean }) {
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [status, setStatus] = useState<CloudSyncStatus>(emptyStatus);
   const [loading, setLoading] = useState(true);
@@ -66,7 +66,10 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false }: {
 
   useEffect(() => {
     if (demo) {
-      setStatus(demoStatus);
+      setStatus(demoConflict
+        ? { ...demoStatus, state: "CONFLICT", pendingCount: 1, vault: { ...demoStatus.vault, unlocked: false } }
+        : demoStatus);
+      if (demoConflict) setSelectedConflictChoice("remote");
       setLoading(false);
       return;
     }
@@ -74,14 +77,17 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false }: {
     void window.desktop?.getSyncStatus?.().then((value) => { if (active) setStatus(value); }).catch((reason) => { if (active) setError(String(reason?.message || reason)); }).finally(() => { if (active) setLoading(false); });
     const remove = window.desktop?.onSyncStatus?.((value) => { if (active) setStatus(value); });
     return () => { active = false; remove?.(); };
-  }, [demo]);
+  }, [demo, demoConflict]);
 
   useEffect(() => {
-    if (status.state === "IDLE" || status.state === "DISABLED") {
+    if (demoConflict && status.state === "CONFLICT") {
+      setSelectedConflictChoice("remote");
+      setConflictCredential("");
+    } else if (status.state === "IDLE" || status.state === "DISABLED") {
       setSelectedConflictChoice(null);
       setConflictCredential("");
     }
-  }, [status.state]);
+  }, [status.state, demoConflict]);
 
   const stateLabel = useMemo(() => ({
     DISABLED: tr("自动同步已关闭", "Automatic sync off"), IDLE: tr("云端与本机已同步", "Cloud and local are synced"), DIRTY: tr("有数据等待同步", "Changes waiting to sync"),

@@ -409,7 +409,7 @@ export class UsageLedger {
     const model = String(url.searchParams.get("model") || "");
     const statusFilter = String(url.searchParams.get("status") || "all");
     const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
-    const recordsOffset = Math.max(0, Math.min(1_000_000, Number(url.searchParams.get("recordsOffset") || 0) || 0));
+    const requestedRecordsOffset = Math.floor(Math.max(0, Math.min(1_000_000, Number(url.searchParams.get("recordsOffset") || 0) || 0)));
     const conditions = ["occurred_at_utc >= ?"];
     const parameters = [startAt];
     if (providerId) { conditions.push("provider_id = ?"); parameters.push(providerId); }
@@ -433,6 +433,9 @@ export class UsageLedger {
     if (statusFilter === "error") recordConditions.push("http_status >= 400");
     const recordsWhere = recordConditions.length ? recordConditions.join(" AND ") : "1=1";
     const recordTotal = Number(this.db.prepare(`SELECT COUNT(*) count FROM usage_events WHERE ${recordsWhere}`).get(...recordParameters).count || 0);
+    // 中文：缓存裁剪可能发生在用户停留于较后页时；把过期偏移退回到最后一个有效页。
+    // English: Retention can prune details while the user is on a later page; clamp stale offsets to the last valid page.
+    const recordsOffset = recordTotal > 0 ? Math.min(requestedRecordsOffset, Math.floor((recordTotal - 1) / limit) * limit) : 0;
     const rows = this.db.prepare(`SELECT * FROM usage_events WHERE ${recordsWhere} ORDER BY occurred_at_utc DESC, event_id DESC LIMIT ? OFFSET ?`).all(...recordParameters, limit, recordsOffset);
     const bucketRows = this.db.prepare(`SELECT * FROM usage_events WHERE ${where} ORDER BY occurred_at_utc ASC`).all(...parameters);
     const alignedStart = Math.floor((now - range.durationMs) / range.bucketMs) * range.bucketMs;

@@ -1,0 +1,25 @@
+# Cherry AI Connect v1.37 客户端导入与回归修复候选
+
+更新时间：2026-09-24（UTC+8）
+状态：已发布为 GitHub Latest；现场验收仍未完成。
+
+## 本次改动
+
+- 客户端 Key 卡片左下角提供单独导入 Cherry Studio、CC Switch；列表上方提供两个分别面向对应客户端的批量导入按钮。单个与批量入口使用相同目标图标和一致按钮尺寸。批量操作逐 Key 唤起客户端，每次仍由目标客户端确认。
+- 新增本机主进程生成导入链接；只允许固定目标、有效 Key 与启用线路。解密后的客户端 Key 不返回渲染器、不写日志；预览演示数据不执行导入。
+- 参考 [Cherry Studio 官方图标目录](https://github.com/CherryHQ/cherry-studio-website/blob/main/src/assets/images/favicon.png) 与 [CC Switch 官方应用图标目录](https://github.com/farion1231/cc-switch/blob/main/src-tauri/icons/icon.png)，重新绘制自有的果实/叶片与双向切换线性符号；未复制或打包官方位图。公开发布前仍应遵守品牌区分，避免暗示官方背书。
+- 导入按钮本体使用缓慢流动底色与玻璃掠光；目标标签使用 Cherry 粉紫或 CC 金色静态底纹，不播放按钮动画。运行时计算样式已核实：按钮 `ef-nested-liquid`、`ef-glass-pass` 生效；徽标 `animation:none`；左右批量按钮同为 165×31，单卡按钮同为 148×31，图标同为 15×15。减少动态效果偏好仍可关闭动画。
+- 同步冲突操作区增加间隔与分隔线、允许换行；添加 `?demo=1&syncConflict=1` 本地演示状态，可预览“使用云端”已选择及按需填写凭证的展开版式。演示使用虚构数据，仅修改浏览器内存状态，不访问同步服务。
+- OpenAI 兼容 `/v1/models` 输出补充 `created` Unix 时间字段，作为 Cherry Studio 拉取模型兼容性修正；API 合同与授权失败路径有自动化测试，仍需目标 Cherry Studio 实测。
+
+## 历史问题的合并核对
+
+- 使用统计缓存分页偏移修复和现有回归断言保留在当前工作树，非本次重新编写；自动化全套测试覆盖通过，仍需真实界面翻页验收。
+- 更新恢复重大问题仍按 P0 规则核查；恢复边界相关自动化测试通过，但未在原故障 Windows 设备覆盖更新或模拟损坏目录，不可据此宣称现场验收完成。
+- 工作台粒子动画仅核对减少动态效果偏好下的降级规则。部分设备在正常动效设置下仍可能静止，尚未定位，不标记修复完成。
+
+## 验证与限制
+
+- `npm test`：47 项通过；`npm run check`、`npm run renderer:build`、`npm run dist`、`npm run web-demo:build`：通过。最终安装包为 Windows x64 NSIS：`dist/Cherry-AI-Connect-Setup-1.37.exe`，103,144,978 字节；SHA-256：`412378416AEFF9236C94313C1CDC61A648B34E948E8A64170C4EB05F062E4B18`。Web Demo 为 146,819 字节；blockmap 为 107,477 字节。`dist/latest.yml` 中 SHA-512、版本和大小与构建产物对应。
+- 本地浏览器已目视检查导入按钮布局、两类效果的实际计算样式，以及同步冲突展开版式。没有执行导入，不连接 Cherry Studio/CC Switch，不触发真实云同步。
+- 已按用户明确指令发布到 GitHub；尚需完成目标客户端导入验收、Cherry Studio 模型拉取实测、设备粒子复测、历史统计界面验收及更新/数据保留验收。安装包未在目标设备运行或安装，因此不能标记为全量验收完成。

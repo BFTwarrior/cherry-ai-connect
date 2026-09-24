@@ -14,8 +14,22 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.36";
+const VERSION = "1.37";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
+const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
+type ClientImportTarget = "ccswitch" | "cherry-studio";
+
+function ClientImportMark({ target }: { target: ClientImportTarget }) {
+  return target === "cherry-studio" ? <svg className="client-import-mark is-cherry" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M12.2 11.6c-.4-3.5.4-5.9 2.6-7.5M13.6 6.6c2.1-2 4.5-1.9 6.2-1.2-.1 2.8-1.8 4.8-5.8 4.9" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M11.9 11.5c-1.2-1.6-3.7-1.9-5.5-.4-2 1.7-1.7 5.3.5 7.8 1.3 1.5 3 2.4 4.9 2.4s3.6-.9 4.9-2.4c2.2-2.5 2.5-6.1.5-7.8-1.8-1.5-4.1-1.2-5.3.4Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    <path d="M8 14.2c.4-.5.9-.8 1.5-.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".72" />
+  </svg> : <svg className="client-import-mark is-ccswitch" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M4 8h15m0 0-3-3m3 3-3 3M20 16H5m0 0 3-3m-3 3 3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="4" cy="8" r="1.5" fill="currentColor" />
+    <circle cx="20" cy="16" r="1.5" fill="currentColor" />
+  </svg>;
+}
 
 const DEMO_PROVIDERS: Provider[] = [
   { id: "DEMO-NORTH", name: "北境中转（演示）", baseUrl: "https://demo.example.invalid/north", models: Array.from({ length: 24 }, (_, index) => `demo-north-${index + 1}`), modelCount: 24, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 86, clientKeyCount: 3 },
@@ -130,6 +144,7 @@ export default function App() {
   const [lastClientRequestModel, setLastClientRequestModel] = useState("");
   const [secretCopied, setSecretCopied] = useState(false);
   const [copyingKeyId, setCopyingKeyId] = useState<string | null>(null);
+  const [clientImportBusy, setClientImportBusy] = useState<{ scope: "single" | "all"; target: ClientImportTarget; keyId?: string } | null>(null);
   const [syncing, setSyncing] = useState<string | "all" | null>(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [syncFailures, setSyncFailures] = useState<string[]>([]);
@@ -628,6 +643,66 @@ export default function App() {
     }
   };
 
+  const clientImportErrorCopy = (error: unknown) => {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "external_app_unavailable") return tr("没有检测到目标客户端，或系统无法打开导入链接；请确认已安装 Cherry Studio / CC Switch。", "The target app was not found or could not open the import link. Check that Cherry Studio / CC Switch is installed.");
+    if (code === "client_key_disabled") return tr("该客户端 Key 已停用，请先启用。", "This client key is disabled. Enable it first.");
+    if (code === "client_key_route_unavailable") return tr("该 Key 绑定的线路不可用，请先启用线路。", "The route bound to this key is unavailable. Enable the route first.");
+    if (code === "client_key_secret_unavailable") return tr("无法读取此 Key；请重新生成客户端 Key 后再导入。", "This key cannot be read. Regenerate it before importing.");
+    if (code === "gateway_not_ready") return tr("本地连接服务尚未就绪，请稍后再试。", "The local connection service is not ready yet. Try again shortly.");
+    return tr("导入未能启动，请检查目标客户端是否已安装。", "Import could not be started. Check that the target app is installed.");
+  };
+
+  const invokeClientImport = async (key: ClientKey, target: ClientImportTarget) => {
+    if (DEMO_MODE) return { ok: false as const, code: "demo_mode" };
+    if (!window.desktop?.importClientKey) return { ok: false as const, code: "desktop_import_unavailable" };
+    try {
+      await window.desktop.importClientKey({ keyId: key.id, target });
+      return { ok: true as const };
+    } catch (error) {
+      return { ok: false as const, code: error instanceof Error ? error.message : "client_key_import_failed" };
+    }
+  };
+
+  const importClientKey = async (key: ClientKey, target: ClientImportTarget) => {
+    if (!key.enabled) return showToast(tr("请先启用这个客户端 Key。", "Enable this client key first."), "info");
+    if (!key.hasSecret) return showToast(tr("无法读取此 Key；请重新生成后再导入。", "This key cannot be read. Regenerate it before importing."), "info");
+    const provider = providers.find((item) => item.id === key.providerId);
+    if (!provider?.enabled) return showToast(tr("该 Key 绑定的线路不可用，请先启用线路。", "The route bound to this key is unavailable. Enable the route first."), "info");
+    if (DEMO_MODE) return showToast(tr("演示模式不会打开或修改本机客户端。", "Demo mode does not open or change local client apps."), "info");
+    setClientImportBusy({ scope: "single", target, keyId: key.id });
+    const result = await invokeClientImport(key, target);
+    if (result.ok) {
+      showToast(target === "cherry-studio"
+        ? tr("已唤起 Cherry Studio，请在客户端确认导入。", "Cherry Studio was opened. Confirm the import in the client.")
+        : tr("已唤起 CC Switch，请在客户端确认导入。", "CC Switch was opened. Confirm the import in the client."), "success");
+    } else if (result.code === "demo_mode") {
+      showToast(tr("演示模式不会打开或修改本机客户端。", "Demo mode does not open or change local client apps."), "info");
+    } else {
+      showToast(clientImportErrorCopy(new Error(result.code)), "error");
+    }
+    setClientImportBusy(null);
+  };
+
+  const importAllClientKeys = async (target: ClientImportTarget) => {
+    if (DEMO_MODE) return showToast(tr("演示模式不会打开或修改本机客户端。", "Demo mode does not open or change local client apps."), "info");
+    const eligible = keys.filter((key) => key.enabled && key.hasSecret && providers.some((provider) => provider.id === key.providerId && provider.enabled));
+    if (!eligible.length) return showToast(tr("没有可导入的有效客户端 Key；请检查 Key 和绑定线路状态。", "No importable active client keys. Check key and route status."), "info");
+    setClientImportBusy({ scope: "all", target });
+    let succeeded = 0;
+    for (const key of eligible) {
+      const result = await invokeClientImport(key, target);
+      if (result.ok) succeeded += 1;
+      // Let the OS dispatch each protocol link separately instead of flooding the target app.
+      if (eligible.length > 1) await new Promise((resolve) => window.setTimeout(resolve, 350));
+    }
+    setClientImportBusy(null);
+    const targetName = target === "cherry-studio" ? "Cherry Studio" : "CC Switch";
+    const skipped = keys.length - succeeded;
+    const summary = tr(`${targetName}：已发送 ${succeeded}/${keys.length} 个有效 Key；每个 Key 仍需在客户端确认${skipped ? `，另有 ${skipped} 个未导入` : ""}。`, `${targetName}: sent ${succeeded}/${keys.length} active keys. Confirm each import in the client${skipped ? `; ${skipped} key(s) were skipped` : ""}.`);
+    showToast(summary, succeeded === eligible.length ? "success" : succeeded ? "warning" : "error");
+  };
+
   const rotateClientKey = async (key: ClientKey) => {
     const confirmed = await requestConfirmation({
       title: tr("重新生成客户端 Key", "Regenerate client key"),
@@ -813,7 +888,34 @@ export default function App() {
   }
 
    function KeysView() {
-     return <section className="page-view"><PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this local connection service.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} /><div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div><div className="key-toolbar"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div>{keys.length ? <div className="key-list">{keys.map((key) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"}`} key={key.id}><div className="key-card-head"><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div><div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div><div className="key-card-actions"><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div></article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}</section>;
+     const canImport = (key: ClientKey) => key.enabled && key.hasSecret && providers.some((provider) => provider.id === key.providerId && provider.enabled);
+     const importButton = (key: ClientKey, target: ClientImportTarget) => {
+       const targetName = target === "cherry-studio" ? "Cherry Studio" : "CC Switch";
+       const busy = clientImportBusy?.keyId === key.id && clientImportBusy.target === target;
+       return <button type="button" className="icon-text-button client-import-button" onClick={() => void importClientKey(key, target)} disabled={!canImport(key) || !!clientImportBusy} title={!key.enabled ? tr("客户端 Key 已停用", "Client key is disabled") : !key.hasSecret ? tr("Key 内容不可用，请重新生成", "Key secret is unavailable; regenerate it") : !providers.some((provider) => provider.id === key.providerId && provider.enabled) ? tr("绑定线路已停用", "Bound route is disabled") : tr(`导入到 ${targetName}`, `Import to ${targetName}`)}>
+         <ClientImportMark target={target} />
+         <span className="client-import-label">{busy ? tr("正在打开", "Opening") : tr("导入", "Import")}</span>
+         <span className={`client-import-target ${target === "cherry-studio" ? "is-cherry" : "is-ccswitch"}`}>{targetName}</span>
+       </button>;
+     };
+     const batchButton = (target: ClientImportTarget) => {
+       const targetName = target === "cherry-studio" ? "Cherry Studio" : "CC Switch";
+       const busy = clientImportBusy?.scope === "all" && clientImportBusy.target === target;
+       return <button type="button" className="button button-primary client-import-all-button" onClick={() => void importAllClientKeys(target)} disabled={!keys.some(canImport) || !!clientImportBusy} title={tr("将逐个启动目标客户端；每个 Key 仍需在客户端确认", "Starts the target app once per key; confirm each import in the app")}>
+         <ClientImportMark target={target} />{busy ? tr("逐个启动中…", "Opening one by one…") : tr(`全部导入 ${targetName}`, `Import all to ${targetName}`)}
+       </button>;
+     };
+
+     return <section className="page-view">
+       <PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this local connection service.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} />
+       <div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div>
+       <div className="key-toolbar"><div className="key-toolbar-title"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div><div className="client-import-all-actions" aria-label={tr("批量导入客户端", "Bulk import to clients")}>{batchButton("cherry-studio")}{batchButton("ccswitch")}</div></div>
+       {keys.length ? <div className="key-list">{keys.map((key) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"}`} key={key.id}>
+         <div className="key-card-head"><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div>
+         <div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div>
+         <div className="key-card-actions"><div className="client-import-key-actions">{importButton(key, "cherry-studio")}{importButton(key, "ccswitch")}</div><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div>
+       </article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}
+     </section>;
    }
 
   function SettingsView() {
@@ -852,7 +954,7 @@ export default function App() {
   function CloudSyncView() {
     return <section className="page-view cloud-sync-workspace">
       <PageIntro kicker={tr("云同步", "CLOUD SYNC")} description={tr("独立管理 GitHub 连接、同步状态、数据保护和版本记录。用量可独立同步，中转站 API 仅在主动开启后加密同步。", "Manage the GitHub connection, sync status, data protection, and version history in one workspace. Usage syncs independently; upstream APIs are encrypted only when enabled.")} action={undefined} />
-      <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} />
+      <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} demoConflict={DEMO_SYNC_CONFLICT} />
     </section>;
   }
 

@@ -89,6 +89,7 @@ interface Window {
     disconnectGitHub: () => Promise<CloudSyncStatus>;
     onSyncStatus: (listener: (status: CloudSyncStatus) => void) => () => void;
     openExternal: (url: string) => Promise<unknown>;
+    importClientKey: (value: { keyId: string; target: "ccswitch" | "cherry-studio" }) => Promise<{ ok: true }>;
     showWindow: () => void;
     hideWindow: () => void;
     quit: () => void;

@@ -17,7 +17,7 @@ const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
 const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.36";
+const gatewayVersion = "1.37";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 
@@ -744,7 +744,16 @@ async function handleRequest(req, res) {
     if (!client) return json(res, 401, { error: "invalid_gateway_key" });
     const models = [];
     const providers = client.providerId ? config.providers.filter((item) => item.id === client.providerId && item.enabled !== false) : config.providers.filter((item) => item.enabled !== false);
-    for (const provider of providers) for (const model of uniqueModels(provider.models)) models.push({ id: client.providerId ? model : `${provider.id}/${model}`, object: "model", owned_by: provider.id });
+    for (const provider of providers) {
+      // OpenAI-compatible model objects include a Unix-seconds `created` field.
+      // Some clients (including model-catalog importers) reject otherwise valid
+      // list entries when this required field is omitted.
+      const fetchedAt = Date.parse(provider.modelFetchedAt || "");
+      const created = Number.isFinite(fetchedAt) ? Math.floor(fetchedAt / 1000) : 0;
+      for (const model of uniqueModels(provider.models)) {
+        models.push({ id: client.providerId ? model : `${provider.id}/${model}`, object: "model", created, owned_by: provider.id });
+      }
+    }
     return json(res, 200, { object: "list", data: models });
   }
   if (["POST", "PUT", "PATCH"].includes(req.method)) return proxyRequest(req, res, await readBody(req));
@@ -800,6 +809,25 @@ export function stopGateway() {
 }
 
 export function getGatewayPort() { return listenPort; }
+
+// 中文：仅由 Electron 主进程在用户点击导入时调用；完整 Key 不经管理 HTTP API 外的新接口回传渲染层。
+// English: Called only by Electron main after an explicit import click; never expose this secret bundle to the renderer.
+export function getClientKeyImportDetails(id) {
+  const item = config.clientKeys.find((entry) => entry.id === String(id || ""));
+  if (!item) throw new Error("client_key_unavailable");
+  if (item.enabled === false) throw new Error("client_key_disabled");
+  const provider = findProvider(item.providerId);
+  if (!provider || provider.enabled === false) throw new Error("client_key_route_unavailable");
+  const apiKey = decrypt(item.keyEnc);
+  if (!apiKey) throw new Error("client_key_secret_unavailable");
+  return {
+    id: item.id,
+    name: String(item.name || provider.name || "Cherry AI Connect"),
+    providerName: String(provider.name || ""),
+    apiKey,
+    model: uniqueModels(provider.models)[0] || "",
+  };
+}
 
 export function getSyncSnapshot() {
   const publicConfig = {

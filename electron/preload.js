@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld("desktop", {
     return () => ipcRenderer.removeListener("sync-status", handler);
   },
   openExternal: (url) => ipcRenderer.invoke("open-external", url),
+  importClientKey: (value) => ipcRenderer.invoke("import-client-key", value),
   showWindow: () => ipcRenderer.send("show-window"),
   hideWindow: () => ipcRenderer.send("hide-window"),
   quit: () => ipcRenderer.send("quit-app"),

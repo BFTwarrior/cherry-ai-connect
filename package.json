@@ -1,6 +1,6 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.36.0",
+  "version": "1.37.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
@@ -47,7 +47,7 @@
       "target": "nsis",
       "icon": "electron/assets/app-1.33.ico",
       "signExecutable": false,
-      "artifactName": "Cherry-AI-Connect-Setup-1.36.${ext}"
+      "artifactName": "Cherry-AI-Connect-Setup-1.37.${ext}"
     },
     "nsis": {
       "oneClick": false,

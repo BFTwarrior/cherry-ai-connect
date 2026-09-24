@@ -23,6 +23,7 @@ const {
   restoreUpdateBackupWithConsent,
 } = require("./update-manager");
 const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
+const { buildClientImportDeepLink } = require("./client-import-links.cjs");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
@@ -567,6 +568,23 @@ ipcMain.handle("open-external", (_event, value) => {
   const target = String(value || "");
   if (!target.startsWith("https://github.com/")) throw new Error("只允许打开 GitHub HTTPS 页面");
   return shell.openExternal(target);
+});
+ipcMain.handle("import-client-key", async (event, value) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("import_not_available");
+  const target = String(value?.target || "");
+  if (target !== "ccswitch" && target !== "cherry-studio") throw new Error("unsupported_import_target");
+  const keyId = String(value?.keyId || "");
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(keyId)) throw new Error("client_key_unavailable");
+  if (!gatewayModule || typeof gatewayModule.getClientKeyImportDetails !== "function") throw new Error("gateway_not_ready");
+  const clientKey = gatewayModule.getClientKeyImportDetails(keyId);
+  const link = buildClientImportDeepLink(target, clientKey, currentGatewayPort);
+  try {
+    await shell.openExternal(link);
+    return { ok: true };
+  } catch {
+    // Do not return/log the deep link: it contains the local client key.
+    throw new Error("external_app_unavailable");
+  }
 });
 ipcMain.on("show-window", () => mainWindow?.show());
 ipcMain.on("hide-window", () => mainWindow?.hide());

@@ -98,6 +98,24 @@ test("usage ledger and route-following key names survive the complete flow", asy
     await new Promise((resolve) => setImmediate(resolve));
     assert.ok(syncReasons.includes("route-health-change"), "testing a route must schedule cloud sync");
     const created = await api("/admin/api/client-keys", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ providerId: "route-a", reasoningLevel: "high", nameCustomized: false }) });
+    const importDetails = gateway.getClientKeyImportDetails(created.id);
+    assert.equal(importDetails.id, created.id);
+    assert.equal(importDetails.name, "测试线路 A");
+    assert.equal(importDetails.providerName, "测试线路 A");
+    assert.equal(importDetails.apiKey, created.key, "only the Electron main process import path should need the local key secret");
+    assert.equal(importDetails.model, "gpt-test");
+    assert.throws(() => gateway.getClientKeyImportDetails("missing-key"), /client_key_unavailable/);
+    const modelListResponse = await fetch(`${origin}/v1/models`, { headers: { authorization: `Bearer ${created.key}` } });
+    assert.equal(modelListResponse.status, 200);
+    assert.match(modelListResponse.headers.get("content-type") || "", /^application\/json\b/i);
+    const modelList = await modelListResponse.json();
+    assert.equal(modelList.object, "list");
+    assert.deepEqual(modelList.data, [{ id: "gpt-test", object: "model", created: modelList.data[0].created, owned_by: "route-a" }]);
+    assert.ok(Number.isInteger(modelList.data[0].created), "OpenAI-compatible models include created as Unix seconds");
+    const unauthorizedModels = await fetch(`${origin}/v1/models`);
+    assert.equal(unauthorizedModels.status, 401, "model listing must reject requests without a client key");
+    const invalidKeyModels = await fetch(`${origin}/v1/models`, { headers: { authorization: "Bearer not-a-client-key" } });
+    assert.equal(invalidKeyModels.status, 401, "model listing must reject unknown client keys");
     let keys = await api("/admin/api/client-keys");
     assert.equal(keys.keys[0].name, "测试线路 A");
     assert.equal(keys.keys[0].nameCustomized, false);
@@ -128,6 +146,18 @@ test("usage ledger and route-following key names survive the complete flow", asy
     assert.equal(usage.lifetime.requests, 3);
     assert.equal(usage.lifetime.cacheReadTokens, 39);
     assert.ok(usage.series.some((point) => point.totalTokens === 150));
+
+    const stalePage = await api("/admin/api/usage?range=24h&limit=2&recordsOffset=1000");
+    assert.equal(stalePage.recordPagination.total, 3);
+    assert.equal(stalePage.recordPagination.offset, 2, "a pruned or stale page offset should clamp to the last valid page");
+    assert.equal(stalePage.recordPagination.limit, 2);
+    assert.equal(stalePage.records.length, 1);
+    assert.ok(stalePage.recordPagination.offset + stalePage.records.length <= stalePage.recordPagination.total);
+
+    const emptyPage = await api("/admin/api/usage?range=24h&providerId=missing&limit=2&recordsOffset=1000");
+    assert.equal(emptyPage.recordPagination.total, 0);
+    assert.equal(emptyPage.recordPagination.offset, 0, "an empty filtered history should always report offset zero");
+    assert.equal(emptyPage.records.length, 0);
 
     // 中文：只有全新设备首次恢复才允许生成本地客户端秘密；普通同步必须保留同一个秘密。
     // English: Only first restore on a pristine device may create a local client secret; normal sync must preserve it.
