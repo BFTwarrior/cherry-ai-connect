@@ -72,3 +72,28 @@ test("GitHub Release assets are immutable and duplicates never upload", async ()
   );
   assert.equal(uploadCalls, 0);
 });
+
+test("GitHub Release asset catalogs are reused until a refresh is requested", async () => {
+  let catalogCalls = 0;
+  const provider = new GitHubReleaseProvider({
+    token: "test-token",
+    repository: "sync-repo",
+    fetchImpl: async (url) => {
+      const target = String(url);
+      if (target.endsWith("/user")) return json({ id: 1, login: "test-user", avatar_url: "" });
+      if (target.endsWith("/repos/test-user/sync-repo")) return json({ id: 2, private: true, archived: false, disabled: false });
+      if (target.endsWith("/releases/tags/cherry-sync")) return json({ id: 3, tag_name: "cherry-sync" });
+      if (target.includes("/releases/3/assets?")) {
+        catalogCalls += 1;
+        return json([]);
+      }
+      throw new Error(`unexpected request: ${target}`);
+    },
+  });
+  await provider.ensureReady();
+  await provider.listAssets();
+  await provider.listAssets();
+  assert.equal(catalogCalls, 1);
+  await provider.listAssets({ refresh: true });
+  assert.equal(catalogCalls, 2);
+});

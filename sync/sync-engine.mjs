@@ -91,11 +91,11 @@ function usageAssets(events, assetTag) {
   return assets;
 }
 
-async function readLatestManifest(provider, expectedDatasetId = "") {
+async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog = null) {
   // 中文：候选 manifest 必须逐个下载、解析、验证，损坏的最新候选不能遮蔽更早的完整代。
   // English: Download, parse, and validate every candidate. A damaged newest candidate must not
   // hide an earlier complete generation.
-  const assets = await provider.listAssets();
+  const assets = assetCatalog ?? await provider.listAssets();
   const candidates = [];
   let datasetConflict = false;
   for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
@@ -116,11 +116,12 @@ async function readLatestManifest(provider, expectedDatasetId = "") {
   return null;
 }
 
-async function downloadAndVerify(provider, descriptor) {
+async function downloadAndVerify(provider, descriptor, assetCatalog = null) {
   // 中文：manifest 中的大小和哈希是资产进入业务层前的最低完整性门槛。
   // English: Manifest size and hash are the minimum integrity gate before an asset reaches the
   // synchronization logic.
-  const asset = (await provider.listAssets()).find((item) => item.name === descriptor.assetName);
+  const assets = assetCatalog ?? await provider.listAssets();
+  const asset = assets.find((item) => item.name === descriptor.assetName);
   if (!asset) throw new Error("sync_asset_missing");
   return verifyAsset(descriptor, await provider.downloadAsset(asset));
 }
@@ -166,7 +167,7 @@ export class SyncEngine {
     return this.running;
   }
 
-  async #pullRemote(latest, datasetId) {
+  async #pullRemote(latest, datasetId, assetCatalog = null) {
     // 中文：用量明细先合并；配置公开索引与加密 vault 分开返回，确保“只同步用量”不触碰敏感配置。
     // English: Merge usage details independently; return public config and encrypted vault
     // separately so usage-only mode never touches sensitive configuration.
@@ -175,7 +176,7 @@ export class SyncEngine {
     let counters = [];
     let tombstones = latest.manifest.tombstones || [];
     if (summaryDescriptor) {
-      const summary = parseCompressedJson(await downloadAndVerify(this.provider, summaryDescriptor));
+      const summary = parseCompressedJson(await downloadAndVerify(this.provider, summaryDescriptor, assetCatalog));
       if (summary.datasetId !== datasetId) throw new Error("sync_dataset_conflict");
       counters = Array.isArray(summary.counters) ? summary.counters : [];
       tombstones = Array.isArray(summary.tombstones) ? summary.tombstones : tombstones;
@@ -185,14 +186,14 @@ export class SyncEngine {
     for (const descriptor of latest.manifest.files.filter((item) => item.type === "usage-segment")) {
       totalCompressed += descriptor.size;
       if (totalCompressed > 512 * 1024 * 1024) throw new Error("sync_restore_size_limit");
-      events.push(...parseCompressedJsonLines(await downloadAndVerify(this.provider, descriptor)));
+      events.push(...parseCompressedJsonLines(await downloadAndVerify(this.provider, descriptor, assetCatalog)));
     }
     if (events.length || counters.length || tombstones.length) this.source.mergeRemoteUsage({ datasetId, events, counters, tombstones });
     const configDescriptor = latest.manifest.files.find((item) => item.type === "config");
     const vaultDescriptor = latest.manifest.files.find((item) => item.type === "vault");
     return {
-      remoteConfig: configDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, configDescriptor)) : null,
-      remoteVault: vaultDescriptor ? await downloadAndVerify(this.provider, vaultDescriptor) : null,
+      remoteConfig: configDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, configDescriptor, assetCatalog)) : null,
+      remoteVault: vaultDescriptor ? await downloadAndVerify(this.provider, vaultDescriptor, assetCatalog) : null,
       tombstones,
       importedEvents: events.length,
     };
@@ -212,14 +213,15 @@ export class SyncEngine {
         // make the next manifest use a stale snapshot.
         let initial = this.source.getSyncSnapshot();
         let datasetId = initial.identity.datasetId;
-        let latest = await readLatestManifest(this.provider);
+        const initialAssetCatalog = await this.provider.listAssets();
+        let latest = await readLatestManifest(this.provider, "", initialAssetCatalog);
         if (latest && latest.manifest.datasetId !== datasetId) {
           if (!options.adoptRemoteIfPristine || !this.source.canAdoptSyncDataset?.()) throw new Error("sync_dataset_conflict");
           this.source.adoptSyncDataset(latest.manifest.datasetId);
           initial = this.source.getSyncSnapshot();
           datasetId = initial.identity.datasetId;
         }
-        const remote = await this.#pullRemote(latest, datasetId);
+        const remote = await this.#pullRemote(latest, datasetId, initialAssetCatalog);
         let snapshot = this.source.getSyncSnapshot();
         const configOrder = remote.remoteConfig
           ? revisionOrder(snapshot.publicConfig.configRevision, remote.remoteConfig.configRevision)
@@ -294,7 +296,7 @@ export class SyncEngine {
         const assetsBefore = await this.provider.listAssets();
         if (assetsBefore.length >= STOP_ASSET_COUNT) {
           await this.collectGarbage();
-          if ((await this.provider.listAssets()).length >= STOP_ASSET_COUNT) throw new Error("sync_asset_count_limit");
+          if ((await this.provider.listAssets({ refresh: true })).length >= STOP_ASSET_COUNT) throw new Error("sync_asset_count_limit");
         }
         const parent = latest?.manifest || null;
         let currentVault = null;
@@ -360,7 +362,11 @@ export class SyncEngine {
         const inherited = (parent?.files || []).filter((item) => item.type === "usage-segment"
           || (keepRemoteConfig && (item.type === "config" || item.type === "vault")));
 
-        latest = await readLatestManifest(this.provider, datasetId);
+        // 中文：提交前必须强制刷新远端清单，继续保留并发写入检测；普通读取则复用本轮缓存。
+        // English: Force a fresh catalog before commit to preserve concurrent-write detection;
+        // ordinary reads reuse the round-local cache.
+        const commitAssetCatalog = await this.provider.listAssets({ refresh: true });
+        latest = await readLatestManifest(this.provider, datasetId, commitAssetCatalog);
         if (Number(latest?.manifest?.generation || 0) !== Number(parent?.generation || 0)
           || String(latest ? sha256(latest.bytes) : "") !== String(latest && parent ? sha256(jsonBuffer(parent)) : "")) {
           if (attempt < MAX_SYNC_ATTEMPTS) continue;
@@ -368,11 +374,18 @@ export class SyncEngine {
         }
 
         for (const candidate of candidates) {
-          // 中文：每个资产上传后立刻回读校验；只有全部通过才允许写 manifest。
-          // English: Re-download and verify each asset immediately after upload; the manifest is
-          // allowed only after every candidate passes.
-          await this.provider.uploadAsset(candidate.descriptor.assetName, candidate.bytes, candidate.descriptor.type);
-          await downloadAndVerify(this.provider, candidate.descriptor);
+          // 中文：Provider 工作保持串行，避免同步轮次与更新/冲突协调发生竞态；上传响应
+          // 已直接用于校验，省去一次资产清单查询。
+          // English: Keep provider work serialized to preserve update/conflict coordination;
+          // verify the upload response directly to avoid another full asset-catalog query.
+          const uploadedAsset = await this.provider.uploadAsset(candidate.descriptor.assetName, candidate.bytes, candidate.descriptor.type);
+          if (uploadedAsset && Number.isSafeInteger(Number(uploadedAsset.id))) {
+            verifyAsset(candidate.descriptor, await this.provider.downloadAsset(uploadedAsset));
+          } else {
+            // 中文：兼容旧 Provider；新 Provider 返回资产 ID 后不再重复查询整张清单。
+            // English: Keep compatibility with older providers; new providers verify by returned ID.
+            await downloadAndVerify(this.provider, candidate.descriptor);
+          }
         }
         const manifest = {
           format: SYNC_FORMAT,
@@ -398,8 +411,10 @@ export class SyncEngine {
         };
         const manifestBytes = jsonBuffer(manifest);
         const name = manifestName(syncId, generatedAt);
-        await this.provider.uploadAsset(name, manifestBytes, "manifest");
-        const uploadedManifest = (await this.provider.listAssets()).find((item) => item.name === name);
+        const uploadedManifestResult = await this.provider.uploadAsset(name, manifestBytes, "manifest");
+        const uploadedManifest = uploadedManifestResult && Number.isSafeInteger(Number(uploadedManifestResult.id))
+          ? uploadedManifestResult
+          : (await this.provider.listAssets()).find((item) => item.name === name);
         if (!uploadedManifest) throw new Error("sync_manifest_missing_after_upload");
         validateManifest(JSON.parse(Buffer.from(await this.provider.downloadAsset(uploadedManifest)).toString("utf8")), datasetId);
         // 中文：manifest-last 是提交点；从这里开始，这一代才对其他设备可见。

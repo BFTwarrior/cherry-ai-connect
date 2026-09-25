@@ -51,6 +51,9 @@ export class GitHubReleaseProvider {
     this.timeoutMs = timeoutMs;
     this.account = null;
     this.release = null;
+    // 中文：资产清单只在当前同步轮次内复用；调用方可用 refresh 强制重新读取远端。
+    // English: Reuse the asset catalog only for the current sync round; refresh forces a remote read.
+    this.assetCache = null;
   }
 
   async #request(pathname, { method = "GET", body, raw = false, upload = false, contentType = "application/vnd.github+json" } = {}) {
@@ -176,7 +179,8 @@ export class GitHubReleaseProvider {
     return this.release;
   }
 
-  async listAssets() {
+  async listAssets({ refresh = false } = {}) {
+    if (!refresh && this.assetCache) return this.assetCache.map((item) => ({ ...item }));
     const release = await this.#readyRelease();
     const assets = [];
     for (let page = 1; page <= 10; page += 1) {
@@ -184,7 +188,8 @@ export class GitHubReleaseProvider {
       for (const item of items || []) assets.push({ id: item.id, name: String(item.name), size: Number(item.size || 0), createdAt: String(item.created_at || ""), updatedAt: String(item.updated_at || "") });
       if (!Array.isArray(items) || items.length < 100) break;
     }
-    return assets;
+    this.assetCache = assets;
+    return assets.map((item) => ({ ...item }));
   }
 
   async downloadAsset(asset) {
@@ -203,12 +208,15 @@ export class GitHubReleaseProvider {
       upload: true,
       contentType: "application/octet-stream",
     });
-    return { id: result.id, name: String(result.name), size: Number(result.size || 0), createdAt: String(result.created_at || "") };
+    const uploaded = { id: result.id, name: String(result.name), size: Number(result.size || 0), createdAt: String(result.created_at || "") };
+    this.assetCache = [...(this.assetCache || []), uploaded];
+    return { ...uploaded };
   }
 
   async deleteAsset(asset) {
     if (!Number.isSafeInteger(Number(asset?.id))) throw new Error("github_invalid_asset");
     await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`, { method: "DELETE" });
+    if (this.assetCache) this.assetCache = this.assetCache.filter((item) => Number(item.id) !== Number(asset.id));
   }
 }
 
