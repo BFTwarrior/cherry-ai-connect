@@ -271,6 +271,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .welcome-copy h2 em { color: var(--purple-bright); font-style: normal; }
 .welcome-copy p { max-width: 670px; margin: 0; color: #b4acba; font-size: 13px; line-height: 1.7; line-break: strict; text-wrap: pretty; }
 .welcome-actions { display: flex; gap: 9px; margin-top: 23px; }
+.github-token-cta { border-color: rgb(217 173 98 / 62%); background: linear-gradient(135deg, rgb(82 51 38 / 92%), rgb(52 35 68 / 96%)); color: #f5d18d; box-shadow: 0 8px 22px rgb(157 93 193 / 18%); }
+.github-token-cta:hover:not(:disabled) { border-color: #e4b969; background: linear-gradient(135deg, rgb(111 67 44 / 96%), rgb(73 43 92 / 98%)); color: #ffe3a9; box-shadow: 0 10px 25px rgb(198 137 74 / 24%); }
 
 .welcome-visual { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; color: #cfc2e4; }
 .welcome-visual::after { position: absolute; right: -125px; bottom: -205px; width: 280px; height: 280px; border: 1px solid rgb(189 153 255 / 10%); border-radius: 50%; box-shadow: 0 0 0 25px rgb(189 153 255 / 3%); content: ""; }

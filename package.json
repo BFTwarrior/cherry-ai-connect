@@ -1,6 +1,6 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.40.1",
+  "version": "1.40.2",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",

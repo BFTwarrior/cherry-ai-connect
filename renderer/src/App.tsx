@@ -13,8 +13,9 @@ import { MenuSelect } from "./ui/MenuSelect";
 
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
+const GITHUB_TOKEN_URL = "https://github.com/settings/personal-access-tokens/new";
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.40";
+const VERSION = "1.40.2";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
 type ClientImportTarget = "ccswitch" | "cherry-studio";
@@ -862,7 +863,7 @@ export default function App() {
     const boundRoutes = overviewKeys.filter((key) => key.enabled).map((key) => ({ key, provider: overviewProviderById(key.providerId) })).filter((item) => item.provider);
     return <>
       <section className="welcome-panel">
-      <div className="welcome-copy"><div className="eyebrow accent"><span className="live-pulse" />{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h2>{tr("把上游线路，变成", "One secure connection center for your ")}<em>{tr("一个好用的 AI 连接中心", "AI routes")}</em></h2><p>{tr("在这里管理中转站、模型目录和客户端 Key。上游密钥只留在本机，Cherry 只需要连接一个本地地址。", "Manage routes, model catalogs, and client keys here. Upstream secrets stay on this PC while Cherry connects to one local endpoint.")}</p><div className="welcome-actions"><button className="button button-primary" onClick={nextStep.action}><Icon name={nextStep.icon} size={15} />{nextStep.label}</button></div></div>
+      <div className="welcome-copy"><div className="eyebrow accent"><span className="live-pulse" />{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h2>{tr("把上游线路，变成", "One secure connection center for your ")}<em>{tr("一个好用的 AI 连接中心", "AI routes")}</em></h2><p>{tr("在这里管理中转站、模型目录和客户端 Key。上游密钥只留在本机，Cherry 只需要连接一个本地地址。", "Manage routes, model catalogs, and client keys here. Upstream secrets stay on this PC while Cherry connects to one local endpoint.")}</p><div className="welcome-actions"><button className="button button-primary" onClick={nextStep.action}><Icon name={nextStep.icon} size={15} />{nextStep.label}</button><button className="button button-secondary github-token-cta" onClick={() => void window.desktop?.openExternal(GITHUB_TOKEN_URL)} title={tr("打开 GitHub 令牌配置页面", "Open GitHub token settings")}><Icon name="external" size={15} />{tr("配置 GitHub API Key", "Configure GitHub API key")}</button></div></div>
         <div className="welcome-visual"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="core-orb"><Icon name="route" size={34} /></div><span className="visual-caption">{tr("本地连接", "LOCAL CONNECT")}</span><strong>127.0.0.1</strong><small>PORT {gatewayPort}</small></div>
       </section>
       <div className="metric-grid"><Metric icon="route" tone="purple" value={String(overviewProviders.length === 3 && DEMO_MODE ? 12 : overviewProviders.length)} label={tr("中转站线路", "Upstream routes")} note={tr("可绑定客户端 Key", "Ready for key binding")} /><Metric icon="layers" tone="blue" value={String(overviewTotalModels)} label={tr("已同步模型", "Synced models")} note={tr("来自上游目录", "From upstream catalogs")} /><Metric icon="key" tone="green" value={String(overviewActiveKeys)} label={tr("有效客户端 Key", "Active client keys")} note={tr("仅显示本地凭证", "Local credentials only")} /><Metric icon="spark" tone="amber" value={levelLabel(settings.forcedLevel)} label={tr("默认思考强度", "Default reasoning")} note={tr("真实写入转发请求", "Written into requests")} /></div>
