@@ -12,7 +12,7 @@ test("release version, installer name, and isolated build output agree", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
   const lock = JSON.parse(fs.readFileSync(path.join(projectRoot, "package-lock.json"), "utf8"));
 
-  assert.equal(pkg.version, "1.40.2");
+  assert.equal(pkg.version, "1.40.1");
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
   assert.equal(pkg.build.win.artifactName, "Cherry-AI-Connect-Setup-${version}.${ext}");

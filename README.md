@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.2** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. The patch keeps an in-progress update visible after leaving and re-entering Settings and adds a prominent homepage shortcut for GitHub API key setup. Device-specific acceptance remains explicitly tracked below.
+> **Current release · v1.40.1** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. The patch also keeps an in-progress update visible after leaving and re-entering Settings. Device-specific acceptance remains explicitly tracked below.
 
 ## Why Cherry AI Connect?
 
@@ -107,18 +107,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Setup-1.40.1.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.2) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Web-Demo-1.40.2.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.1) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Setup-1.40.1.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Web-Demo-1.40.1.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  8D8B567B144B81D0EC528B4950E7EEB2F8409FD9FCF4C688925FB706CA05AC72
+SHA-256  1B2CD3A5FD54E44C920DAF63CACB8A41C7EA2A8C239A98A635FA4EA7ACF264A0
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -194,7 +194,7 @@ npm run dist
 Verification scope:
 
 - Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
-- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The published GitHub Latest release is now `v1.40.2`; the update-state and homepage token shortcut verification are recorded in [the v1.40.2 homepage shortcut report](产品文档/文档/24-v1.40.2主页令牌入口.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
+- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The published GitHub Latest release is now `v1.40.1`; the patch verification and installer checksum are recorded in [the v1.40.1 update-state report](产品文档/文档/23-v1.40.1更新状态修复.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
 - Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
 
 The `dist/` directory is generated output and is intentionally excluded from source commits. Release assets are published through GitHub Releases.
@@ -209,7 +209,6 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
 - [v1.40 final delivery and cross-validation](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt)
 - [v1.40.1 update-state fix](产品文档/文档/23-v1.40.1更新状态修复.txt)
-- [v1.40.2 homepage token shortcut](产品文档/文档/24-v1.40.2主页令牌入口.txt)
 - [v1.37 import and regression notes](产品文档/文档/20-v1.37客户端导入与回归修复候选.txt)
 - [v1.37 acceptance logic map](产品文档/逻辑图/20-v1.37客户端导入与回归验收逻辑图.xmind)
 - [Software interface map](产品文档/逻辑图/软件界面逻辑图.xmind)
