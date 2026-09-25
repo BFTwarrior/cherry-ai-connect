@@ -179,6 +179,12 @@ The screenshot is a sanitized reference. Confirm that exactly one private sync r
 
 令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。同步冲突时，可先选择保留本机或使用云端，只有实际解密时才输入保险库凭证。
 
+<p align="center">
+  <a href="https://github.com/settings/personal-access-tokens/new">🇨🇳 创建 GitHub API 令牌</a>
+  &nbsp; · &nbsp;
+  <a href="https://github.com/settings/personal-access-tokens/new">🇬🇧 Create a GitHub API Token</a>
+</p>
+
 ## Development
 
 Requirements: Node.js and npm. End users do not need Node.js, npm, pnpm, or SQLite after installing the Windows package.
