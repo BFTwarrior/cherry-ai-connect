@@ -1,0 +1,75 @@
+# v1.40.2 新增问题与核查记录
+
+更新时间：2026-09-25（UTC+8）
+状态：已确认，暂未修改代码，未发布新版本
+
+## 1. 使用统计三个来源按钮切换严重卡顿
+
+### 复现位置
+
+- 使用统计页“历史请求记录”右上角的三个来源按钮：`全部`、`Codex 官方`、`中转站`。
+- 在有较多历史记录时连续切换，页面会明显停顿，用户感觉为按钮点击后整页卡住。
+
+### 已确认的代码链路
+
+1. `renderer/src/UsageView.tsx` 的 `changeSource()` 会同时重置来源、线路筛选和分页。
+2. 状态变化会触发 `loadUsage()`，重新请求 `/admin/api/usage`。
+3. `全部` 和 `Codex 官方` 查询会读取本机 `codex-usage` 的摘要、趋势和 session 明细；`全部` 还要合并中转站 SQLite 记录。
+4. 返回后 `UsageRecordsTable` 会同步重新渲染最多 200 条记录；每条记录都包含日期、数字格式化、状态、延迟和多列布局。
+5. 页面每 5 秒轮询一次，但当前请求没有 `AbortController` 或请求序号保护；点击切换与轮询相遇时，旧请求可能在新请求之后回写状态，造成额外重绘和视觉卡顿。
+
+### 本机只读请求测量
+
+- `relay`：约 3–4 ms。
+- `official`：约 36–42 ms。
+- `all`：通常约 35–58 ms，首次测量出现约 223 ms。
+- 因此卡顿的主要嫌疑不是三个按钮的 CSS，而是来源切换后的整页 React 重绘、200 条记录同步格式化，以及请求与 5 秒轮询缺少并发保护；仍需在修复后做 Electron 渲染帧率复测。
+
+### 待修复边界
+
+- 点击来源按钮后只保留最新请求结果，取消或忽略旧请求。
+- 来源切换期间避免轮询和手动切换同时读取同一份数据。
+- 将历史记录渲染与统计摘要解耦，必要时降低一次渲染数量或做列表虚拟化。
+- 不改变三种来源的统计口径、50 MB 中转站缓存和 50 MB Codex 官方缓存边界。
+
+## 2. 图一到图三：线路筛选选项会随当前线路消失
+
+### 复现证据
+
+- 未选择具体线路时，接口返回 `Codex Official`、`4router 0.45倍`、`众智AI 1倍`、`CCTQ 0.2`。
+- 选择 `Codex Official` 后，接口只返回 `Codex Official`。
+- 选择中转线路后，接口只返回中转线路，`Codex Official` 消失。
+
+### 根因位置
+
+- `gateway/gateway.mjs` 会依据 `providerId` 决定是否读取官方来源和中转来源。
+- `gateway/codex-usage-client.mjs` 的 `combineUsageSnapshots()` 再从已经按当前线路裁剪过的 `relayValue`、`officialValue` 生成 `filters.providers`。
+- `renderer/src/UsageView.tsx` 只能按接口返回的筛选器显示，前端虽然把 Codex 排在第一位，但无法恢复后端已经丢掉的其他选项。
+
+### 目标行为
+
+- `全部线路` 始终第一项。
+- `Codex Official / Codex 官方` 始终第二项。
+- 其他中转线路始终保留并按名称排序。
+- 当前选择只影响统计结果和记录，不影响筛选器目录本身。
+
+## 3. 图四：单条记录出现 10 亿以上输入 Token 的解释
+
+### 已确认事实
+
+- 该数值来自本机 `codex-usage` loopback API 的官方 Codex session 汇总，不是 Cherry 网关把单位从 Token 改成了“亿”。
+- 截图中的 `1,328,923,763` 是一个 session 的累计 `usage.input`，不是一次提示词、一次请求或一段文本包含 13 亿 Token。
+- 同一 session 的输入中绝大部分是 `cached_input`。本机接口抽样曾返回约 `1,285,799,168` cached input；这表示长期上下文在多次 Codex 请求中反复参与计量，并不代表 13 亿个不同 Token 的原文。
+- 原始 rollout 数据中可以看到每次请求的输入通常约十几万 Token，同时存在持续增长的 `thread_token_usage` 累计值；多个 rollout 文件共享同一 session 标识时，统计工具会按 session 维度合并。
+
+### 需要注意的精度边界
+
+- 当前 session 返回 `confidence: gap_fallback`，并存在 `priced_tokens` 与 `unpriced_tokens` 的拆分，所以这是服务层的累计/估算统计，不应解释为唯一文本量或精确账单量。
+- Cherry 当前只是读取并显示服务返回的 `usage.input`，没有自行乘倍、重复累加或读取聊天正文。
+- 后续如要把它展示得更不容易误解，应在官方 Codex 明细旁明确标注“session cumulative input / 累计会话输入”，并单独显示 cached input；是否调整统计口径必须另行确认。
+
+## 4. 本次结论
+
+- 已记录两个新问题：来源切换卡顿、线路筛选目录随当前线路收缩。
+- 10 亿级输入 Token 的来源已解释为官方 Codex session 累计输入，主要由长上下文和缓存读取构成；精度受 `gap_fallback` 影响，需要和性能问题分开处理。
+- 本次只做代码核查、接口测量和问题登记，没有改动功能代码，也没有创建或发布新安装包。
