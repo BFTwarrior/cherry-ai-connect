@@ -134,6 +134,10 @@ function sessionRecord(value) {
     totalTokens,
     cacheReadTokens: boundedNumber(firstValue(usage.cached_input, usage.cached_input_tokens, row.cached_input_tokens, row.cachedInputTokens, row.cached_input)),
     cacheWriteTokens: boundedNumber(firstValue(usage.cache_write_input, usage.cache_write_input_tokens, row.cache_write_input_tokens, row.cacheWriteInputTokens, row.cache_write_input)),
+    // 中文：sessions 接口返回的是整个会话的累计输入，不是单次请求输入；保留口径标记供界面明确展示。
+    // English: The sessions API reports cumulative input for the whole session, not one request;
+    // keep an explicit semantic marker so the UI cannot present it as a single prompt.
+    usageKind: "session-cumulative",
     usageAvailable: true,
     source: CODEX_OFFICIAL_SOURCE,
     sourceLabel: CODEX_OFFICIAL_LABEL_EN,
@@ -406,7 +410,14 @@ export function combineUsageSnapshots(relay, official, url) {
     // independently and losing records when relay and official streams are interleaved.
     records: sourceFilter === "all" ? records.slice(effectiveOffset, effectiveOffset + requestedLimit) : records.slice(0, requestedLimit),
     recordPagination: sourceFilter === "all" || providerId === CODEX_OFFICIAL_SOURCE ? combinedPagination : { ...combinedPagination, ...sourcePagination },
-    filters: { providers: uniqueOptions([...(relayValue.filters?.providers || []), ...(officialValue.filters?.providers || [])]), models },
+    // 中文：筛选目录必须来自未裁剪的原始快照。当前 providerId 只裁剪统计数据，不能把其他线路从下拉框删除。
+    // English: Build the selector catalog from the unfiltered source snapshots. providerId filters
+    // result data only; it must never remove the other routes from the dropdown.
+    filters: { providers: uniqueOptions([
+      ...(relay.filters?.providers || []),
+      ...(official.filters?.providers || []),
+      { id: CODEX_OFFICIAL_SOURCE, name: CODEX_OFFICIAL_LABEL_EN },
+    ]), models },
     range: relayValue.range || officialValue.range || "24h",
     updatedAt: new Date().toISOString(),
   };

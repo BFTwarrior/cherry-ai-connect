@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.40.2";
+const VERSION = "1.40.3";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
 type ClientImportTarget = "ccswitch" | "cherry-studio";

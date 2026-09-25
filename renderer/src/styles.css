@@ -871,7 +871,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .usage-records-list::-webkit-scrollbar { display: block; width: 9px; }
 .usage-records-list::-webkit-scrollbar-track { background: #242126; }
 .usage-records-list::-webkit-scrollbar-thumb { border: 2px solid #242126; border-radius: 10px; background: #6e547f; }
-.usage-record-card { border-bottom: 1px solid #302d33; background: #17171e; transition: background .16s ease; }
+.usage-record-card { border-bottom: 1px solid #302d33; background: #17171e; transition: background .16s ease; content-visibility: auto; contain-intrinsic-size: 92px; }
 .usage-record-card:hover { background: #1c1a21; }
 .usage-record-identity { display: grid; grid-template-columns: minmax(135px, .75fr) minmax(150px, 1fr) minmax(170px, 1.2fr) minmax(92px, .45fr) minmax(68px, .35fr); gap: 12px; padding: 13px 16px 10px; border-bottom: 1px solid #28262d; }
 .usage-record-identity > div, .usage-record-metrics > div { min-width: 0; }

@@ -21,7 +21,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40.2";
+const gatewayVersion = "1.40.3";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -622,7 +622,10 @@ async function fetchProviderModels(provider) {
         if (response.statusCode >= 200 && response.statusCode < 300) {
           const rawModels = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
           if (!rawModels) return reject(providerModelsError("上游模型目录响应格式无效", "invalid-response", response.statusCode));
-          const models = uniqueModels(rawModels.map((item) => typeof item === "string" ? item : item?.id || item?.name));
+          // 中文：兼容少数上游使用 model/slug 而不是标准 id 的目录项；否则模型明明可用却会被误判为空目录。
+          // English: Accept catalog entries that use model/slug instead of standard id; otherwise
+          // a usable upstream can be falsely classified as an empty catalog.
+          const models = uniqueModels(rawModels.map((item) => typeof item === "string" ? item : item?.id || item?.model || item?.slug || item?.name));
           if (!models.length) return reject(providerModelsError("上游模型目录为空或不含有效模型", "invalid-response", response.statusCode));
           resolve({ status: response.statusCode, latencyMs: Date.now() - started, models });
         } else {
@@ -894,7 +897,10 @@ async function handleRequest(req, res) {
       // Some clients (including model-catalog importers) reject otherwise valid
       // list entries when this required field is omitted.
       const fetchedAt = Date.parse(provider.modelFetchedAt || "");
-      const created = Number.isFinite(fetchedAt) ? Math.floor(fetchedAt / 1000) : 0;
+      // 中文：Cherry Studio 会把 created=0 当成异常目录元数据；没有探测时间时使用当前时间，不改变模型或路由。
+      // English: Cherry Studio treats created=0 as malformed catalog metadata; use the current
+      // Unix time when the probe timestamp is absent without changing the model or route.
+      const created = Number.isFinite(fetchedAt) && fetchedAt > 0 ? Math.floor(fetchedAt / 1000) : Math.floor(Date.now() / 1000);
       for (const model of catalogModels(provider)) {
         models.push({ id: client.providerId ? model : `${provider.id}/${model}`, object: "model", created, owned_by: provider.id });
       }

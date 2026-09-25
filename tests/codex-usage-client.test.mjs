@@ -65,6 +65,7 @@ test("official session records read nested usage fields from the real API shape"
   assert.equal(value.records[0].totalTokens, 15);
   assert.equal(value.records[0].cacheReadTokens, 4);
   assert.equal(value.records[0].cacheWriteTokens, 1);
+  assert.equal(value.records[0].usageKind, "session-cumulative");
 });
 
 test("official detail cache enforces one global budget across model buckets", async () => {
@@ -216,6 +217,17 @@ test("all-source pagination is applied after relay and official records are merg
   assert.deepEqual(value.records.map((item) => item.id), ["codex-new", "relay-old"]);
   assert.equal(value.recordPagination.offset, 1);
   assert.equal(value.recordPagination.total, 4);
+});
+
+test("route selector keeps Codex first and preserves every route after a provider is selected", () => {
+  const relay = relaySnapshot();
+  relay.filters.providers.push({ id: "route-b", name: "Relay B" });
+  const official = { ...relaySnapshot(), source: CODEX_OFFICIAL_SOURCE, filters: { providers: [{ id: CODEX_OFFICIAL_SOURCE, name: "Codex Official" }], models: [] } };
+  const selectedOfficial = combineUsageSnapshots(relay, official, new URL("http://gateway.test/admin/api/usage?source=all&providerId=codex-official"));
+  const selectedRelay = combineUsageSnapshots(relay, { ...official, filters: { providers: [], models: [] } }, new URL("http://gateway.test/admin/api/usage?source=all&providerId=route-a"));
+  for (const value of [selectedOfficial, selectedRelay]) {
+    assert.deepEqual(value.filters.providers.map((item) => item.id), [CODEX_OFFICIAL_SOURCE, "route-a", "route-b"]);
+  }
 });
 
 test("all-source merge preserves official deep-pagination unavailability metadata", () => {

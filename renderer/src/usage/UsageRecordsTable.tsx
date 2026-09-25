@@ -3,6 +3,8 @@
  * English: Live request table. Fields, latency thresholds, and readability rules live here so views stay consistent.
  */
 
+import { memo, useMemo } from "react";
+
 type Language = "zh" | "en";
 export type UsageRecordDensity = "compact" | "detailed";
 
@@ -26,6 +28,7 @@ export type UsageRecord = {
   totalTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
+  usageKind?: "session-cumulative" | "request" | string;
 };
 
 // 中文：阈值与产品文档一致；后续若测试数据调整，只需修改这一处。
@@ -35,13 +38,9 @@ export const LATENCY_THRESHOLDS = {
   total: { attentionMs: 10_000, slowMs: 30_000 },
 } as const;
 
-function formattedNumber(value: number | undefined, language: Language) {
-  return new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 0 }).format(Number(value || 0));
-}
-
-function formattedDate(value: string, language: Language) {
+function formattedDate(value: string, language: Language, formatter?: Intl.DateTimeFormat) {
   const date = new Date(value);
-  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return Number.isNaN(date.valueOf()) ? value : (formatter || new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })).format(date);
 }
 
 function formattedDuration(value: number | null | undefined) {
@@ -70,25 +69,28 @@ function LatencyValue({ value, kind, language }: { value: number | null; kind: "
   return <div className={`latency-value latency-${level}`}><strong>{formattedDuration(value)}</strong><span><i />{labels[level]}</span></div>;
 }
 
-export function UsageRecordsTable({ records, language, density }: { records: UsageRecord[]; language: Language; density: UsageRecordDensity }) {
+export const UsageRecordsTable = memo(function UsageRecordsTable({ records, language, density }: { records: UsageRecord[]; language: Language; density: UsageRecordDensity }) {
   const tr = (zh: string, en: string) => language === "zh" ? zh : en;
+  const numberFormatter = useMemo(() => new Intl.NumberFormat(language === "zh" ? "zh-CN" : "en-US", { maximumFractionDigits: 0 }), [language]);
+  const dateFormatter = useMemo(() => new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }), [language]);
+  const formattedNumber = (value: number | undefined) => numberFormatter.format(Number(value || 0));
   return <div className={`usage-records-list mode-${density}`} aria-label={tr("实时请求记录", "Live request log")}>
     {records.map((record) => {
       const successful = record.status === null || (record.status >= 200 && record.status < 400);
       const streamLabel = record.stream === true ? tr("流式", "Stream") : record.stream === false ? tr("非流式", "Standard") : tr("未知", "Unknown");
       return <article className={`usage-record-card ${successful ? "" : "request-row-error"}`} key={record.id}>
         <header className="usage-record-identity">
-          <div><small>{tr("时间", "Time")}</small><time>{formattedDate(record.at, language)}</time><em>{streamLabel}</em></div>
+          <div><small>{tr("时间", "Time")}</small><time>{formattedDate(record.at, language, dateFormatter)}</time><em>{streamLabel}</em></div>
           <div><small>{tr("客户端 / 线路", "Client / Route")}</small><strong>{record.source === "codex-official" ? tr("Codex 官方", "Codex Official") : (record.clientKeyName || "—")}</strong><em>{record.source === "codex-official" ? tr("Codex 官方", "Codex Official") : (record.providerName || record.providerId)}</em></div>
           <div className="record-model"><small>{tr("模型", "Model")}</small><code title={record.model}>{record.model || "—"}</code><em title={record.endpoint}>{record.endpoint}</em></div>
           <div><small>{tr("思考强度", "Reasoning")}</small><span className="reasoning-tag">{String(record.reasoningLevel || "—").toUpperCase()}</span></div>
           <div><small>{tr("状态", "Status")}</small><span className={`request-status ${record.status === null ? "unknown" : successful ? "ok" : "error"}`}>{record.status === null ? tr("未知", "Unknown") : record.status}</span></div>
         </header>
         <div className="usage-record-metrics">
-          <div className="token-input"><small>{tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(record.inputTokens, language)}</strong></div>
-          <div className="token-output"><small>{tr("输出 Token", "Output tokens")}</small><strong>{formattedNumber(record.outputTokens, language)}</strong></div>
-          <div className="token-cache"><small>{tr("缓存 Token", "Cache tokens")}</small><strong>{formattedNumber(record.cacheReadTokens, language)}</strong><em>{tr("写入", "Write")} +{formattedNumber(record.cacheWriteTokens, language)}</em></div>
-          <div className="token-total"><small>{tr("总 Token", "Total tokens")}</small><strong>{formattedNumber(record.totalTokens, language)}</strong></div>
+          <div className="token-input"><small>{record.usageKind === "session-cumulative" ? tr("累计输入 Token", "Session input") : tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(record.inputTokens)}</strong>{record.usageKind === "session-cumulative" && <em>{tr("官方会话累计", "Cumulative session total")}</em>}</div>
+          <div className="token-output"><small>{tr("输出 Token", "Output tokens")}</small><strong>{formattedNumber(record.outputTokens)}</strong></div>
+          <div className="token-cache"><small>{tr("缓存 Token", "Cache tokens")}</small><strong>{formattedNumber(record.cacheReadTokens)}</strong><em>{tr("写入", "Write")} +{formattedNumber(record.cacheWriteTokens)}</em></div>
+          <div className="token-total"><small>{tr("总 Token", "Total tokens")}</small><strong>{formattedNumber(record.totalTokens)}</strong></div>
           <div><small>{tr("首字时间", "First token")}</small><LatencyValue value={record.ttftMs} kind="firstToken" language={language} /></div>
           <div><small>{tr("总耗时", "Total time")}</small><LatencyValue value={record.durationMs} kind="total" language={language} /></div>
         </div>
@@ -96,4 +98,4 @@ export function UsageRecordsTable({ records, language, density }: { records: Usa
     })}
     {!records.length && <div className="usage-empty-row">{tr("还没有匹配的请求记录。通过 Cherry 发起一次对话后，这里会自动出现。", "No matching requests yet. Send a message through Cherry and it will appear here automatically.")}</div>}
   </div>;
-}
+});

@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.2** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. This patch also fixes the displayed-version mismatch, starts the bundled Codex Official loopback service, and keeps catalog-incompatible relay routes discoverable to Cherry Studio. Device-specific acceptance remains explicitly tracked below.
+> **Current release · v1.40.3** — This focused patch preserves the v1.40.2 release while fixing route-filter visibility, Cherry Studio model-catalog compatibility, official Codex session-token labeling, and usage-source switching performance. Device-specific acceptance remains explicitly tracked below.
 
 ## Product tour
 
@@ -138,13 +138,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.3.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Setup-1.40.3.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.2) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Web-Demo-1.40.2.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.3) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Setup-1.40.3.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Web-Demo-1.40.3.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -245,6 +245,7 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
 - [v1.40.2 usage analytics issue review](产品文档/文档/25-v1.40.2新增问题-使用统计核查.txt)
+- [v1.40.3 fixes and release record](产品文档/文档/26-v1.40.3修复与发布记录.txt)
 - [v1.40 final delivery and cross-validation](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt)
 - [v1.40.1 update-state fix (historical)](产品文档/文档/23-v1.40.1更新状态修复.txt)
 - [v1.40.2 critical fixes](产品文档/文档/24-v1.40.2关键修复.txt)
@@ -280,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.2 · Windows x64
+Cherry AI Connect · v1.40.3 · Windows x64
 
 </div>

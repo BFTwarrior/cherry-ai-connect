@@ -253,6 +253,10 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
   // 中文：记录密度是本机视觉偏好；紧凑模式保留全部字段并用区域内横向滚动展示。
   // English: Record density is a local visual preference; compact mode keeps every field in a horizontally scrollable region.
   const [recordDensity, setRecordDensity] = useState<UsageRecordDensity>(() => localStorage.getItem("cherry-usage-record-density") === "detailed" ? "detailed" : "compact");
+  // 中文：来源按钮和五秒轮询共用一个请求槽；新请求会取消旧请求，避免旧结果回写造成整页卡顿。
+  // English: Source buttons and the five-second poll share one request slot; newer requests abort
+  // older ones so stale responses cannot repaint the whole page after a source switch.
+  const usageRequest = useRef<{ sequence: number; controller: AbortController | null; inFlight: boolean }>({ sequence: 0, controller: null, inFlight: false });
 
   const changeRecordDensity = (next: UsageRecordDensity) => {
     setRecordDensity(next);
@@ -269,6 +273,13 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
   };
 
   const loadUsage = useCallback(async (silent = false) => {
+    if (silent && usageRequest.current.inFlight) return;
+    const sequence = usageRequest.current.sequence + 1;
+    usageRequest.current.sequence = sequence;
+    usageRequest.current.controller?.abort();
+    const controller = new AbortController();
+    usageRequest.current.controller = controller;
+    usageRequest.current.inFlight = true;
     if (!silent) setLoading(true);
     try {
       if (demo) {
@@ -279,6 +290,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
           : sourceFilter === "relay"
             ? { lifetime: sourceData?.relayLifetime || DEMO_USAGE.lifetime, summary: sourceData?.relaySummary || DEMO_USAGE.summary, series: sourceData?.relaySeries || DEMO_USAGE.series }
             : { lifetime: DEMO_USAGE.lifetime, summary: DEMO_USAGE.summary, series: DEMO_USAGE.series };
+        if (usageRequest.current.sequence !== sequence) return;
         setData({ ...DEMO_USAGE, ...selectedSource, source: sourceFilter, range, records: demoRecords, recordPagination: { total: demoRecords.length, offset: 0, limit: 200 } });
         setError("");
         return;
@@ -286,20 +298,31 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
       const query = new URLSearchParams({ range, limit: "200", recordsOffset: String(recordsOffset), status, source: sourceFilter });
       if (providerId) query.set("providerId", providerId);
       if (model) query.set("model", model);
-      const response = await fetch(`${gatewayOrigin}/admin/api/usage?${query}`, { cache: "no-store" });
+      const response = await fetch(`${gatewayOrigin}/admin/api/usage?${query}`, { cache: "no-store", signal: controller.signal });
       const value = await response.json();
       if (!response.ok) throw new Error(value?.error || `HTTP ${response.status}`);
+      if (usageRequest.current.sequence !== sequence) return;
       setData(value);
       setError("");
     } catch (reason) {
+      if (controller.signal.aborted || usageRequest.current.sequence !== sequence) return;
       setError(reason instanceof Error ? reason.message : String(reason));
-    } finally { if (!silent) setLoading(false); }
+    } finally {
+      if (usageRequest.current.sequence === sequence) {
+        usageRequest.current.inFlight = false;
+        usageRequest.current.controller = null;
+        if (!silent) setLoading(false);
+      }
+    }
   }, [demo, gatewayOrigin, model, providerId, range, recordsOffset, sourceFilter, status]);
 
   useEffect(() => { void loadUsage(); }, [loadUsage]);
   useEffect(() => {
     const timer = window.setInterval(() => { void loadUsage(true); }, 5000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      usageRequest.current.controller?.abort();
+    };
   }, [loadUsage]);
 
   const lifetime = data?.lifetime || emptyTotals;
