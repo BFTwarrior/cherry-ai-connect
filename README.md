@@ -194,7 +194,7 @@ npm run dist
 Verification scope:
 
 - Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
-- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The canonical isolated local build output is `dist/current-build/Cherry-AI-Connect-Setup-1.40.0.exe` (96,010,081 bytes; SHA-256 `6DA787D65D210987E6578F8A0CA6543A2BF7A1AEDC910DEC049D4E4448B7CC7C`). It is not a GitHub Release until explicitly published. Older assets at the `dist/` root are retained and are not part of this build output.
+- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The published GitHub Latest release is `v1.40`; its canonical installer is 96,010,081 bytes with SHA-256 `6DA787D65D210987E6578F8A0CA6543A2BF7A1AEDC910DEC049D4E4448B7CC7C`. Older assets at the `dist/` root are retained locally and are not part of this release.
 - Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
 
 The `dist/` directory is generated output and is intentionally excluded from source commits. Release assets are published through GitHub Releases.

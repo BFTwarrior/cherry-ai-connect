@@ -1,6 +1,6 @@
 Cherry AI Connect V1.40 最终版本交付与交叉验证记录
 更新时间：2026-09-25
-状态：代码修改完成，自动化回归通过，V1.40.0 安装包已构建并通过尺寸门禁；未发布 GitHub Release。
+状态：代码修改完成，自动化回归通过，V1.40.0 安装包已构建并通过尺寸门禁；已发布 GitHub Latest Release v1.40。
 
 一、版本目标
 1. 版本识别统一为 V1.40；内部 npm/Electron 版本为 1.40.0，网关和界面显示为 1.40。
@@ -55,5 +55,5 @@ Cherry AI Connect V1.40 最终版本交付与交叉验证记录
 1. 候选安装包：dist/current-build/Cherry-AI-Connect-Setup-1.40.0.exe。
 2. 尺寸门槛：文件大小必须小于 100MB（100,000,000 bytes，严格十进制口径）；实际为 96,010,081 bytes。
 3. 校验信息：SHA-256 为 6DA787D65D210987E6578F8A0CA6543A2BF7A1AEDC910DEC049D4E4448B7CC7C；electron-builder 正常退出，构建完成于 2026-09-25。
-4. 发布边界：当前只完成本地最终候选，不自动创建或发布 GitHub Release；发布需要另行明确授权。
+4. 发布结果：已按用户明确授权创建并发布 GitHub Release v1.40，tag、Latest、Release 正文和四个资产均已回读确认。
 5. 现场验收保留项：真实 Cherry Studio 检测并启用、真实 CC Switch 导入、受影响设备更新后数据保留、粒子动画在不同设备上的加载和真实 GitHub 同步仍需安装包现场确认。
