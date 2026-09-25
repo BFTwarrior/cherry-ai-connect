@@ -129,7 +129,15 @@ test("provider catalog incompatibility keeps Cherry Studio route usable", async 
     assert.equal(uncached.response.status, 200);
     const uncachedTest = await jsonFetch("/admin/api/providers/uncached/test", { method: "POST" });
     assert.equal(uncachedTest.response.status, 502);
-    assert.equal(uncachedTest.body.routeVerified, false, "an unsupported catalog without cached models is not verified as ready");
+    assert.equal(uncachedTest.body.routeVerified, true, "a catalog-incompatible route exposes the compatibility model for Cherry Studio detection");
+    assert.deepEqual(uncachedTest.body.provider.models, ["default"]);
+    const uncachedKey = await jsonFetch("/admin/api/client-keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ providerId: "uncached", reasoningLevel: "unchanged", nameCustomized: false }),
+    });
+    const uncachedModels = await fetch(`${origin}/v1/models`, { headers: { authorization: `Bearer ${uncachedKey.body.key}` } });
+    assert.deepEqual((await uncachedModels.json()).data.map((item) => item.id), ["default"]);
 
     const changed = await jsonFetch("/admin/api/providers", {
       method: "POST",

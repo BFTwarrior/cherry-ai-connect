@@ -310,6 +310,17 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
   const knownRequests = Math.max(0, summary.requests - Number(summary.unknownRequests || 0));
   const successRate = knownRequests ? Math.max(0, ((knownRequests - summary.errors) / knownRequests) * 100) : null;
   const selectedLabel = useMemo(() => ranges.find((item) => item.key === range)?.[language] || range, [language, range]);
+  const providerOptions = useMemo(() => {
+    const providers = data?.filters.providers || [];
+    const official = providers.find((provider) => provider.id === "codex-official");
+    const relay = providers.filter((provider) => provider.id !== "codex-official");
+    // 中文：双重保证官方 Codex 固定在“全部线路”后第一项；后端排序变化也不能影响界面。
+    // English: Keep Codex Official immediately after “All routes” even if backend ordering changes.
+    return [
+      ...(official ? [{ value: official.id, label: official.name }] : []),
+      ...relay.map((provider) => ({ value: provider.id, label: provider.name })),
+    ];
+  }, [data]);
 
   const officialAvailable = data?.official?.available === true;
   const officialStateText = sourceFilter === "relay"
@@ -331,7 +342,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     <div className="usage-toolbar">
       <div className="range-tabs">{ranges.map((item) => <button type="button" className={range === item.key ? "active" : ""} key={item.key} onClick={() => setRange(item.key)}>{language === "zh" ? item.zh : item.en}</button>)}</div>
       <div className="usage-filters">
-        <UsageFilterSelect label={tr("线路筛选", "Route filter")} value={providerId} options={[{ value: "", label: tr("全部线路", "All routes") }, ...(data?.filters.providers || []).map((provider) => ({ value: provider.id, label: provider.name }))]} onChange={(value) => { setProviderId(value); setRecordsOffset(0); }} />
+        <UsageFilterSelect label={tr("线路筛选", "Route filter")} value={providerId} options={[{ value: "", label: tr("全部线路", "All routes") }, ...providerOptions]} onChange={(value) => { setProviderId(value); setRecordsOffset(0); }} />
         <UsageFilterSelect label={tr("模型筛选", "Model filter")} value={model} options={[{ value: "", label: tr("全部模型", "All models") }, ...(data?.filters.models || []).map((item) => ({ value: item, label: item }))]} onChange={(value) => { setModel(value); setRecordsOffset(0); }} />
         <UsageFilterSelect label={tr("状态筛选", "Status filter")} value={status} options={[{ value: "all", label: tr("全部状态", "All status") }, { value: "success", label: tr("仅成功", "Success only") }, { value: "error", label: tr("仅失败", "Errors only") }]} onChange={(value) => { setStatus(value); setRecordsOffset(0); }} />
         <button type="button" className="usage-refresh" onClick={() => void loadUsage()} disabled={loading}><TinyIcon name="refresh" />{tr("刷新", "Refresh")}</button>

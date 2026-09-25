@@ -21,7 +21,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40";
+const gatewayVersion = "1.40.2";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -195,6 +195,28 @@ function uniqueModels(value) {
   return names.filter((item, index, list) => list.indexOf(item) === index);
 }
 
+// 中文：部分中转站能正常聊天，但不提供可用的 /v1/models 目录（例如返回 404 或空数组）。
+// Cherry Studio 的“检测并启用”把目录请求当作前置条件；没有目录时返回空 data 会让它把
+// 一条可用线路误判为失败。因此只对已经完成上游目录探测、且失败类型明确属于目录兼容性
+// 的线路提供一个非认证的兼容占位符。实际聊天请求仍使用客户端提交的真实 model，不会把
+// 占位符强行改写到上游。
+// English: Some relays can chat normally but expose no usable /v1/models catalog (for example,
+// a 404 or an empty array). Cherry Studio treats catalog discovery as a prerequisite, so an empty
+// data array falsely marks a usable route as failed. For a route whose catalog probe has completed
+// with a known catalog-compatibility failure, expose a non-auth compatibility placeholder. Chat
+// requests still use the model supplied by the client; this placeholder is never forced upstream.
+const CATALOG_COMPATIBILITY_STATUSES = new Set(["unsupported", "rate_limited", "invalid-response"]);
+const CATALOG_COMPATIBILITY_MODEL = "default";
+
+function catalogModels(provider) {
+  const models = uniqueModels(provider?.models);
+  if (models.length) return models;
+  if (provider?.lastTestStatus === "error" && CATALOG_COMPATIBILITY_STATUSES.has(provider.modelListStatus)) {
+    return [CATALOG_COMPATIBILITY_MODEL];
+  }
+  return [];
+}
+
 // 中文：模型目录检测失败不等于线路不可用。Cherry Studio 的“检测并启用”会把
 // 模型目录和实际聊天请求分开调用，因此必须把目录状态单独保存。
 // English: A model-catalog failure does not mean that the route is unavailable. Cherry Studio
@@ -355,10 +377,10 @@ function getAuthorizedClient(req) {
 
 function providerView(provider) {
   const clientKeyCount = config.clientKeys.filter((item) => item.providerId === provider.id).length;
-  const models = uniqueModels(provider.models);
+  const models = catalogModels(provider);
   const modelListStatus = provider.modelListStatus || "never";
   const routeVerified = provider.lastTestStatus === "ok"
-    || (provider.lastTestStatus === "error" && ["unsupported", "rate_limited"].includes(modelListStatus) && models.length > 0);
+    || (provider.lastTestStatus === "error" && CATALOG_COMPATIBILITY_STATUSES.has(modelListStatus) && models.length > 0);
   return {
     id: provider.id,
     name: provider.name,
@@ -873,7 +895,7 @@ async function handleRequest(req, res) {
       // list entries when this required field is omitted.
       const fetchedAt = Date.parse(provider.modelFetchedAt || "");
       const created = Number.isFinite(fetchedAt) ? Math.floor(fetchedAt / 1000) : 0;
-      for (const model of uniqueModels(provider.models)) {
+      for (const model of catalogModels(provider)) {
         models.push({ id: client.providerId ? model : `${provider.id}/${model}`, object: "model", created, owned_by: provider.id });
       }
     }

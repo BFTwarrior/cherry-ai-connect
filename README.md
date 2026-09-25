@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.1** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. The patch also keeps an in-progress update visible after leaving and re-entering Settings. Device-specific acceptance remains explicitly tracked below.
+> **Current release · v1.40.2** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. This patch also fixes the displayed-version mismatch, starts the bundled Codex Official loopback service, and keeps catalog-incompatible relay routes discoverable to Cherry Studio. Device-specific acceptance remains explicitly tracked below.
 
 ## Why Cherry AI Connect?
 
@@ -66,12 +66,13 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 - Inspect cache hit rate and live request records.
 - Keep request details under a 50 MB local limit while preserving lifetime totals.
 - Browse historical request pages independently from the chart time range.
+- Keep `Codex Official` fixed immediately after `All routes` in the route filter; relay routes remain below it.
 
 ### Private sync and recovery
 
 - Sync encrypted route configuration to the user’s own private GitHub Release.
 - Keep usage/request metadata in a separate sync path so a vault failure does not hide local usage.
-- Relay usage is the current cloud-synced usage ledger. The current unpublished worktree also reads a separate Codex source locally from the loopback service; it is not yet included in cloud sync.
+- Relay usage is the current cloud-synced usage ledger. Codex Official usage is read from a separate local loopback service and remains separately named and separately budgeted; it is not included in relay records or cloud sync.
 - Resolve sync conflicts by choosing **Keep Local** or **Use Cloud** before credentials are requested.
 - Protect update recovery and data migration with version binding, one-time consumption, and fail-closed startup checks.
 
@@ -83,7 +84,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 ### Current Codex usage boundary
 
-The v1.40 worktree adds a `Codex Official` source that reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. It keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
+The v1.40.2 build adds a `Codex Official` source that reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. It keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
 
 “Official” is a product source label, not a replacement for OpenAI account usage. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
 
@@ -107,13 +108,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Setup-1.40.1.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.2.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.1) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Setup-1.40.1.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.1/Cherry-AI-Connect-Web-Demo-1.40.1.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.2) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Setup-1.40.2.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.2/Cherry-AI-Connect-Web-Demo-1.40.2.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -194,7 +195,7 @@ npm run dist
 Verification scope:
 
 - Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
-- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The published GitHub Latest release is now `v1.40.1`; the patch verification and installer checksum are recorded in [the v1.40.1 update-state report](产品文档/文档/23-v1.40.1更新状态修复.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
+- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The v1.40.2 fixes and verification scope are recorded in [the v1.40.2 critical-fixes report](产品文档/文档/24-v1.40.2关键修复.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
 - Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
 
 The `dist/` directory is generated output and is intentionally excluded from source commits. Release assets are published through GitHub Releases.
@@ -208,7 +209,9 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
 - [v1.40 final delivery and cross-validation](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt)
-- [v1.40.1 update-state fix](产品文档/文档/23-v1.40.1更新状态修复.txt)
+- [v1.40.1 update-state fix (historical)](产品文档/文档/23-v1.40.1更新状态修复.txt)
+- [v1.40.2 critical fixes](产品文档/文档/24-v1.40.2关键修复.txt)
+- [v1.40.2 critical-fix logic map](产品文档/逻辑图/24-v1.40.2关键修复逻辑图.xmind)
 - [v1.37 import and regression notes](产品文档/文档/20-v1.37客户端导入与回归修复候选.txt)
 - [v1.37 acceptance logic map](产品文档/逻辑图/20-v1.37客户端导入与回归验收逻辑图.xmind)
 - [Software interface map](产品文档/逻辑图/软件界面逻辑图.xmind)
@@ -224,7 +227,7 @@ The following are intentionally not presented as completed just because automate
 
 - In-place update and local-data retention on the affected Windows device.
 - Real Cherry Studio and CC Switch import confirmation.
-- Cherry Studio model-pull behavior on the target client version, including the distinction between cached-route availability and unverified catalog discovery.
+- Cherry Studio model-pull behavior on the target client version, including the compatibility placeholder used when a route is usable but its upstream model catalog is unavailable.
 - Particle animation on devices where the effect was previously static.
 - Full historical usage pagination on an installed target build.
 - Persistent official Codex usage sync, backup, and cross-device recovery; the current official detail cache is local and memory-bounded only.
@@ -240,6 +243,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.0 candidate · Windows x64
+Cherry AI Connect · v1.40.2 · Windows x64
 
 </div>

@@ -341,7 +341,13 @@ function mergeSeries(left = [], right = []) {
 function uniqueOptions(items) {
   const map = new Map();
   for (const item of items || []) if (item?.id) map.set(String(item.id), { id: String(item.id), name: text(item.name || item.id) });
-  return [...map.values()].sort((left, right) => left.name.localeCompare(right.name));
+  const official = map.get(CODEX_OFFICIAL_SOURCE);
+  const relay = [...map.values()]
+    .filter((item) => item.id !== CODEX_OFFICIAL_SOURCE)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  // 中文：官方 Codex 必须固定在“全部线路”后的第一个选项，不能随中转站名称排序漂移。
+  // English: Keep Codex Official immediately after “All routes”; relay names must never move it.
+  return official ? [official, ...relay] : relay;
 }
 
 export function combineUsageSnapshots(relay, official, url) {

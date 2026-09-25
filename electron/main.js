@@ -24,6 +24,12 @@ const {
 } = require("./update-manager");
 const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
 const { buildClientImportDeepLink } = require("./client-import-links.cjs");
+const {
+  CODEX_USAGE_BINARY,
+  resolveExecutable,
+  startCodexUsageService,
+  stopCodexUsageService,
+} = require("./codex-usage-process.cjs");
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GATEWAY_PORT = 27891;
@@ -45,6 +51,7 @@ let updateSyncDirty = false;
 let updateSyncPaused = false;
 let pendingShowWindow = false;
 let mainWindowReady = false;
+let codexUsageProcess;
 // 中文：更新任务跨页面存在；主进程保存状态和单调序号，渲染层卸载不会取消任务或回退进度。
 // English: Updates outlive renderer pages; the main process owns the state and monotonic sequence
 // so unmounting a page cannot cancel the task or move its progress backward.
@@ -664,6 +671,51 @@ async function stopGateway() {
   gatewayModule = undefined;
 }
 
+async function startCodexUsage() {
+  if (process.platform !== "win32") return;
+  let packagedExecutablePath = "";
+  if (app.isPackaged) {
+    const archive = path.join(process.resourcesPath, "codex-usage-windows-amd64.exe.tar.xz");
+    const targetDirectory = path.join(runtimeDataRoot, "codex-usage");
+    packagedExecutablePath = path.join(targetDirectory, CODEX_USAGE_BINARY);
+    if (!fs.existsSync(packagedExecutablePath)) {
+      try {
+        fs.mkdirSync(targetDirectory, { recursive: true });
+        await execFileAsync("tar.exe", ["-xJf", archive, "-C", targetDirectory], { windowsHide: true });
+      } catch (error) {
+        console.warn(`[Codex 官方统计] 无法解压内置辅助程序：${error?.message || error}`);
+        packagedExecutablePath = "";
+      }
+    }
+  }
+  const executable = resolveExecutable({
+    isPackaged: app.isPackaged,
+    packagedExecutablePath,
+    resourcesPath: process.resourcesPath,
+    moduleDirectory: __dirname,
+    desktopPath: app.getPath("desktop"),
+  });
+  if (!executable) {
+    console.warn(`[Codex 官方统计] 未找到 ${CODEX_USAGE_BINARY}，保留页面中的明确不可用状态`);
+    return;
+  }
+  try {
+    const result = await startCodexUsageService({ executable });
+    if (result.process) codexUsageProcess = result.process;
+    if (!result.available) console.warn(`[Codex 官方统计] 本机服务未在预期时间内启动：${result.reason}`);
+    else console.info(`[Codex 官方统计] 本机服务状态：${result.reason}`);
+  } catch (error) {
+    console.warn(`[Codex 官方统计] 启动本机服务失败：${error?.message || error}`);
+  }
+}
+
+function stopCodexUsage() {
+  if (codexUsageProcess) {
+    stopCodexUsageService(codexUsageProcess);
+    codexUsageProcess = undefined;
+  }
+}
+
 async function resetGateway() {
   if (updateRun) throw new Error("gateway_reset_blocked_during_update");
   if (gatewayResetRun) return gatewayResetRun;
@@ -793,6 +845,7 @@ else {
     migrateLegacyDataOnce();
     const settings = readDesktopSettings();
     configureAutoLaunch(settings.autoLaunch);
+    await startCodexUsage();
     await startGateway();
     await initializeSyncManager();
     createTray();
@@ -817,7 +870,7 @@ else {
       .catch(() => {})
       .then(() => stopGateway())
       .catch(() => {})
-      .finally(() => { shutdownComplete = true; app.quit(); });
+      .finally(() => { stopCodexUsage(); shutdownComplete = true; app.quit(); });
   });
   app.on("window-all-closed", () => { if (process.platform !== "darwin" && (quitting || !readDesktopSettings().closeToTray)) app.quit(); });
 }

@@ -187,6 +187,7 @@ test("all-source merge sums relay and official totals without putting official r
   assert.equal(value.detailCache.relayMaxBytes, 50 * 1024 * 1024);
   assert.equal(value.detailCache.codexOfficialMaxBytes, CODEX_OFFICIAL_CACHE_MAX_BYTES);
   assert.deepEqual(new Set(value.records.map((item) => item.source)), new Set(["relay", CODEX_OFFICIAL_SOURCE]));
+  assert.equal(value.filters.providers[0].id, CODEX_OFFICIAL_SOURCE, "Codex Official stays first after All routes");
   assert.ok(value.filters.providers.some((item) => item.id === CODEX_OFFICIAL_SOURCE));
 });
 
