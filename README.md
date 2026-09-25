@@ -23,7 +23,7 @@
 
 </div>
 
-> **Release candidate · v1.40** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release candidate. Device-specific acceptance remains explicitly tracked below.
+> **Current release · v1.40** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. Device-specific acceptance remains explicitly tracked below.
 
 ## Why Cherry AI Connect?
 
@@ -107,18 +107,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.37.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.37/Cherry-AI-Connect-Setup-1.37.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.0.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40/Cherry-AI-Connect-Setup-1.40.0.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.37) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.37/Cherry-AI-Connect-Setup-1.37.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.37/Cherry-AI-Connect-Web-Demo-1.37.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40/Cherry-AI-Connect-Setup-1.40.0.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40/Cherry-AI-Connect-Web-Demo-1.40.0.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  412378416aeff9236c94313c1cdc61a648b34e948e8a64170c4eb05f062e4b18
+SHA-256  6DA787D65D210987E6578F8A0CA6543A2BF7A1AEDC910DEC049D4E4448B7CC7C
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -147,6 +147,36 @@ Point the compatible client at the local API address shown in the app. Do not ex
 - GitHub sync is opt-in and should use a private repository with only `Contents: Read and write` and `Metadata: Read-only`.
 - Prompts, responses, passwords, recovery codes, full client keys, tokens, and complete local paths must not be uploaded.
 - The packaged app stores runtime data beside the installer-owned directory. Do not delete or overwrite that data, legacy `data/`, or recovery backups before checking the new installation.
+
+## GitHub Cloud Sync
+
+Cherry AI Connect uses two different repository roles:
+
+| Repository | Role |
+| --- | --- |
+| `BFTwarrior/cherry-ai-connect` | Public source, documentation, and release artifacts |
+| `your-account/cherry-ai-connect-sync` | Your private sync repository |
+
+Create a fine-grained GitHub token with the minimum scope:
+
+1. Choose **Only select repositories**.
+2. Select only your private sync repository.
+3. Grant `Contents: Read and write`.
+4. Leave `Metadata: Read-only`.
+5. Do not add Actions, Administration, Issues, Pull requests, Secrets, or account-level permissions.
+6. Enter the token in **Settings → GitHub Cloud Sync**, then run one immediate sync.
+
+### Final permission reference
+
+![GitHub fine-grained token final permissions](docs/images/github-sync/github-token-final-permissions.png)
+
+The screenshot is a sanitized reference. Confirm that exactly one private sync repository is selected, `Contents` is `Read and write`, `Metadata` is `Read-only`, and no account-level permission is added. Never publish a real token or private repository data in a screenshot.
+
+### 中文同步要点
+
+公开源码仓库和你自己的私有同步仓库不是一回事。细粒度令牌只需要指定私有同步仓库，`Contents` 设置为 `Read and write`，`Metadata` 保持 `Read-only`。不要添加 Actions、Administration、Issues、Pull requests、Secrets 或账号级权限。
+
+令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。同步冲突时，可先选择保留本机或使用云端，只有实际解密时才输入保险库凭证。
 
 ## Development
 
