@@ -149,7 +149,7 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 Verify the installer before running it:
 
 ```text
-SHA-256  1B2CD3A5FD54E44C920DAF63CACB8A41C7EA2A8C239A98A635FA4EA7ACF264A0
+SHA-256  774147B9C65C180AC10795B69064F2C30B2FD778E4600F847B7DF0882EC119DD
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
