@@ -1,27 +1,24 @@
 /**
- * 中文：打包前只删除 dist 内的临时解包目录和构建残留，保留历代正式发布资产。
- * 这样既能阻止上一次测试产生的 data/缓存进入新包，也不会误删旧版本交付物。
- * English: Before packaging, remove temporary unpacked output and build leftovers only, while
- * preserving released installers. This prevents test data from leaking without erasing history.
+ * 中文：只重建 dist/current-build 这个专用构建输出目录；dist 根目录中的既有安装包和演示包均保留。
+ * electron-builder 只向隔离目录输出，避免旧版本产物混入本次构建结果。
+ * English: Recreate only the dedicated dist/current-build output directory. Existing installers
+ * and demo archives in dist remain untouched; electron-builder writes to the isolated directory.
  */
 import fs from "node:fs";
 import path from "node:path";
 
 const projectRoot = path.resolve(process.cwd());
 const distRoot = path.resolve(projectRoot, "dist");
+const buildRoot = path.resolve(distRoot, "current-build");
 
 if (path.basename(distRoot).toLowerCase() !== "dist" || path.dirname(distRoot) !== projectRoot) {
   throw new Error("refusing_to_clean_unexpected_dist_path");
 }
+if (path.dirname(buildRoot) !== distRoot || path.basename(buildRoot) !== "current-build") {
+  throw new Error("refusing_to_clean_unexpected_build_path");
+}
 
 fs.mkdirSync(distRoot, { recursive: true });
-for (const entry of fs.readdirSync(distRoot, { withFileTypes: true })) {
-  const target = path.resolve(distRoot, entry.name);
-  if (path.dirname(target) !== distRoot) throw new Error("refusing_to_clean_unexpected_dist_entry");
-  const keepReleasedAsset = entry.isFile() && (
-    /^Cherry-AI-Connect-Setup-[0-9.]+\.exe(?:\.blockmap)?$/i.test(entry.name)
-    || /^Cherry-AI-Connect-Web-Demo-[0-9.]+\.zip$/i.test(entry.name)
-  );
-  if (!keepReleasedAsset) fs.rmSync(target, { recursive: true, force: true });
-}
-console.log(`Prepared build output and preserved released assets: ${distRoot}`);
+fs.rmSync(buildRoot, { recursive: true, force: true });
+fs.mkdirSync(buildRoot, { recursive: true });
+console.log(`Prepared isolated build output: ${buildRoot}`);

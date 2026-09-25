@@ -54,6 +54,13 @@ test("usage ledger and route-following key names survive the complete flow", asy
   const gatewayPort = await availablePort();
   process.env.GATEWAY_DATA_DIR = dataDir;
   process.env.GATEWAY_EMBEDDED = "1";
+  // 中文：恶意或误配置的外部主机值不得改变管理 API 的绑定边界。
+  // English: An injected or misconfigured external host must not change the management API bind boundary.
+  process.env.GATEWAY_HOST = "0.0.0.0";
+  // 中文：端到端中转站测试必须隔离本机正在运行的官方 Codex 服务，避免把环境数据混入断言。
+  // English: Isolate the relay end-to-end test from any local official Codex service so host data
+  // cannot enter deterministic relay assertions.
+  process.env.CODEX_USAGE_ORIGIN = "http://127.0.0.1:1";
   fs.writeFileSync(path.join(dataDir, "usage.json"), JSON.stringify({
     version: 1,
     lifetime: {
@@ -80,6 +87,7 @@ test("usage ledger and route-following key names survive the complete flow", asy
   }, null, 2), "utf8");
   const gateway = await import(`../gateway/gateway.mjs?test=${Date.now()}`);
   await gateway.startGateway({ port: gatewayPort });
+  assert.equal(gateway.server.address().address, "127.0.0.1", "GATEWAY_HOST must never expose the gateway beyond loopback");
   const origin = `http://127.0.0.1:${gatewayPort}`;
   const syncReasons = [];
   gateway.setSyncChangeHandler((reason) => syncReasons.push(reason));
@@ -177,6 +185,7 @@ test("usage ledger and route-following key names survive the complete flow", asy
     gateway.replaceConfigFromSync(gateway.getSyncSnapshot().publicConfig, gateway.getSyncSnapshot().secureConfig);
     const sameDeviceSecret = await api(`/admin/api/client-keys/${remoteKeyId}/secret`);
     assert.equal(sameDeviceSecret.key, restoredSecret.key, "same-device sync must never rotate the client key");
+    assert.equal(gateway.server.address().address, "127.0.0.1", "historical sync/update calls must not widen the gateway bind boundary");
     const unknownKeyConfig = {
       ...gateway.getSyncSnapshot().publicConfig,
       clientKeyMetadata: [{ ...gateway.getSyncSnapshot().publicConfig.clientKeyMetadata[0], id: "unknown-key-without-local-secret" }],

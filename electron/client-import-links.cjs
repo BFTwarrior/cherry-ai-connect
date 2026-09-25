@@ -30,7 +30,7 @@ function buildClientImportDeepLink(target, clientKey, port) {
   if (target === "ccswitch") {
     params.set("resource", "provider");
     params.set("app", "codex");
-    params.set("name", `Cherry · ${name}`.slice(0, 120));
+    params.set("name", `Dingji · ${name}`.slice(0, 120));
     params.set("endpoint", `${origin}/v1`);
     params.set("apiKey", apiKey);
     if (clientKey.model) params.set("model", String(clientKey.model).replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 180));
@@ -40,7 +40,7 @@ function buildClientImportDeepLink(target, clientKey, port) {
   // Cherry Studio expects the server root here and appends the OpenAI-compatible /v1 paths itself.
   const provider = {
     id: `cherry-ai-connect-${id}`,
-    name: `Cherry · ${name}`.slice(0, 120),
+    name: `Dingji · ${name}`.slice(0, 120),
     baseUrl: origin,
     apiKey,
     type: "openai",

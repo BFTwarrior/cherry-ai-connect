@@ -87,6 +87,8 @@ function rowToRecord(row) {
     clientKeyName: row.client_name_snapshot || "",
     providerId: row.provider_id,
     providerName: row.provider_name_snapshot || row.provider_id,
+    source: "relay",
+    sourceLabel: "Relay Station",
     model: row.model,
     endpoint: row.endpoint,
     method: row.method,
@@ -268,7 +270,7 @@ export class UsageLedger {
           String(record.clientKeyName || ""), String(record.model || ""), String(record.endpoint || ""), String(record.method || "POST"),
           String(record.reasoningLevel || "high"), record.stream ? 1 : 0, boundedInteger(record.inputTokens), boundedInteger(record.outputTokens),
           boundedInteger(record.cacheReadTokens), boundedInteger(record.cacheWriteTokens), boundedInteger(record.totalTokens), boundedInteger(record.durationMs),
-          boundedInteger(record.ttftMs), boundedInteger(record.status), Number(record.status || 0) < 400 ? 1 : 0,
+          boundedInteger(record.ttftMs), boundedInteger(record.status), Number(record.status || 0) >= 200 && Number(record.status || 0) < 300 ? 1 : 0,
           boundedInteger(record.totalTokens) > 0 ? 1 : 0, String(record.error || "").slice(0, 300), at,
         );
       });
@@ -308,7 +310,7 @@ export class UsageLedger {
         String(record.clientKeyName || "").slice(0, 200), String(record.model || "").slice(0, 300), String(record.endpoint || "").slice(0, 200),
         String(record.method || "POST").slice(0, 12), String(record.reasoningLevel || "high").slice(0, 12), record.stream ? 1 : 0,
         values.input, values.output, values.cacheRead, values.cacheWrite, values.total, boundedInteger(record.durationMs), boundedInteger(record.ttftMs),
-        status, status >= 200 && status < 400 ? 1 : 0, values.total > 0 ? 1 : 0, String(record.error || "").slice(0, 300), now,
+        status, status >= 200 && status < 300 ? 1 : 0, values.total > 0 ? 1 : 0, String(record.error || "").slice(0, 300), now,
       );
       if (result.changes) {
         inserted = true;
@@ -328,7 +330,7 @@ export class UsageLedger {
           total_tokens=total_tokens+excluded.total_tokens,
           first_request_at=CASE WHEN first_request_at IS NULL OR first_request_at='' THEN excluded.first_request_at ELSE first_request_at END,
           last_request_at=excluded.last_request_at`).run(
-            identity.datasetId, identity.deviceId, identity.deviceEpoch, sequence, status >= 400 ? 1 : 0,
+            identity.datasetId, identity.deviceId, identity.deviceEpoch, sequence, status < 200 || status >= 300 ? 1 : 0,
             values.input, values.output, values.cacheRead, values.cacheWrite, values.total, now, now,
           );
         this.db.prepare(`INSERT INTO outbox(outbox_id, dataset_id, object_type, object_id, created_at_utc)
@@ -374,11 +376,13 @@ export class UsageLedger {
     try {
       const deleteEvent = this.db.prepare("DELETE FROM usage_events WHERE event_id=?");
       const deleteOutbox = this.db.prepare("DELETE FROM outbox WHERE object_type='usage-event' AND object_id=? AND state<>'pending'");
-      const prunePendingOutbox = this.db.prepare("UPDATE outbox SET state='pruned', last_error_code='detail_cache_limit' WHERE object_type='usage-event' AND object_id=? AND state='pending'");
       for (const candidate of candidates) {
         if (remaining <= this.detailCacheTargetBytes) break;
-        if (candidate.is_pending) prunePendingOutbox.run(candidate.event_id);
-        else deleteOutbox.run(candidate.event_id);
+        // 中文：待同步明细仍是云端唯一可恢复副本，达到本地缓存上限也不能先删它。
+        // English: A pending detail may be the only recoverable cloud copy; never delete it just
+        // to satisfy the local cache target. Synced details remain safe to prune.
+        if (candidate.is_pending) continue;
+        deleteOutbox.run(candidate.event_id);
         const result = deleteEvent.run(candidate.event_id);
         if (result.changes) {
           remaining = Math.max(0, remaining - boundedInteger(candidate.bytes));
@@ -408,17 +412,20 @@ export class UsageLedger {
     const providerId = String(url.searchParams.get("providerId") || "");
     const model = String(url.searchParams.get("model") || "");
     const statusFilter = String(url.searchParams.get("status") || "all");
-    const limit = Math.min(500, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
+    // 中文：合并官方来源时需要读取到全局页末，再由组合器统一分页；仍限制最大读取量防止异常请求放大内存。
+    // English: Combined official/relay pages need each source prefix through the global page end;
+    // retain a hard cap so malformed requests cannot amplify memory usage without bound.
+    const limit = Math.min(5000, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
     const requestedRecordsOffset = Math.floor(Math.max(0, Math.min(1_000_000, Number(url.searchParams.get("recordsOffset") || 0) || 0)));
     const conditions = ["occurred_at_utc >= ?"];
     const parameters = [startAt];
     if (providerId) { conditions.push("provider_id = ?"); parameters.push(providerId); }
     if (model) { conditions.push("model = ?"); parameters.push(model); }
-    if (statusFilter === "success") conditions.push("http_status < 400");
-    if (statusFilter === "error") conditions.push("http_status >= 400");
+    if (statusFilter === "success") conditions.push("http_status >= 200 AND http_status < 300");
+    if (statusFilter === "error") conditions.push("(http_status < 200 OR http_status >= 300)");
     const where = conditions.join(" AND ");
     const aggregate = this.db.prepare(`SELECT COUNT(*) requests,
-      SUM(CASE WHEN http_status >= 400 THEN 1 ELSE 0 END) errors,
+      SUM(CASE WHEN http_status < 200 OR http_status >= 300 THEN 1 ELSE 0 END) errors,
       COALESCE(SUM(input_tokens),0) inputTokens, COALESCE(SUM(output_tokens),0) outputTokens,
       COALESCE(SUM(total_tokens),0) totalTokens, COALESCE(SUM(cache_read_tokens),0) cacheReadTokens,
       COALESCE(SUM(cache_write_tokens),0) cacheWriteTokens, MIN(occurred_at_utc) firstRequestAt,
@@ -429,8 +436,8 @@ export class UsageLedger {
     const recordParameters = [];
     if (providerId) { recordConditions.push("provider_id = ?"); recordParameters.push(providerId); }
     if (model) { recordConditions.push("model = ?"); recordParameters.push(model); }
-    if (statusFilter === "success") recordConditions.push("http_status < 400");
-    if (statusFilter === "error") recordConditions.push("http_status >= 400");
+    if (statusFilter === "success") recordConditions.push("http_status >= 200 AND http_status < 300");
+    if (statusFilter === "error") recordConditions.push("(http_status < 200 OR http_status >= 300)");
     const recordsWhere = recordConditions.length ? recordConditions.join(" AND ") : "1=1";
     const recordTotal = Number(this.db.prepare(`SELECT COUNT(*) count FROM usage_events WHERE ${recordsWhere}`).get(...recordParameters).count || 0);
     // 中文：缓存裁剪可能发生在用户停留于较后页时；把过期偏移退回到最后一个有效页。
@@ -448,7 +455,7 @@ export class UsageLedger {
       const bucket = series[index];
       if (!bucket) continue;
       bucket.requests += 1;
-      bucket.errors += row.http_status >= 400 ? 1 : 0;
+      bucket.errors += row.http_status < 200 || row.http_status >= 300 ? 1 : 0;
       bucket.inputTokens += row.input_tokens;
       bucket.outputTokens += row.output_tokens;
       bucket.totalTokens += row.total_tokens;
@@ -521,7 +528,7 @@ export class UsageLedger {
           String(record.method || "POST").slice(0, 12), String(record.reasoningLevel || "high").slice(0, 12), record.stream ? 1 : 0,
           boundedInteger(record.inputTokens), boundedInteger(record.outputTokens), boundedInteger(record.cacheReadTokens), boundedInteger(record.cacheWriteTokens),
           boundedInteger(record.totalTokens), boundedInteger(record.durationMs), boundedInteger(record.ttftMs), status,
-          status >= 200 && status < 400 ? 1 : 0, record.usageAvailable === false ? 0 : 1, String(record.error || "").slice(0, 300), at,
+          status >= 200 && status < 300 ? 1 : 0, record.usageAvailable === false ? 0 : 1, String(record.error || "").slice(0, 300), at,
         );
         insertedEvents += Number(result.changes || 0);
       }

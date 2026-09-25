@@ -21,7 +21,7 @@ test("CC Switch link imports a Codex provider through the current local gateway"
   assert.equal(parsed.searchParams.get("endpoint"), "http://127.0.0.1:32123/v1");
   assert.equal(parsed.searchParams.get("apiKey"), clientKey.apiKey);
   assert.equal(parsed.searchParams.get("model"), clientKey.model);
-  assert.equal(parsed.searchParams.get("name"), "Cherry · 测试线路 Key");
+  assert.equal(parsed.searchParams.get("name"), "Dingji · 测试线路 Key");
 });
 
 test("Cherry Studio link carries a single local OpenAI-compatible provider at the server root", () => {
@@ -34,7 +34,7 @@ test("Cherry Studio link carries a single local OpenAI-compatible provider at th
   const provider = JSON.parse(Buffer.from(parsed.searchParams.get("data"), "base64").toString("utf8"));
   assert.deepEqual(provider, {
     id: "cherry-ai-connect-local-key_01",
-    name: "Cherry · 测试线路 Key",
+    name: "Dingji · 测试线路 Key",
     baseUrl: "http://127.0.0.1:27891",
     apiKey: clientKey.apiKey,
     type: "openai",

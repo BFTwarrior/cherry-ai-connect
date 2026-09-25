@@ -39,7 +39,19 @@ let shutdownComplete = false;
 let currentGatewayPort = DEFAULT_GATEWAY_PORT;
 let syncManager;
 let majorSyncTimer;
+let gatewayResetRun;
 let updateRun;
+let updateSyncDirty = false;
+let updateSyncPaused = false;
+let pendingShowWindow = false;
+let mainWindowReady = false;
+// 中文：更新任务跨页面存在；主进程保存状态和单调序号，渲染层卸载不会取消任务或回退进度。
+// English: Updates outlive renderer pages; the main process owns the state and monotonic sequence
+// so unmounting a page cannot cancel the task or move its progress backward.
+let updateStatus = "idle";
+let lastUpdateProgress = null;
+let updateProgressSequence = 0;
+let lastUpdateRelease = null;
 
 // 中文：正式版把运行数据放在安装目录旁，用户选择 D 盘后不会把主要缓存留在 C 盘。
 // English: Packaged builds keep runtime data beside the installation so a D-drive install stays on D.
@@ -195,6 +207,28 @@ function syncSource() {
   };
 }
 
+// 中文：更新期间暂停自动同步定时器；更新失败或没有新版时再补排一轮，避免同步穿插备份。
+// English: Pause the delayed auto-sync timer during an update, then schedule one catch-up round
+// after a failed or no-op update so synchronization cannot start between shutdown and backup.
+function clearMajorSyncTimer() {
+  if (majorSyncTimer) clearTimeout(majorSyncTimer);
+  majorSyncTimer = null;
+}
+
+function scheduleMajorSync(reason) {
+  clearMajorSyncTimer();
+  if (updateRun) {
+    updateSyncDirty = true;
+    return;
+  }
+  const status = syncManager?.status();
+  if (!status?.enabled || !status.connected) return;
+  majorSyncTimer = setTimeout(() => {
+    majorSyncTimer = null;
+    void syncManager.syncNow(reason).catch(() => {});
+  }, 1500);
+}
+
 async function initializeSyncManager() {
   if (syncManager) return syncManager;
   const syncPath = app.isPackaged
@@ -212,9 +246,7 @@ async function initializeSyncManager() {
     },
   });
   gatewayModule.setSyncChangeHandler?.((reason) => {
-    if (!syncManager?.status().enabled) return;
-    if (majorSyncTimer) clearTimeout(majorSyncTimer);
-    majorSyncTimer = setTimeout(() => { void syncManager.syncNow(reason).catch(() => {}); }, 1500);
+    scheduleMajorSync(reason);
   });
   return syncManager;
 }
@@ -343,7 +375,78 @@ async function fetchLatestRelease() {
 }
 
 function emitUpdateProgress(value) {
-  mainWindow?.webContents.send("update-progress", { at: new Date().toISOString(), ...value });
+  // 中文：每次进度都写入快照并广播；新页面先读快照再接收后续事件。
+  // English: Persist and broadcast every progress event so a newly mounted page can resume from
+  // the latest snapshot before receiving later events.
+  const safeValue = {
+    stage: value.stage,
+    percent: Math.max(0, Math.min(100, Number(value.percent) || 0)),
+    ...(Number.isFinite(Number(value.received)) ? { received: Math.max(0, Number(value.received)) } : {}),
+    ...(Number.isFinite(Number(value.total)) ? { total: Math.max(0, Number(value.total)) } : {}),
+    ...(value.error ? { error: redactLocalUpdatePaths(value.error) } : {}),
+  };
+  lastUpdateProgress = { at: new Date().toISOString(), sequence: ++updateProgressSequence, ...safeValue };
+  updateStatus = value.stage === "error" ? "error" : value.stage === "completed" ? "completed" : "running";
+  // 中文：切页或窗口销毁期间不能让 IPC 广播抛错；状态已经保存在主进程快照中，
+  // 新页面会通过 get-update-progress 重新接管显示。
+  // English: A page switch or destroyed window must not make IPC broadcasting throw; the state
+  // already lives in the main-process snapshot and a new page will resume from get-update-progress.
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDestroyed()) return;
+  try { mainWindow.webContents.send("update-progress", lastUpdateProgress); } catch { /* snapshot remains authoritative */ }
+}
+
+// 中文：异常文本可能包含运行数据或安装器位置；保留错误码和说明，但不把绝对本机根路径发给页面。
+// English: Error text can contain runtime or installer locations; preserve the diagnostic while
+// redacting known local roots before sending it to the renderer.
+function redactLocalUpdatePaths(value) {
+  let message = String(value || "update_failed");
+  const roots = [runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, legacyInstallDataRoot]
+    .filter(Boolean)
+    .sort((left, right) => String(right).length - String(left).length);
+  for (const root of roots) {
+    const variants = new Set([String(root), String(root).replaceAll("\\", "/"), String(root).replaceAll("/", "\\")]);
+    for (const variant of variants) {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      message = message.replace(new RegExp(escaped, "gi"), "[local path]");
+    }
+  }
+  return message;
+}
+
+// 中文：保留页面可重建安装按钮所需的公开 Release 元数据，不缓存任何本地路径。
+// English: Keep only public release metadata needed to rebuild the install action after a page
+// remount; local paths are never part of this snapshot.
+function cacheUpdateRelease(release) {
+  lastUpdateRelease = release ? {
+    ok: Boolean(release.ok),
+    currentVersion: String(release.currentVersion || ""),
+    latestVersion: String(release.latestVersion || ""),
+    updateAvailable: Boolean(release.updateAvailable),
+    releaseUrl: String(release.releaseUrl || ""),
+    publishedAt: String(release.publishedAt || ""),
+    checkedAt: String(release.checkedAt || ""),
+    asset: release.asset ? {
+      name: String(release.asset.name || ""),
+      url: String(release.asset.url || ""),
+      size: Math.max(0, Number(release.asset.size || 0)),
+      sha256: String(release.asset.sha256 || ""),
+    } : null,
+  } : null;
+  return lastUpdateRelease;
+}
+
+async function restoreGatewayAfterUpdateFailure(error) {
+  try {
+    await startGateway();
+  } catch (restartError) {
+    // 中文：恢复失败必须进入同一个错误消息，不能继续告诉用户旧版本仍然可用。
+    // English: Surface gateway-restart failure in the same error; never claim the old version is
+    // usable when the local service did not recover.
+    const original = String(error?.message || error || "update_failed");
+    const detail = String(restartError?.message || restartError || "unknown");
+    if (error && typeof error === "object") error.message = `${original}; update_gateway_restart_failed:${detail}`;
+    else throw new Error(`${original}; update_gateway_restart_failed:${detail}`);
+  }
 }
 
 // 中文：一键更新的顺序固定为下载校验、云同步、停止网关、离线备份、启动安装器。
@@ -352,19 +455,38 @@ function emitUpdateProgress(value) {
 // and only then launches the installer. Any failure keeps the current version running.
 async function downloadAndInstallLatestUpdate() {
   if (updateRun) return updateRun;
+  updateSyncDirty = Boolean(majorSyncTimer);
+  clearMajorSyncTimer();
+  let installerHandedOff = false;
   updateRun = (async () => {
+    // 中文：网关重置和更新都可能停止/启动同一个本地服务；更新必须等待已开始的重置完成。
+    // English: Gateway reset and update can both stop/start the same local service; an update
+    // waits for a reset that already began instead of interleaving with it.
+    if (gatewayResetRun) await gatewayResetRun;
+    // 中文：暂停同步本身可能需要等待当前网络轮次；先发布可恢复快照，切到其他页面再回来时仍显示更新进行中。
+    // English: Pausing may wait for an active network round; publish a resumable snapshot first
+    // so remounting another page cannot make the update look idle or lost.
+    emitUpdateProgress({ stage: "syncing", percent: 0 });
+    if (syncManager) {
+      await syncManager.pauseForUpdate();
+      updateSyncPaused = true;
+    }
     emitUpdateProgress({ stage: "checking", percent: 0 });
     let release;
     try {
       release = await fetchLatestRelease();
     } catch (error) {
       const raw = String(error?.message || error || "");
-      if (/(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|GitHub request timed out|connect timed out)/i.test(raw)) {
+      if (/(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|ENOTFOUND|GitHub request timed out|connect timed out)/i.test(raw)) {
         throw new Error("update_github_network_timeout");
       }
       throw error;
     }
-    if (!release.updateAvailable) return { ok: true, updateAvailable: false, release };
+    cacheUpdateRelease(release);
+    if (!release.updateAvailable) {
+      emitUpdateProgress({ stage: "completed", percent: 100 });
+      return { ok: true, updateAvailable: false, release };
+    }
     if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
     const installerDir = path.join(updateRecoveryRoot, "installers");
     const installerPath = path.join(installerDir, `${Date.now()}-${release.asset.name}`);
@@ -374,19 +496,30 @@ async function downloadAndInstallLatestUpdate() {
       destination: installerPath,
       onProgress: (progress) => emitUpdateProgress({ stage: "downloading", ...progress }),
     });
-    emitUpdateProgress({ stage: "syncing", percent: 100, installerPath });
+    // 中文：渲染层只需要阶段，不需要接收本机安装器路径；路径仅留在主进程用于启动校验后的文件。
+    // English: The renderer needs the stage but never the local installer path; keep that path in
+    // the main process for the verified launch only.
+    emitUpdateProgress({ stage: "syncing", percent: 100 });
     const syncStatus = syncManager?.status();
-    if (syncStatus?.enabled && syncStatus?.connected) await syncManager.syncNow("before-update");
+    if (syncStatus?.enabled && syncStatus?.connected) await syncManager.syncBeforeUpdate();
+    try {
+      await stopGateway();
+    } catch (error) {
+      // 中文：停止网关若只完成了一半，先尝试恢复旧版本服务，再把原始错误交给界面。
+      // English: If gateway shutdown is only partially completed, restore the old service before
+      // returning the original update error to the renderer.
+      await restoreGatewayAfterUpdateFailure(error);
+      throw error;
+    }
     emitUpdateProgress({ stage: "backing-up", percent: 100 });
-    await stopGateway();
     let backup;
     try {
       backup = createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion: release.latestVersion });
     } catch (error) {
-      await startGateway().catch(() => {});
+      await restoreGatewayAfterUpdateFailure(error);
       throw error;
     }
-    emitUpdateProgress({ stage: "installing", percent: 100, backupRoot: backup.backupRoot });
+    emitUpdateProgress({ stage: "installing", percent: 100 });
     let child;
     try {
       child = await new Promise((resolve, reject) => {
@@ -397,18 +530,31 @@ async function downloadAndInstallLatestUpdate() {
     } catch (error) {
       // 中文：安装器若未真正启动，立即恢复当前网关，用户可以继续使用旧版本并重试。
       // English: If the installer never starts, restore the current gateway so the old version remains usable.
-      await startGateway().catch(() => {});
+      await restoreGatewayAfterUpdateFailure(error);
       throw error;
     }
     child.unref();
+    installerHandedOff = true;
     quitting = true;
     shutdownComplete = true;
     setTimeout(() => app.quit(), 250);
-    return { ok: true, updateAvailable: true, launched: true, version: release.latestVersion, backupRoot: backup.backupRoot };
+    return { ok: true, updateAvailable: true, launched: true, version: release.latestVersion };
   })().catch((error) => {
-    emitUpdateProgress({ stage: "error", percent: 0, error: String(error?.message || error) });
+    const message = redactLocalUpdatePaths(error?.message || error);
+    if (error && typeof error === "object" && typeof error.message === "string") error.message = message;
+    emitUpdateProgress({ stage: "error", percent: 0, error: message });
     throw error;
-  }).finally(() => { updateRun = null; });
+  }).finally(() => {
+    updateRun = null;
+    if (updateSyncPaused && !installerHandedOff) {
+      updateSyncPaused = false;
+      syncManager?.resumeAfterUpdate();
+    }
+    if (updateSyncDirty && !installerHandedOff) {
+      updateSyncDirty = false;
+      scheduleMajorSync("after-update");
+    } else if (installerHandedOff) updateSyncDirty = false;
+  });
   return updateRun;
 }
 
@@ -440,8 +586,21 @@ function refreshTrayMenu() {
     { type: "separator" },
     { label: english ? "Start with Windows" : "开机启动", type: "checkbox", checked: settings.autoLaunch, click: (item) => updateDesktopSettings({ autoLaunch: item.checked }) },
     { type: "separator" },
-    { label: english ? "Quit" : "退出", click: () => { quitting = true; app.quit(); } },
+    { label: english ? "Quit" : "退出", click: () => requestAppQuit() },
   ]));
+}
+
+// 中文：更新期间拒绝用户主动退出，避免下载、同步或备份被桌面进程提前终止；更新自己启动安装器时会先标记 quitting。
+// English: Block user-initiated quit while an update is downloading, syncing, or backing up;
+// the update's installer hand-off sets quitting first and is therefore allowed to exit.
+function requestAppQuit() {
+  if (updateRun && !quitting) {
+    mainWindow?.show();
+    return false;
+  }
+  quitting = true;
+  app.quit();
+  return true;
 }
 
 function createTray() {
@@ -506,15 +665,27 @@ async function stopGateway() {
 }
 
 async function resetGateway() {
-  const previousPort = currentGatewayPort;
-  const nextPort = await chooseGatewayPort(previousPort, { exclude: previousPort, randomize: true });
-  await stopGateway();
-  await startGateway(nextPort);
-  return { ok: true, previousPort, randomized: nextPort !== previousPort, restartedAt: new Date().toISOString(), ...gatewayInfo() };
+  if (updateRun) throw new Error("gateway_reset_blocked_during_update");
+  if (gatewayResetRun) return gatewayResetRun;
+  const run = (async () => {
+    const previousPort = currentGatewayPort;
+    const nextPort = await chooseGatewayPort(previousPort, { exclude: previousPort, randomize: true });
+    if (updateRun) throw new Error("gateway_reset_blocked_during_update");
+    await stopGateway();
+    await startGateway(nextPort);
+    return { ok: true, previousPort, randomized: nextPort !== previousPort, restartedAt: new Date().toISOString(), ...gatewayInfo() };
+  })();
+  let trackedRun;
+  trackedRun = run.finally(() => {
+    if (gatewayResetRun === trackedRun) gatewayResetRun = null;
+  });
+  gatewayResetRun = trackedRun;
+  return trackedRun;
 }
 
 function createWindow() {
   const settings = readDesktopSettings();
+  mainWindowReady = false;
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 840,
@@ -532,8 +703,21 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false },
   });
   mainWindow.loadFile(path.join(__dirname, "..", "renderer", "dist", "index.html"));
-  mainWindow.once("ready-to-show", () => { if (!process.argv.includes("--hidden") && !settings.startMinimized) mainWindow.show(); });
+  mainWindow.once("ready-to-show", () => {
+    mainWindowReady = true;
+    const shouldShow = pendingShowWindow || (!process.argv.includes("--hidden") && !settings.startMinimized);
+    pendingShowWindow = false;
+    if (shouldShow) mainWindow.show();
+  });
   mainWindow.on("close", (event) => {
+    if (updateRun && !quitting) {
+      // 中文：更新期间禁止关闭窗口；页面可以切换，但桌面进程和网关必须继续运行。
+      // English: Do not close the window during an update; pages may change, but the desktop
+      // process and gateway must remain alive until the update settles.
+      event.preventDefault();
+      if (!mainWindow.isDestroyed()) mainWindow.show();
+      return;
+    }
     if (!quitting && readDesktopSettings().closeToTray) {
       event.preventDefault();
       // 中文：关闭到托盘属于重大事件；只在同步已启用且已连接时触发，失败不影响窗口隐藏。
@@ -543,6 +727,10 @@ function createWindow() {
       mainWindow.hide();
     }
   });
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+    mainWindowReady = false;
+  });
 }
 
 ipcMain.handle("open-data-folder", () => shell.openPath(gatewayDataRoot));
@@ -550,8 +738,12 @@ ipcMain.handle("get-desktop-settings", () => ({ ...readDesktopSettings(), loginI
 ipcMain.handle("set-desktop-settings", (_event, patch) => updateDesktopSettings(patch || {}));
 ipcMain.handle("get-gateway-info", () => gatewayInfo());
 ipcMain.handle("reset-gateway", async () => resetGateway());
-ipcMain.handle("check-for-updates", async () => fetchLatestRelease());
+ipcMain.handle("check-for-updates", async () => cacheUpdateRelease(await fetchLatestRelease()));
 ipcMain.handle("download-and-install-update", async () => downloadAndInstallLatestUpdate());
+// 中文：只返回更新状态快照，不把本机安装器路径或其他无关敏感数据发给渲染层；查询不会启动或取消更新。
+// English: Return only the update snapshot without exposing the local installer path or unrelated
+// sensitive data; querying never starts or cancels an update.
+ipcMain.handle("get-update-progress", () => ({ active: Boolean(updateRun), status: updateStatus, sequence: updateProgressSequence, progress: lastUpdateProgress, release: lastUpdateRelease }));
 ipcMain.handle("get-sync-status", async () => (await initializeSyncManager()).status());
 ipcMain.handle("github-connect", async (_event, value) => (await initializeSyncManager()).connect({
   token: String(value?.token || ""),
@@ -588,11 +780,14 @@ ipcMain.handle("import-client-key", async (event, value) => {
 });
 ipcMain.on("show-window", () => mainWindow?.show());
 ipcMain.on("hide-window", () => mainWindow?.hide());
-ipcMain.on("quit-app", () => { quitting = true; app.quit(); });
+ipcMain.on("quit-app", () => { requestAppQuit(); });
 
 if (!singleInstance) app.quit();
 else {
-  app.on("second-instance", () => mainWindow?.show());
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindowReady) mainWindow.show();
+    else pendingShowWindow = true;
+  });
   app.whenReady().then(async () => {
     if (!await resolveStartupRecovery()) return;
     migrateLegacyDataOnce();
@@ -604,9 +799,16 @@ else {
     createWindow();
     void syncManager.startup();
     powerMonitor.on("resume", () => { void syncManager?.resume().catch(() => {}); });
-    app.on("activate", () => { if (!mainWindow) createWindow(); else mainWindow.show(); });
+  app.on("activate", () => { if (!mainWindow || mainWindow.isDestroyed()) createWindow(); else mainWindow.show(); });
   }).catch((error) => { console.error(error); app.quit(); });
   app.on("before-quit", (event) => {
+    if (updateRun && !quitting) {
+      // 中文：窗口关闭按钮绕过托盘菜单时也必须阻止更新被中断。
+      // English: The window close button must obey the same update-in-progress guard as the tray.
+      event.preventDefault();
+      mainWindow?.show();
+      return;
+    }
     quitting = true;
     if (shutdownComplete) return;
     event.preventDefault();

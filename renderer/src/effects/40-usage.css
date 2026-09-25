@@ -1,0 +1,131 @@
+/*
+ * Usage view boundary.
+ * Analytics surfaces are content-first and static; chart colors and control states remain
+ * semantic without decorative motion.
+ */
+
+/* Usage analytics: content-first, restrained and static. */
+.usage-view { --usage-gold: #d9b968; --usage-purple: #9470b8; }
+
+.usage-view .lifetime-card {
+  border-color: rgb(112 83 129 / 48%) !important;
+  background: linear-gradient(116deg, #17151c 0%, #1b1721 48%, #141419 100%) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%), 0 14px 34px rgb(0 0 0 / 15%) !important;
+}
+
+.usage-view .lifetime-card::before,
+.usage-view .lifetime-card::after,
+.usage-view .usage-toolbar::before,
+.usage-view .usage-toolbar::after,
+.usage-view .usage-panel::before,
+.usage-view .usage-panel::after,
+.usage-view .usage-summary-grid article::before,
+.usage-view .usage-summary-grid article::after { content: none !important; animation: none !important; }
+
+.usage-view .lifetime-icon,
+.usage-view .summary-icon {
+  border-color: rgb(190 147 74 / 26%) !important;
+  background: linear-gradient(145deg, #292033, #1d1923) !important;
+  color: #dbbd70 !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 5%), 0 0 12px rgb(130 79 170 / 9%) !important;
+  animation: none !important;
+}
+
+.usage-view .lifetime-icon svg,
+.usage-view .summary-icon svg,
+.usage-view .usage-refresh svg { color: #dbbd70 !important; filter: none !important; }
+
+.usage-view .lifetime-breakdown > div,
+.usage-view .usage-summary-grid article {
+  border-color: rgb(80 65 92 / 50%) !important;
+  background: linear-gradient(145deg, #17161c, #131318) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 2%), 0 7px 18px rgb(0 0 0 / 9%) !important;
+  animation: none !important;
+}
+
+.usage-view .usage-toolbar {
+  border-color: rgb(118 89 133 / 48%) !important;
+  background: #15141a !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%), 0 9px 24px rgb(0 0 0 / 12%) !important;
+}
+
+.usage-view .usage-panel {
+  border-color: rgb(82 67 95 / 56%) !important;
+  background: linear-gradient(145deg, #16151b, #121217) !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 2%), 0 13px 32px rgb(0 0 0 / 13%) !important;
+}
+
+.usage-view .usage-panel > header {
+  border-bottom-color: rgb(84 67 98 / 38%) !important;
+  background: rgb(76 47 100 / 4%) !important;
+}
+
+.usage-view .usage-panel > header span { color: #c7a75d !important; }
+
+.usage-view .range-tabs button,
+.usage-view .record-density-toggle button,
+.usage-view .usage-select-trigger,
+.usage-view .usage-select-option,
+.usage-view .usage-refresh {
+  border-color: rgb(93 69 111 / 62%) !important;
+  background: #1b1722 !important;
+  background-image: none !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 3%) !important;
+  animation: none !important;
+}
+
+.usage-view .range-tabs button::before,
+.usage-view .range-tabs button::after,
+.usage-view .record-density-toggle button::before,
+.usage-view .record-density-toggle button::after,
+.usage-view .usage-select-trigger::before,
+.usage-view .usage-select-trigger::after,
+.usage-view .usage-select-option::before,
+.usage-view .usage-select-option::after { content: none !important; animation: none !important; }
+
+.usage-view .range-tabs button:hover,
+.usage-view .range-tabs button:focus-visible,
+.usage-view .record-density-toggle button:hover,
+.usage-view .record-density-toggle button:focus-visible,
+.usage-view .usage-select-trigger:hover,
+.usage-view .usage-select-trigger:focus-visible,
+.usage-view .usage-select-option:hover,
+.usage-view .usage-select-option:focus-visible,
+.usage-view .usage-refresh:hover:not(:disabled),
+.usage-view .usage-refresh:focus-visible:not(:disabled) {
+  border-color: rgb(190 147 74 / 66%) !important;
+  background: #211b27 !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 4%), 0 0 0 1px rgb(190 147 74 / 6%) !important;
+}
+
+.usage-view .range-tabs button.active,
+.usage-view .record-density-toggle button.active,
+.usage-view .usage-select.is-open .usage-select-trigger,
+.usage-view .usage-select-option.selected {
+  border-color: rgb(203 160 78 / 72%) !important;
+  background: linear-gradient(108deg, #2b2030, #34262f) !important;
+  color: #ead493 !important;
+  box-shadow: inset 0 0 0 1px rgb(215 174 92 / 7%) !important;
+}
+
+.usage-view .usage-select-menu {
+  display: grid;
+  min-width: max(100%, 158px);
+  gap: 4px;
+  padding: 8px !important;
+  border-color: rgb(115 84 130 / 62%) !important;
+  border-radius: 12px !important;
+  background: #17141c !important;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 36%), inset 0 1px rgb(255 255 255 / 3%) !important;
+}
+
+.usage-view .usage-select-option {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 9px;
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+
+/* Settings controls: keep the copy action rectangular and make safe update unmistakable. */
+

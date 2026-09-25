@@ -1,0 +1,271 @@
+/*
+ * Control-state boundary.
+ * Dropdown shells are static; only the reasoning menu entrance may settle. z-index and
+ * overflow rules exist solely to keep open menus above adjacent cards.
+ */
+
+/* Reasoning dropdown: static control shell; only the menu settles in. */
+.custom-reasoning-control,
+.custom-reasoning-control:hover,
+.custom-reasoning-control:focus-within,
+.custom-reasoning-control.is-open {
+  transform: none !important;
+  animation: none !important;
+  background-image: var(--top-control-fill) !important;
+  box-shadow: none !important;
+}
+
+.custom-reasoning-control > .icon,
+.reasoning-select-trigger,
+.reasoning-select-trigger .icon {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
+}
+
+.custom-reasoning-control { flex: 0 0 auto; }
+
+/* Keep the longest reasoning label fully visible beside the chevron. */
+.reasoning-select-trigger {
+  min-width: 0 !important;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.reasoning-select-trigger > span {
+  flex: 0 0 auto;
+  min-width: max-content;
+  white-space: nowrap;
+}
+
+/* All reasoning labels use the same gold face; purple remains a surface color only. */
+.reasoning-select-trigger > span,
+.reasoning-menu button > span,
+.menu-select-trigger > span,
+.settings-level-menu .menu-select-option > span,
+.reasoning-form-menu .menu-select-option > span {
+  color: #f4cf82 !important;
+  font-weight: 800;
+  letter-spacing: .45px;
+  text-shadow: 0 1px 0 rgb(255 240 180 / 65%), 0 2px 6px rgb(217 173 98 / 28%);
+}
+
+/* The client-key card's reasoning value is centered beneath its field label. */
+.key-card-details > div:nth-child(2) {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+}
+
+.key-card-details > div:nth-child(2) .level-chip {
+  align-self: center;
+}
+
+/* Form menus use the same dimensions and gold-edged treatment as settings menus. */
+.form-menu-select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.form-menu-select .menu-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  border-color: rgb(115 84 145 / 72%);
+  background: #111116 !important;
+  color: #f4cf82;
+}
+
+.form-menu-select .menu-select-menu {
+  right: 0;
+  left: 0;
+  min-width: 100%;
+  width: 100%;
+  max-width: none;
+  border-color: rgb(203 157 73 / 88%) !important;
+}
+
+/* Custom select menus use the same dark glass language as the reasoning menu. */
+.menu-select {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.menu-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  min-width: 128px;
+  padding: 0 10px;
+  border: 1px solid rgb(115 84 145 / 72%);
+  border-radius: 9px;
+  background: linear-gradient(112deg, #17121f, #251736 58%, #17121f) !important;
+  color: #e3d4ef;
+  font-size: 10.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu-select-trigger:hover:not(:disabled),
+.menu-select-trigger:focus-visible,
+.menu-select.is-open .menu-select-trigger {
+  border-color: rgb(220 174 83 / 78%);
+  background: linear-gradient(112deg, #261b2b, #3b2544 58%, #261b2b) !important;
+  box-shadow: inset 0 1px rgb(255 237 183 / 12%), 0 0 12px rgb(213 157 62 / 12%);
+  outline: none;
+}
+
+.menu-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-select-trigger .icon { flex: 0 0 auto; color: #efc86d !important; }
+.menu-select-trigger:disabled { cursor: wait; opacity: .6; }
+.settings-level-menu .menu-select-trigger { min-width: 138px; }
+.catalog-route-menu { min-width: 170px; }
+
+.menu-select-menu {
+  position: absolute;
+  z-index: 25;
+  top: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  min-width: 100%;
+  width: max-content;
+  max-width: 270px;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid rgb(129 91 156 / 78%);
+  border-radius: 11px;
+  background: linear-gradient(145deg, #24192e, #17131e 82%) !important;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%), inset 0 1px rgb(255 239 188 / 7%);
+}
+
+.menu-select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #c8bdce;
+  font-size: 10.5px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu-select-option:hover,
+.menu-select-option:focus-visible,
+.menu-select-option.selected {
+  border-color: rgb(202 153 71 / 74%);
+  background: linear-gradient(108deg, rgb(104 66 40 / 74%), rgb(67 39 78 / 78%));
+  color: #f3d886;
+  outline: none;
+}
+
+.menu-select-option .icon { flex: 0 0 auto; color: #efc86d !important; }
+
+/* Keep both dropdowns above the following cards and buttons instead of letting the
+ * surrounding panel stacking layers clip their options. */
+.catalog-toolbar {
+  position: relative;
+  z-index: 20 !important;
+  overflow: visible !important;
+}
+
+.catalog-toolbar .select-control,
+.catalog-toolbar .catalog-route-menu {
+  position: relative;
+  z-index: 40 !important;
+}
+
+.catalog-route-menu .menu-select-menu {
+  min-width: 210px;
+}
+
+.setting-line {
+  position: relative;
+  z-index: 8 !important;
+  overflow: visible !important;
+}
+
+.settings-level-menu {
+  position: relative;
+  z-index: 30 !important;
+}
+
+.settings-reasoning-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(138px, 138px);
+  align-items: center;
+  justify-items: stretch;
+  gap: 14px;
+}
+
+.settings-reasoning-line > div {
+  width: auto;
+}
+
+.settings-reasoning-line > .settings-level-menu { justify-self: end; width: 138px; }
+
+.settings-level-menu .menu-select-menu {
+  right: 0;
+  left: auto;
+  min-width: 138px;
+}
+
+/* Settings and model-catalog menus share the gold-edged treatment used by the
+ * top-level reasoning menu.  Usage analytics keeps its own menu styling below. */
+.settings-level-menu .menu-select-menu,
+.catalog-route-menu .menu-select-menu {
+  border-color: rgb(203 157 73 / 88%) !important;
+  box-shadow: 0 16px 34px rgb(0 0 0 / 42%), 0 0 0 1px rgb(239 194 92 / 10%), inset 0 1px rgb(255 239 188 / 10%) !important;
+}
+
+.settings-level-menu .menu-select-option:hover,
+.settings-level-menu .menu-select-option:focus-visible,
+.settings-level-menu .menu-select-option.selected,
+.catalog-route-menu .menu-select-option:hover,
+.catalog-route-menu .menu-select-option:focus-visible,
+.catalog-route-menu .menu-select-option.selected {
+  border-color: rgb(218 171 78 / 90%) !important;
+  background: linear-gradient(108deg, rgb(104 66 40 / 78%), rgb(67 39 78 / 82%)) !important;
+  color: #f3d886 !important;
+}
+
+/* Each settings card is its own stacking context; lift only the card whose menu is
+ * open so the options can pass over the following update card. */
+.settings-card:has(.settings-level-menu.is-open) {
+  z-index: 30 !important;
+  overflow: visible !important;
+  /* Keep the dropdown above the next card without casting the hovered card's dark shadow over it. */
+  box-shadow: inset 0 1px rgb(217 173 98 / 2%) !important;
+  transition-property: border-color, background-color, transform !important;
+}
+
+/* Key state feedback: enabling is gold, disabling is red, never green by default. */
+.toast-warning {
+  border-color: rgb(193 145 62 / 78%) !important;
+  background: linear-gradient(110deg, #3c2a1a, #2b2028) !important;
+  color: #f0dc9d !important;
+}
+
+.toast-warning .toast-dot {
+  background: #efc86d !important;
+  box-shadow: 0 0 8px rgb(239 200 109 / 80%) !important;
+}
+
+.reasoning-menu { animation: ef-menu-settle .16s ease-out both; }
+

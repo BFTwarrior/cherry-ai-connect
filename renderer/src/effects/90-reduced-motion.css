@@ -1,0 +1,52 @@
+/*
+ * Accessibility motion boundary.
+ * This file is last so it wins over every normal-mode animation declaration while leaving
+ * static color, layout, focus, and state affordances intact.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-item.active,
+  .client-key-card::before,
+  .client-key-card::after,
+  .route-card::before,
+  .route-card::after,
+  .route-actions > .button-secondary,
+  .route-actions > .button-secondary::before,
+  .route-actions > .icon-button:not(.danger),
+  .route-actions > .icon-button:not(.danger)::before,
+  .key-quick-actions > .quick-copy-button,
+  .key-quick-actions > .quick-copy-button::before,
+  .key-card-actions > .icon-text-button:not(.danger-text),
+  .key-card-actions > .icon-text-button:not(.danger-text)::before,
+  .client-key-card .key-card-actions .client-import-button,
+  .client-key-card .key-card-actions .client-import-button::before,
+  .client-key-card .key-card-actions .client-import-button::after,
+  .client-import-all-button,
+  .client-import-all-button::before,
+  .client-import-all-button::after,
+  .client-key-card .key-card-actions .client-import-button:hover,
+  .client-import-all-button:hover,
+  .reasoning-menu { animation: none !important; transition: none !important; transform: none !important; }
+  /*
+   * Reduced-motion boundary:
+   * - fireflies are decorative particles, so the layer is hidden;
+   * - metric sparks are interaction particles, so both their container and emitters stay off;
+   * - will-change is cleared so the browser does not reserve animation resources.
+   */
+  .nav-item.active .nav-fireflies {
+    display: none !important;
+  }
+
+  .nav-item.active .nav-fireflies i,
+  .metric-sparks i {
+    animation: none !important;
+    transition: none !important;
+    will-change: auto !important;
+  }
+
+  .metric-sparks {
+    opacity: 0 !important;
+    transition: none !important;
+  }
+}
+

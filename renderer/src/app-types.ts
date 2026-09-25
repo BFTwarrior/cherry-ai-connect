@@ -7,6 +7,7 @@ export type View = "overview" | "providers" | "models" | "keys" | "usage" | "clo
 export type Language = "zh" | "en";
 export type ReasoningLevel = "low" | "medium" | "high" | "xhigh" | "max" | "unchanged";
 export type SyncStatus = "ok" | "error" | "never";
+export type ModelListStatus = "ok" | "unsupported" | "rate_limited" | "auth" | "timeout" | "network" | "invalid-response" | "error" | "never";
 export type ClientRequestStatus = "never" | "pending" | "ok" | "error";
 
 export type Provider = {
@@ -16,10 +17,12 @@ export type Provider = {
   models: string[];
   modelCount: number;
   enabled: boolean;
+  routeVerified?: boolean;
   hasApiKey: boolean;
   modelFetchedAt: string;
   lastTestAt?: string;
   lastTestStatus?: SyncStatus;
+  modelListStatus?: ModelListStatus;
   lastLatencyMs?: number;
   lastError?: string;
   clientKeyCount?: number;

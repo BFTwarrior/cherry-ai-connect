@@ -55,7 +55,34 @@ function readJson(file, fallback) {
   catch { return fallback; }
 }
 
+function abortError(signal) {
+  if (signal?.reason instanceof Error) return signal.reason;
+  const error = new Error("update_sync_aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function withAbort(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError(signal));
+  return new Promise((resolve, reject) => {
+    const cleanup = () => signal.removeEventListener("abort", onAbort);
+    const onAbort = () => { cleanup(); reject(abortError(signal)); };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => { cleanup(); resolve(value); },
+      (error) => { cleanup(); reject(error); },
+    );
+  });
+}
+
 export class SyncManager {
+  #syncInFlight = null;
+  #controlInFlight = null;
+  #updatePaused = false;
+  #updateAbortSignal = null;
+  #updateAbortListener = null;
+
   constructor({ dataDir, source, protect, unprotect, notify = () => {}, providerFactory } = {}) {
     if (!dataDir || !source || typeof protect !== "function" || typeof unprotect !== "function") throw new Error("sync_manager_dependencies_required");
     this.dataDir = dataDir;
@@ -142,7 +169,7 @@ export class SyncManager {
     // remain owned by the vault store and engine.
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
-    if (!this.state.enabled) return;
+    if (!this.state.enabled || this.#updatePaused) return;
     const nextSyncAt = new Date(Date.now() + INTERVAL_MS).toISOString();
     this.#publish({ nextSyncAt });
     this.timer = setTimeout(() => {
@@ -171,6 +198,9 @@ export class SyncManager {
   }
 
   async connect({ token, repository = "cherry-ai-connect-sync", password = "", syncUpstream = true } = {}) {
+    if (this.#updatePaused) throw new Error("sync_paused_for_update");
+    const releaseControlOperation = this.#acquireControlOperation();
+    try {
     // 中文：连接顺序先探测仓库和远端数据，再决定初始化本机 vault；避免盲目创建新密钥
     // 覆盖用户原来的同步身份。
     // English: Inspect the repository and remote dataset before initializing the local vault;
@@ -217,9 +247,9 @@ export class SyncManager {
     });
     let result;
     try {
-      result = await this.engine.sync("connect", latest && pristine
+      result = await this.#startSync("connect", latest && pristine
         ? { adoptRemoteIfPristine: true, configPolicy: "remote", allowGenerateClientSecrets: true, password: String(password), syncUpstream }
-        : { syncUpstream });
+        : { syncUpstream }, { allowDuringUpdate: true });
     } catch (error) {
       // 中文：连接已建立时仍返回状态，尤其要保证新生成的恢复码能展示给用户。
       // English: Return the connected state so a newly generated recovery code is never hidden by a first-sync failure.
@@ -228,23 +258,29 @@ export class SyncManager {
     }
     this.#schedule();
     return { ok: true, recoveryCode, status: this.status(), sync: result };
+    } finally {
+      releaseControlOperation();
+    }
   }
 
   async unlockVault({ password, recoveryCode } = {}) {
     // 中文：解锁成功才清理错误状态；失败时保留 vault 错误，防止 UI 误报同步已恢复。
     // English: Clear error state only after a successful unlock; preserve vault errors on failure
     // so the UI cannot claim that sensitive sync has recovered prematurely.
+    if (this.#updatePaused) throw new Error("sync_paused_for_update");
     const result = await this.vault.unlock({ password, recoveryCode });
     this.#publish({ error: "", errorCode: "" });
     return { ok: true, ...result, status: this.status() };
   }
 
-  async syncNow(reason = "manual", options = {}) {
-    // 中文：每次主动同步都重新创建 Provider/Engine，保证读取到最新凭据和本地 vault 状态。
-    // English: Recreate the provider/engine for each explicit sync so the latest credential and
-    // local vault state are always used.
-    if (!this.state.account) throw new Error("github_auth_required");
+  async #runSync(reason, options = {}) {
+    // 中文：这是一个已经取得管理器同步槽位的完整轮次；所有账本和 manifest 写入都在此轮次内完成。
+    // English: This is a complete manager-owned round; all ledger and manifest writes happen
+    // inside this exclusively coordinated round.
     try {
+      // 中文：每次真正开始的同步都重新创建 Provider/Engine，读取最新凭据和本地 vault 状态。
+      // English: Recreate the provider/engine for each actual round so it reads the latest
+      // credential and local vault state.
       const provider = this.#provider();
       this.engine = this.#makeEngine(provider);
       const result = await this.engine.sync(reason, { syncUpstream: Boolean(this.state.account && this.state.syncUpstream !== false), ...options });
@@ -257,11 +293,112 @@ export class SyncManager {
     }
   }
 
+  #startSync(reason, options = {}, { allowDuringUpdate = false } = {}) {
+    // 中文：同一轮的手动、定时、配置变更和更新前调用共享同一个 Promise；首个调用的 reason/options
+    // 决定实际执行，加入者得到完全相同的成功状态或失败结果，不会启动第二个 Engine。
+    // English: Manual, scheduled, config-change, and before-update calls in one round share one
+    // Promise. The first call owns reason/options; joiners receive the exact same outcome and
+    // never start another engine.
+    if (this.#updatePaused && !allowDuringUpdate) return Promise.reject(new Error("sync_paused_for_update"));
+    if (this.#syncInFlight) return this.#syncInFlight;
+    if (!this.state.account) return Promise.reject(new Error("github_auth_required"));
+
+    const round = this.#runSync(reason, options);
+    const coordinated = round.finally(() => {
+      // 中文：仅清理当前轮次，避免旧轮次的 finally 误清理新轮次的协调槽位。
+      // English: Clear only this round so an older finally handler cannot release a newer round.
+      if (this.#syncInFlight === coordinated) this.#syncInFlight = null;
+    });
+    this.#syncInFlight = coordinated;
+    return coordinated;
+  }
+
+  syncNow(reason = "manual", options = {}) {
+    if (this.#updatePaused) return Promise.reject(new Error("sync_paused_for_update"));
+    return this.#startSync(reason, options);
+  }
+
+  async pauseForUpdate() {
+    // 中文：先封锁新触发并撤销定时器，再等待已有轮次完成，避免更新和同步并行读写。
+    // English: Block new triggers and clear the timer before waiting for the active round, so an
+    // update cannot overlap synchronization reads or writes.
+    this.#updatePaused = true;
+    if (this.timer) clearTimeout(this.timer);
+    this.timer = null;
+    try {
+      if (this.#controlInFlight) await this.#controlInFlight;
+      if (this.#syncInFlight) await this.#syncInFlight;
+      return this.status();
+    } catch (error) {
+      this.resumeAfterUpdate();
+      throw error;
+    }
+  }
+
+  async syncBeforeUpdate({ signal } = {}) {
+    // 中文：更新专用最后一轮可在暂停态运行；失败或取消会自动恢复定时同步，成功则保持暂停，
+    // 由更新流程结束/取消时调用 resumeAfterUpdate。
+    // English: Run the update-only final round while paused. Failure or cancellation restores
+    // scheduled sync; success stays paused until the update flow calls resumeAfterUpdate.
+    if (signal?.aborted) throw abortError(signal);
+    try {
+      await withAbort(this.pauseForUpdate(), signal);
+      const finalSync = this.state.account
+        ? this.#startSync("before-update", {}, { allowDuringUpdate: true })
+        : Promise.resolve(this.status());
+      const status = await withAbort(finalSync, signal);
+      if (signal) {
+        this.#clearUpdateAbortWatch();
+        this.#updateAbortSignal = signal;
+        this.#updateAbortListener = () => this.resumeAfterUpdate();
+        signal.addEventListener("abort", this.#updateAbortListener, { once: true });
+        if (signal.aborted) this.resumeAfterUpdate();
+      }
+      return status;
+    } catch (error) {
+      this.resumeAfterUpdate();
+      throw error;
+    }
+  }
+
+  resumeAfterUpdate() {
+    // 中文：恢复普通触发并按原有启用状态重建定时器；outbox 未提交项由下轮继续处理。
+    // English: Re-enable normal triggers and recreate the timer when sync is enabled; the next
+    // round will continue any durable outbox entries that were not committed.
+    this.#clearUpdateAbortWatch();
+    this.#updatePaused = false;
+    this.#schedule();
+    return this.status();
+  }
+
+  #clearUpdateAbortWatch() {
+    this.#updateAbortSignal?.removeEventListener("abort", this.#updateAbortListener);
+    this.#updateAbortSignal = null;
+    this.#updateAbortListener = null;
+  }
+
+  #acquireControlOperation() {
+    // 中文：连接和冲突处理包含 ensureReady、vault 写入和配置写入，不能只保护最后一次 engine.sync。
+    // English: Connect and conflict resolution include provider inspection, vault writes, and
+    // config writes; protecting only the final engine.sync would leave a data-race window.
+    if (this.#controlInFlight) throw new Error("sync_control_operation_in_flight");
+    let release;
+    const operation = new Promise((resolve) => { release = resolve; });
+    this.#controlInFlight = operation;
+    return () => {
+      if (this.#controlInFlight === operation) this.#controlInFlight = null;
+      release();
+    };
+  }
+
   async resolveConflict({ choice, password = "", recoveryCode = "" } = {}) {
     // 中文：只有明确选择“本地”时才准备本机 vault；选择“远端”由 engine 先认证远端 vault。
     // English: Prepare the local vault only for an explicit local choice; a remote choice lets
     // the engine authenticate the remote vault first.
     if (!this.state.account) throw new Error("github_auth_required");
+    if (this.#updatePaused) throw new Error("sync_paused_for_update");
+    const releaseControlOperation = this.#acquireControlOperation();
+    try {
     if (!['local', 'remote'].includes(String(choice))) throw new Error("sync_conflict_choice_required");
     const provider = this.#provider();
     this.engine = this.engine || this.#makeEngine(provider);
@@ -281,17 +418,22 @@ export class SyncManager {
         await this.vault.unlock({ password: String(password), recoveryCode: String(recoveryCode) });
       }
     }
-    const result = await this.engine.sync("resolve-conflict", {
+    if (this.#syncInFlight) await this.#syncInFlight;
+    const result = await this.#startSync("resolve-conflict", {
       configPolicy: String(choice),
       password: String(password),
       recoveryCode: String(recoveryCode),
-    });
+    }, { allowDuringUpdate: true });
     this.#publish({ ...result, enabled: this.state.enabled, error: "", errorCode: "" });
     this.#schedule();
     return { ok: true, recoveryCode: nextRecoveryCode, status: this.status() };
+    } finally {
+      releaseControlOperation();
+    }
   }
 
   async setEnabled(enabled) {
+    if (this.#updatePaused) throw new Error("sync_paused_for_update");
     if (enabled) {
       if (!this.state.account) throw new Error("github_auth_required");
       this.#publish({ enabled: true, state: "DIRTY" });
@@ -314,6 +456,7 @@ export class SyncManager {
     // 中文：断开只删除本机 GitHub token，不删除 vault、历史同步状态或远端资产，便于重新连接。
     // English: Disconnect removes only the local GitHub token. Vault files, sync state, and
     // remote assets remain so the account can be safely reconnected later.
+    if (this.#updatePaused) throw new Error("sync_paused_for_update");
     await this.setEnabled(false).catch(() => {});
     if (fs.existsSync(this.credentialFile)) fs.unlinkSync(this.credentialFile);
     this.engine = null;

@@ -3,7 +3,7 @@
  * English: One-click updater card. It presents the source and size while the main process owns
  * verification, pre-update sync, offline backup, and installer launch.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./ui/Icon";
 
 type Language = "zh" | "en";
@@ -22,30 +22,70 @@ function readableUpdateError(reason: unknown, language: Language) {
     ["update_installer_missing", "新版 Release 中没有找到 Windows 安装包。", "No Windows installer was found in the new Release."],
     ["update_github_network_timeout", "连接 GitHub 更新服务超时；这与上游 API Key 无关。请检查网络或代理后重试。", "The GitHub update service timed out; this is unrelated to an upstream API key. Check the network or proxy and retry."],
     ["update_github_network_unavailable", "暂时无法连接 GitHub 更新服务；这与上游 API Key 无关。请检查网络后重试。", "The GitHub update service is temporarily unavailable; this is unrelated to an upstream API key. Check the network and retry."],
-    ["sync_", "更新前云同步未完成；当前版本和本地数据保持不变。", "Pre-update cloud sync did not complete; the current version and local data remain unchanged."],
   ];
   const match = messages.find(([code]) => raw.includes(code));
-  if (!match && /(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|GitHub request timed out|connect timed out)/i.test(raw)) {
+  if (!match && /sync_/i.test(raw)) {
+    const syncCode = raw.match(/sync_[a-z0-9_]+/i)?.[0] || "unknown";
+    return tr(`更新前云同步未完成（${syncCode}）；当前版本和本地数据保持不变。`, `Pre-update cloud sync did not complete (${syncCode}); the current version and local data remain unchanged.`);
+  }
+  if (!match && /(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|ENOTFOUND|GitHub request timed out|connect timed out)/i.test(raw)) {
     return tr("连接 GitHub 更新服务超时或暂时不可用；这与上游 API Key 无关。请检查网络或代理后重试。", "The GitHub update service timed out or is temporarily unavailable; this is unrelated to an upstream API key. Check the network or proxy and retry.");
   }
   return match ? tr(match[1], match[2]) : raw;
 }
 
 export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { language: Language; currentVersion: string; checkTrigger?: number }) {
-  const tr = (zh: string, en: string) => language === "zh" ? zh : en;
+  const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState("");
+  const latestProgressSequence = useRef(0);
 
-  useEffect(() => window.desktop?.onUpdateProgress?.((next) => {
+  const applyProgress = useCallback((next: UpdateProgress) => {
+    if (next.sequence && next.sequence < latestProgressSequence.current) return;
+    if (next.sequence) latestProgressSequence.current = next.sequence;
     setProgress(next);
     if (next.stage === "error") {
       setInstalling(false);
       setError(next.error || tr("更新失败", "Update failed"));
+    } else if (next.stage === "completed") {
+      setInstalling(false);
+    } else {
+      setInstalling(true);
     }
-  }), [language]);
+  }, [tr]);
+
+  // 中文：更新任务属于主进程，页面切换只会卸载卡片，不应丢失任务状态。
+  // English: The update belongs to the main process; changing pages must not lose its state.
+  useEffect(() => {
+    let mounted = true;
+    const unsubscribe = window.desktop?.onUpdateProgress?.(applyProgress);
+    const progressPromise = window.desktop?.getUpdateProgress?.();
+    if (progressPromise) void progressPromise.then((snapshot: UpdateProgressSnapshot & { release?: UpdateCheckResult | null }) => {
+      if (!mounted) return;
+      const snapshotSequence = Math.max(Number(snapshot.sequence || 0), Number(snapshot.progress?.sequence || 0));
+      const snapshotIsCurrent = snapshotSequence >= latestProgressSequence.current;
+      if (snapshot.progress) applyProgress(snapshot.progress);
+      // 中文：状态和进度必须使用同一序号；旧快照不能覆盖切页后已收到的新事件。
+      // English: Status and progress share one sequence; an older snapshot cannot overwrite a
+      // newer live event received after the page remounted.
+      if (!snapshotIsCurrent) return;
+      setResult(snapshot.release || null);
+      // 中文：active 是主进程任务是否仍在运行的权威信号；即使切页恰好读到旧的 idle 状态，
+      // 也不能把更新重置成未开始。
+      // English: `active` is the authoritative main-process task signal; a stale idle status read
+      // during a remount must never reset an update that is still running.
+      if (snapshot.active && snapshot.status !== "error" && snapshot.status !== "completed") setInstalling(true);
+      else if (snapshot.status === "running") setInstalling(Boolean(snapshot.progress));
+      else if (snapshot.status === "error" || snapshot.status === "completed" || snapshot.status === "idle") setInstalling(false);
+    }).catch(() => {});
+    return () => {
+      mounted = false;
+      unsubscribe?.();
+    };
+  }, [applyProgress]);
 
   const check = useCallback(async () => {
     if (!window.desktop?.checkForUpdates) return setError(tr("当前环境不支持检查更新", "Update checks are unavailable in this environment"));
@@ -67,7 +107,11 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     setError("");
     try {
       const next = await window.desktop.downloadAndInstallUpdate();
-      if (!next.updateAvailable) await check();
+      if (!next.updateAvailable) {
+        setInstalling(false);
+        setProgress(null);
+        await check();
+      }
     } catch (reason) {
       setInstalling(false);
       setError(readableUpdateError(reason, language));
@@ -80,6 +124,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     syncing: tr("正在完成更新前同步", "Completing pre-update sync"),
     "backing-up": tr("正在备份本地数据和客户端 Key", "Backing up local data and client keys"),
     installing: tr("安装器已启动，软件即将重新打开", "Installer launched; the app will reopen"),
+    completed: tr("更新检查已完成", "Update check completed"),
     error: tr("更新未完成", "Update did not finish"),
   }[progress?.stage || "checking"]), [language, progress]);
 

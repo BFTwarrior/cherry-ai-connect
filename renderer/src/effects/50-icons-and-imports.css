@@ -1,0 +1,226 @@
+/*
+ * Secondary surfaces boundary.
+ * Shared icon treatment and client-import controls are visual-only; disabled states keep
+ * their semantic contrast and do not inherit action motion accidentally.
+ */
+
+/* Settings controls: keep the copy action rectangular and make safe update unmistakable. */
+.connection-box .settings-copy-button {
+  width: auto !important;
+  min-width: 72px;
+  min-height: 32px;
+  flex: 0 0 auto;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px !important;
+  border-radius: 9px !important;
+  white-space: nowrap;
+}
+
+.update-icon {
+  border: 1px solid rgb(201 155 70 / 48%);
+  background: linear-gradient(145deg, #35271a, #211a2d) !important;
+  box-shadow: inset 0 1px rgb(255 236 184 / 8%), 0 0 14px rgb(208 148 48 / 10%);
+}
+
+.update-icon .icon {
+  color: #efc86d !important;
+  filter: drop-shadow(0 0 4px rgb(222 165 66 / 22%));
+}
+
+/* Shared premium icon treatment. The overview's six large icon groups stay on their
+ * existing purple/blue/green/amber treatments; secondary pages use the update icon's
+ * restrained gold surface, fine border and soft perimeter halo. */
+.workspace-icon,
+.routing-icon,
+.banner-icon,
+.route-avatar,
+.key-symbol,
+.settings-icon,
+.empty-icon,
+.modal-icon,
+.confirm-icon,
+.lifetime-icon,
+.summary-icon,
+.account-avatar {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgb(201 155 70 / 48%) !important;
+  background: linear-gradient(145deg, #35271a, #211a2d) !important;
+  color: #efc86d !important;
+  box-shadow: inset 0 1px rgb(255 236 184 / 8%), 0 0 14px rgb(208 148 48 / 10%) !important;
+}
+
+.workspace-icon::before,
+.routing-icon::before,
+.banner-icon::before,
+.route-avatar::before,
+.key-symbol::before,
+.settings-icon::before,
+.empty-icon::before,
+.modal-icon::before,
+.confirm-icon::before,
+.lifetime-icon::before,
+.summary-icon::before,
+.account-avatar::before {
+  position: absolute;
+  z-index: -1;
+  inset: -6px;
+  border-radius: inherit;
+  background: radial-gradient(ellipse, rgb(229 170 65 / 28%), transparent 70%);
+  content: "";
+  filter: blur(6px);
+  opacity: .52;
+  pointer-events: none;
+}
+
+.workspace-icon > *,
+.routing-icon > *,
+.banner-icon > *,
+.route-avatar > *,
+.key-symbol > *,
+.settings-icon > *,
+.empty-icon > *,
+.modal-icon > *,
+.confirm-icon > *,
+.lifetime-icon > *,
+.summary-icon > *,
+.account-avatar > * {
+  position: relative;
+  z-index: 1;
+}
+
+.workspace-icon .icon,
+.routing-icon .icon,
+.banner-icon .icon,
+.route-avatar .icon,
+.key-symbol .icon,
+.settings-icon .icon,
+.empty-icon .icon,
+.modal-icon .icon,
+.confirm-icon .icon,
+.lifetime-icon svg,
+.summary-icon svg,
+.account-avatar .icon {
+  color: #efc86d !important;
+  filter: drop-shadow(0 0 4px rgb(222 165 66 / 22%));
+}
+
+.usage-view .usage-chart-shell { background: #121217 !important; }
+.usage-view .usage-grid-line { stroke: #29252f !important; }
+.usage-view .usage-line-total { stroke: #a978d6 !important; filter: none !important; }
+.usage-view .usage-line-input { stroke: #8b758f !important; }
+.usage-view .usage-line-output { stroke: #d6b464 !important; filter: none !important; }
+.usage-view .usage-line-cache { stroke: #9f7442 !important; }
+
+/* Bulk imports inherit the same standalone button effect as Create client key.
+ * Only the per-key imports receive the nested key-action treatment below. */
+.key-toolbar { align-items: center; gap: 12px; }
+.key-toolbar-title { display: grid; gap: 4px; min-width: 0; }
+.client-import-all-actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.key-card-actions { align-items: center; justify-content: flex-end; }
+.client-import-key-actions { display: flex; flex: 1 1 240px; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 7px; margin-right: auto; }
+.client-key-card .key-card-actions .client-import-button { width: max-content !important; }
+.client-import-all-button { min-width: 165px !important; font-size: 14px; }
+.client-import-mark { display: block; width: 15px; height: 15px; flex: 0 0 15px; }
+.client-import-mark.is-cherry { color: #f0a7c9; filter: drop-shadow(0 0 3px rgb(227 115 167 / 30%)); }
+.client-import-mark.is-ccswitch { color: #efc86d; filter: drop-shadow(0 0 3px rgb(222 165 66 / 24%)); }
+
+.client-key-card .key-card-actions .client-import-button {
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 6px !important;
+  min-height: 31px !important;
+  padding: 5px 9px !important;
+  border: 1px solid rgb(142 94 183 / 72%) !important;
+  border-radius: 8px !important;
+  color: #e8d8f3 !important;
+  font-size: 10px !important;
+  line-height: 1.2 !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 8%), 0 4px 12px rgb(0 0 0 / 12%) !important;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  cursor: pointer;
+}
+.client-key-card .key-card-actions .client-import-button::before {
+  position: absolute !important;
+  z-index: 0 !important;
+  inset: -62% !important;
+  width: auto !important;
+  height: auto !important;
+  border: 0 !important;
+  border-radius: 42% !important;
+  background:
+    radial-gradient(ellipse at 24% 68%, rgb(186 115 255 / 42%), transparent 42%),
+    radial-gradient(ellipse at 76% 28%, rgb(93 42 171 / 34%), transparent 44%),
+    radial-gradient(ellipse at 58% 74%, rgb(222 165 73 / 16%), transparent 34%) !important;
+  content: "" !important;
+  filter: none !important;
+  mix-blend-mode: screen !important;
+  opacity: .34;
+  pointer-events: none !important;
+  animation: cherry-primary-composited-smoke 8.4s ease-in-out infinite !important;
+  will-change: transform, opacity;
+}
+.client-key-card .key-card-actions .client-import-button:hover:not(:disabled),
+.client-key-card .key-card-actions .client-import-button:focus-visible:not(:disabled) {
+  border-color: rgb(245 198 103 / 94%) !important;
+  box-shadow: 0 8px 25px rgb(111 51 205 / 25%), 0 0 16px rgb(243 195 110 / 14%) !important;
+}
+.client-key-card .key-card-actions .client-import-button:disabled { cursor: not-allowed !important; opacity: .44 !important; filter: saturate(.55); }
+.client-import-button > .icon,
+.client-import-button > .client-import-label,
+.client-import-button > .client-import-target { position: relative; z-index: 1; }
+.client-import-button > .icon { color: #efc86d !important; }
+.client-import-label { white-space: nowrap; }
+.client-import-target {
+  display: inline;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  box-shadow: none;
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Single-key imports deliberately share the adjacent key action buttons' motion. */
+.client-key-card .key-card-actions .client-import-button {
+  border-color: rgb(113 74 158 / 76%) !important;
+  background-image: linear-gradient(108deg, #171020 0%, #3d2450 26%, #5a4026 49%, #47285c 73%, #171020 100%) !important;
+  background-size: 300% 100% !important;
+  box-shadow: inset 0 1px rgb(255 255 255 / 5%), 0 4px 12px rgb(0 0 0 / 10%) !important;
+  animation: ef-nested-liquid 8.6s ease-in-out infinite !important;
+}
+.client-key-card .key-card-actions .client-import-button::before {
+  inset: -42% auto -42% -64% !important;
+  width: 34% !important;
+  border-radius: 0 !important;
+  background: linear-gradient(106deg, transparent 8%, rgb(255 255 255 / 3%) 25%, rgb(255 250 235 / 32%) 49%, rgb(225 203 255 / 12%) 62%, transparent 84%) !important;
+  filter: blur(.45px) !important;
+  opacity: .4;
+  animation: ef-glass-pass 7.8s cubic-bezier(.42, .06, .58, .96) infinite !important;
+}
+.client-key-card .key-card-actions .client-import-button:hover:not(:disabled),
+.client-key-card .key-card-actions .client-import-button:focus-visible:not(:disabled) {
+  border-color: rgb(245 198 103 / 94%) !important;
+  box-shadow: inset 0 1px rgb(255 242 207 / 15%), 0 0 0 1px rgb(236 182 77 / 11%), 0 0 16px rgb(219 157 54 / 13%) !important;
+  animation-duration: 4.2s !important;
+}
+@media (max-width: 920px) {
+  .key-toolbar { align-items: flex-start; flex-direction: column; }
+  .client-import-all-actions { width: 100%; justify-content: flex-start; }
+  .client-import-key-actions { flex-basis: 100%; }
+}
+

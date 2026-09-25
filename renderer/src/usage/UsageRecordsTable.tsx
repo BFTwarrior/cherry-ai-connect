@@ -12,13 +12,15 @@ export type UsageRecord = {
   clientKeyName: string;
   providerId: string;
   providerName: string;
+  source?: "relay" | "codex-official" | string;
+  sourceLabel?: string;
   model: string;
   endpoint: string;
   reasoningLevel: string;
-  status: number;
-  durationMs: number;
-  ttftMs: number;
-  stream: boolean;
+  status: number | null;
+  durationMs: number | null;
+  ttftMs: number | null;
+  stream: boolean | null;
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
@@ -42,20 +44,26 @@ function formattedDate(value: string, language: Language) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString(language === "zh" ? "zh-CN" : "en-US", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
-function formattedDuration(value: number | undefined) {
+function formattedDuration(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
   const milliseconds = Number(value || 0);
   return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(2)}s` : `${Math.round(milliseconds)}ms`;
 }
 
-function latencyLevel(value: number, kind: "firstToken" | "total") {
+function latencyLevel(value: number | null, kind: "firstToken" | "total") {
+  // 中文：官方 session 汇总通常没有延迟字段，未知必须独立于“快”状态显示。
+  // English: Official session aggregates often lack latency fields; unknown must stay distinct
+  // from the fast state.
+  if (value === null || value === undefined) return "unknown";
   const threshold = LATENCY_THRESHOLDS[kind];
   if (value > threshold.slowMs) return "slow";
   if (value > threshold.attentionMs) return "attention";
   return "fast";
 }
 
-function LatencyValue({ value, kind, language }: { value: number; kind: "firstToken" | "total"; language: Language }) {
+function LatencyValue({ value, kind, language }: { value: number | null; kind: "firstToken" | "total"; language: Language }) {
   const level = latencyLevel(value, kind);
+  if (level === "unknown") return <div className="latency-value latency-unknown"><strong>—</strong><span>{language === "zh" ? "未知" : "Unknown"}</span></div>;
   const labels = language === "zh"
     ? { fast: "快", attention: "需关注", slow: "较慢" }
     : { fast: "Fast", attention: "Watch", slow: "Slow" };
@@ -66,14 +74,15 @@ export function UsageRecordsTable({ records, language, density }: { records: Usa
   const tr = (zh: string, en: string) => language === "zh" ? zh : en;
   return <div className={`usage-records-list mode-${density}`} aria-label={tr("实时请求记录", "Live request log")}>
     {records.map((record) => {
-      const successful = record.status >= 200 && record.status < 400;
+      const successful = record.status === null || (record.status >= 200 && record.status < 400);
+      const streamLabel = record.stream === true ? tr("流式", "Stream") : record.stream === false ? tr("非流式", "Standard") : tr("未知", "Unknown");
       return <article className={`usage-record-card ${successful ? "" : "request-row-error"}`} key={record.id}>
         <header className="usage-record-identity">
-          <div><small>{tr("时间", "Time")}</small><time>{formattedDate(record.at, language)}</time><em>{record.stream ? tr("流式", "Stream") : tr("非流式", "Standard")}</em></div>
-          <div><small>{tr("客户端 / 线路", "Client / Route")}</small><strong>{record.clientKeyName || "—"}</strong><em>{record.providerName || record.providerId}</em></div>
+          <div><small>{tr("时间", "Time")}</small><time>{formattedDate(record.at, language)}</time><em>{streamLabel}</em></div>
+          <div><small>{tr("客户端 / 线路", "Client / Route")}</small><strong>{record.source === "codex-official" ? tr("Codex 官方", "Codex Official") : (record.clientKeyName || "—")}</strong><em>{record.source === "codex-official" ? tr("Codex 官方", "Codex Official") : (record.providerName || record.providerId)}</em></div>
           <div className="record-model"><small>{tr("模型", "Model")}</small><code title={record.model}>{record.model || "—"}</code><em title={record.endpoint}>{record.endpoint}</em></div>
           <div><small>{tr("思考强度", "Reasoning")}</small><span className="reasoning-tag">{String(record.reasoningLevel || "—").toUpperCase()}</span></div>
-          <div><small>{tr("状态", "Status")}</small><span className={`request-status ${successful ? "ok" : "error"}`}>{record.status || "—"}</span></div>
+          <div><small>{tr("状态", "Status")}</small><span className={`request-status ${record.status === null ? "unknown" : successful ? "ok" : "error"}`}>{record.status === null ? tr("未知", "Unknown") : record.status}</span></div>
         </header>
         <div className="usage-record-metrics">
           <div className="token-input"><small>{tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(record.inputTokens, language)}</strong></div>

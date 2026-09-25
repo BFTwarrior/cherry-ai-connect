@@ -8,7 +8,6 @@
 
 <p>
   <a href="https://github.com/BFTwarrior/cherry-ai-connect/releases/latest"><img src="https://img.shields.io/github/v/release/BFTwarrior/cherry-ai-connect?display_name=tag&style=for-the-badge&color=A855F7&label=LATEST" alt="Latest release"></a>
-  <a href="#development"><img src="https://img.shields.io/badge/tests-47%20passing-54E0B2?style=for-the-badge" alt="47 tests passing"></a>
   <a href="https://github.com/BFTwarrior/cherry-ai-connect/blob/main/LICENSE"><img src="https://img.shields.io/github/license/BFTwarrior/cherry-ai-connect?style=for-the-badge&color=D9AD62" alt="MIT license"></a>
   <a href="https://github.com/BFTwarrior/cherry-ai-connect/stargazers"><img src="https://img.shields.io/github/stars/BFTwarrior/cherry-ai-connect?style=for-the-badge&color=54E0B2" alt="GitHub stars"></a>
 </p>
@@ -24,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.37** — public GitHub Latest with a Windows x64 installer, Web Demo, updater metadata, and the new Cherry Studio / CC Switch import workflow. Automated checks pass; real-device and real-client acceptance items remain listed honestly below.
+> **Release candidate · v1.40** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release candidate. Device-specific acceptance remains explicitly tracked below.
 
 ## Why Cherry AI Connect?
 
@@ -72,6 +71,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 - Sync encrypted route configuration to the user’s own private GitHub Release.
 - Keep usage/request metadata in a separate sync path so a vault failure does not hide local usage.
+- Relay usage is the current cloud-synced usage ledger. The current unpublished worktree also reads a separate Codex source locally from the loopback service; it is not yet included in cloud sync.
 - Resolve sync conflicts by choosing **Keep Local** or **Use Cloud** before credentials are requested.
 - Protect update recovery and data migration with version binding, one-time consumption, and fail-closed startup checks.
 
@@ -80,6 +80,12 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 - Windows tray support, startup launch, close-to-tray behavior, and manual update checks.
 - Dark gray, purple, and gold visual system with English-first and Chinese-supported UI.
 - Reduced-motion fallback that preserves text and icon clarity.
+
+### Current Codex usage boundary
+
+The v1.40 worktree adds a `Codex Official` source that reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. It keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
+
+“Official” is a product source label, not a replacement for OpenAI account usage. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
 
 ## The workflow
 
@@ -101,7 +107,7 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Windows x64 installer:** [Cherry-AI-Connect-Setup-1.37.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.37/Cherry-AI-Connect-Setup-1.37.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.37.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.37/Cherry-AI-Connect-Setup-1.37.exe)
 
 | Artifact | Purpose |
 | --- | --- |
@@ -135,98 +141,12 @@ The installer is not commercially code-signed, so Windows SmartScreen may show *
 
 Point the compatible client at the local API address shown in the app. Do not expose the address outside the local machine unless you intentionally add your own network boundary.
 
-## Client import design
+## Security and sync boundary
 
-The v1.37 import flow separates the two visual and security responsibilities:
-
-| Layer | Behavior |
-| --- | --- |
-| Import button | Uses the primary action effect and a slow glass sweep. |
-| Target badge | Uses a static Cherry Studio or CC Switch identity treatment. |
-| Single-key import | Appears on each client-key card and launches one target import. |
-| Bulk import | Appears once above the list and processes enabled keys one by one. |
-| Secret handling | The main process creates the link; the renderer never receives the decrypted key. |
-
-The Web Demo shows layout and interaction states only. It does not launch external clients, call upstream APIs, or access cloud sync.
-
-## Security and data boundaries
-
-### Local by default
-
-- The gateway listens on `127.0.0.1`.
-- Upstream API keys are encrypted locally.
-- Full client keys, prompts, responses, passwords, recovery codes, and GitHub tokens are not uploaded.
-- The packaged app stores runtime data in a sibling data directory outside the installer-owned application folder.
-
-### Cloud sync by explicit choice
-
-GitHub sync is intended for a **private repository owned by you**. Cloud secrets use Argon2id plus AES-256-GCM envelope encryption. Usage/request metadata is compressed but not encrypted; it may include device identifiers, route/client labels, models, endpoints, timestamps, and status.
-
-> A private repository is not the same as encryption. Do not put secrets or personal information into route names, client names, or repository metadata.
-
-### Data layout
-
-```text
-<parent>/cherry-ai-connect-data/
-├─ browser-cache/
-├─ desktop-settings.json
-└─ gateway-data/
-   ├─ config.json
-   ├─ usage.db
-   ├─ device.json
-   ├─ vault.enc
-   └─ sync-state.json
-```
-
-Do not delete, move, rename, or overwrite this data directory, a legacy `data/` directory, or update recovery backups until the new installation, usage history, client keys, and sync state have been checked.
-
-## GitHub Cloud Sync
-
-Cherry AI Connect uses two different repository roles:
-
-| Repository | Role |
-| --- | --- |
-| `BFTwarrior/cherry-ai-connect` | Public source, documentation, and release artifacts |
-| `your-account/cherry-ai-connect-sync` | Your private sync repository |
-
-Create a fine-grained GitHub token with the minimum scope:
-
-1. Choose **Only select repositories**.
-2. Select only your private sync repository.
-3. Grant `Contents: Read and write`.
-4. Leave `Metadata: Read-only`.
-5. Do not add Actions, Administration, Issues, Pull requests, Secrets, or account-level permissions.
-6. Enter the token in **Settings → GitHub Cloud Sync**, then run one immediate sync.
-
-Reference screenshot: [final token permission state](docs/images/github-sync/github-token-final-permissions.png).
-
-<details>
-<summary><strong>中文同步要点</strong></summary>
-
-只使用你自己的 GitHub 私有同步仓库；公开源码仓库和同步仓库不是一回事。细粒度令牌只需要指定仓库的 `Contents: Read and write`，`Metadata` 保持只读。同步冲突时可先选择保留本机或使用云端，只有实际解密时才输入保险库凭证。
-
-</details>
-
-## Architecture
-
-```text
-Electron main process
-  ├─ window / tray / updater / IPC
-  ├─ client-import-links.cjs       target-specific import link creation
-  └─ runtime-paths + recovery       data-directory and startup protection
-
-React renderer
-  ├─ routes / model catalog
-  ├─ client keys / import actions
-  ├─ usage analytics / request history
-  └─ settings / cloud-sync conflict UI
-
-Local gateway
-  ├─ OpenAI-compatible routing
-  ├─ auth and model catalog
-  ├─ usage ledger
-  └─ sync-manager → crypto / vault / GitHub provider
-```
+- The gateway listens on `127.0.0.1`; upstream keys are encrypted locally.
+- GitHub sync is opt-in and should use a private repository with only `Contents: Read and write` and `Metadata: Read-only`.
+- Prompts, responses, passwords, recovery codes, full client keys, tokens, and complete local paths must not be uploaded.
+- The packaged app stores runtime data beside the installer-owned directory. Do not delete or overwrite that data, legacy `data/`, or recovery backups before checking the new installation.
 
 ## Development
 
@@ -241,14 +161,11 @@ npm run web-demo:build
 npm run dist
 ```
 
-Current v1.37 verification:
+Verification scope:
 
-- `npm test` — 47 tests passed
-- `npm run check` — passed
-- `npm run renderer:build` — passed
-- `npm run web-demo:build` — passed
-- `npm run dist` — Windows x64 NSIS build passed
-- XMind documentation — 15 maps validated with 0 errors and 0 warnings
+- Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
+- v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The canonical isolated local build output is `dist/current-build/Cherry-AI-Connect-Setup-1.40.0.exe` (96,010,081 bytes; SHA-256 `6DA787D65D210987E6578F8A0CA6543A2BF7A1AEDC910DEC049D4E4448B7CC7C`). It is not a GitHub Release until explicitly published. Older assets at the `dist/` root are retained and are not part of this build output.
+- Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
 
 The `dist/` directory is generated output and is intentionally excluded from source commits. Release assets are published through GitHub Releases.
 
@@ -260,6 +177,7 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [User guide](产品文档/文档/01-使用说明.txt)
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
+- [v1.40 final delivery and cross-validation](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt)
 - [v1.37 import and regression notes](产品文档/文档/20-v1.37客户端导入与回归修复候选.txt)
 - [v1.37 acceptance logic map](产品文档/逻辑图/20-v1.37客户端导入与回归验收逻辑图.xmind)
 - [Software interface map](产品文档/逻辑图/软件界面逻辑图.xmind)
@@ -275,23 +193,13 @@ The following are intentionally not presented as completed just because automate
 
 - In-place update and local-data retention on the affected Windows device.
 - Real Cherry Studio and CC Switch import confirmation.
-- Cherry Studio model-pull behavior on the target client version.
+- Cherry Studio model-pull behavior on the target client version, including the distinction between cached-route availability and unverified catalog discovery.
 - Particle animation on devices where the effect was previously static.
 - Full historical usage pagination on an installed target build.
+- Persistent official Codex usage sync, backup, and cross-device recovery; the current official detail cache is local and memory-bounded only.
 - Real GitHub sync, conflict recovery, and backup continuity on the target device.
 
 This distinction is part of the project’s reliability boundary: a browser demo and an automated test can prove structure, but not every device-specific runtime outcome.
-
-## Contributing
-
-Issues and focused pull requests are welcome. Please include:
-
-- Reproduction steps and the exact app version.
-- Operating system and target client version.
-- Sanitized logs or screenshots; never include API keys, tokens, passwords, recovery codes, or private repository data.
-- Whether the report affects local data, cloud sync, encryption, update recovery, or only presentation.
-
-For security-sensitive reports, avoid public issue details until the impact has been assessed.
 
 ## License
 
@@ -301,6 +209,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.37 · Windows x64
+Cherry AI Connect · v1.40.0 candidate · Windows x64
 
 </div>

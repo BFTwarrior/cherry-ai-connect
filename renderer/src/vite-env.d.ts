@@ -26,13 +26,24 @@ interface UpdateCheckResult {
   asset: { name: string; url: string; size: number; sha256: string } | null;
 }
 
+// 中文：主进程给出的进度快照契约；sequence 用于拒绝异步快照覆盖较新的实时事件。
+// English: Main-process progress contract; sequence prevents an older async snapshot from
+// overwriting a newer live event.
 interface UpdateProgress {
-  stage: "checking" | "downloading" | "syncing" | "backing-up" | "installing" | "error";
+  sequence: number;
+  stage: "checking" | "downloading" | "syncing" | "backing-up" | "installing" | "completed" | "error";
   percent: number;
   received?: number;
   total?: number;
   error?: string;
   at: string;
+}
+
+interface UpdateProgressSnapshot {
+  active: boolean;
+  status: "idle" | "running" | "completed" | "error";
+  sequence: number;
+  progress: UpdateProgress | null;
 }
 
 interface CloudSyncStatus {
@@ -79,6 +90,7 @@ interface Window {
     resetGateway: () => Promise<{ ok: boolean } & GatewayInfo>;
     checkForUpdates: () => Promise<UpdateCheckResult>;
     downloadAndInstallUpdate: () => Promise<{ ok: boolean; updateAvailable: boolean; launched?: boolean; version?: string }>;
+    getUpdateProgress: () => Promise<UpdateProgressSnapshot>;
     onUpdateProgress: (listener: (progress: UpdateProgress) => void) => () => void;
     getSyncStatus: () => Promise<CloudSyncStatus>;
     connectGitHub: (value: { token: string; repository: string; password: string; syncUpstream?: boolean }) => Promise<GitHubConnectResult>;

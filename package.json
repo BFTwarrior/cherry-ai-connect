@@ -1,6 +1,6 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.37.0",
+  "version": "1.40.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
@@ -11,7 +11,7 @@
     "check": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/*.test.cjs",
     "start": "npm run renderer:build && electron .",
-    "dist": "node scripts/prepare-dist.mjs && npm run check && npm run renderer:build && electron-builder --win nsis"
+    "dist": "node scripts/prepare-dist.mjs && npm run check && npm run renderer:build && electron-builder --win nsis && node scripts/verify-dist-size.mjs"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",
@@ -29,9 +29,9 @@
     "productName": "Cherry AI 连接中心",
     "asar": true,
     "compression": "maximum",
+    "afterPack": "scripts/after-pack.cjs",
     "electronLanguages": [
-      "en-US",
-      "zh-CN"
+      "en-US"
     ],
     "files": [
       "electron/**/*",
@@ -39,6 +39,9 @@
       "sync/*.mjs",
       "renderer/dist/**/*"
     ],
+    "directories": {
+      "output": "dist/current-build"
+    },
     "extraResources": [
       { "from": "electron/assets/app-1.33.ico", "to": "app-1.33.ico" }
     ],
@@ -47,11 +50,15 @@
       "target": "nsis",
       "icon": "electron/assets/app-1.33.ico",
       "signExecutable": false,
-      "artifactName": "Cherry-AI-Connect-Setup-1.37.${ext}"
+      "artifactName": "Cherry-AI-Connect-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
+      "installerLanguages": [
+        "en_US",
+        "zh_CN"
+      ],
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

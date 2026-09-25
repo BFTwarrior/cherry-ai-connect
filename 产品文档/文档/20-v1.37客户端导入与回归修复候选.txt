@@ -1,7 +1,7 @@
 # Cherry AI Connect v1.37 客户端导入与回归修复候选
 
-更新时间：2026-09-24（UTC+8）
-状态：已发布为 GitHub Latest；现场验收仍未完成。
+更新时间：2026-09-25（UTC+8）
+状态：本文件保留公开 v1.37 发布基线；发布后的当前工作树候选未创建新的 GitHub Release，现场验收仍未完成。
 
 ## 本次改动
 
@@ -20,6 +20,13 @@
 
 ## 验证与限制
 
-- `npm test`：47 项通过；`npm run check`、`npm run renderer:build`、`npm run dist`、`npm run web-demo:build`：通过。最终安装包为 Windows x64 NSIS：`dist/Cherry-AI-Connect-Setup-1.37.exe`，103,144,978 字节；SHA-256：`412378416AEFF9236C94313C1CDC61A648B34E948E8A64170C4EB05F062E4B18`。Web Demo 为 146,819 字节；blockmap 为 107,477 字节。`dist/latest.yml` 中 SHA-512、版本和大小与构建产物对应。
+- 公开 v1.37 发布基线：`npm test` 47/47；`npm run check`、`npm run renderer:build`、`npm run dist`、`npm run web-demo:build`：通过。安装包为项目根目录 `../../dist/Cherry-AI-Connect-Setup-1.37.exe`，103,144,978 字节；SHA-256：`412378416AEFF9236C94313C1CDC61A648B34E948E8A64170C4EB05F062E4B18`。Web Demo 为 146,819 字节；blockmap 为 107,477 字节。该组数字只描述已发布的 v1.37 基线。
 - 本地浏览器已目视检查导入按钮布局、两类效果的实际计算样式，以及同步冲突展开版式。没有执行导入，不连接 Cherry Studio/CC Switch，不触发真实云同步。
 - 已按用户明确指令发布到 GitHub Release：`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.37`；远端为公开 Latest，四个资产数量、文件大小和 SHA-256 均与本地产物一致。尚需完成目标客户端导入验收、Cherry Studio 模型拉取实测、设备粒子复测、历史统计界面验收及更新/数据保留验收。安装包未在目标设备运行或安装，因此不能标记为全量验收完成。
+
+## 2026-09-25 当前工作树补充（未发布）
+
+- 当前工作树在公开 v1.37 之后增加了更新任务切页状态修复、官方 Codex 来源分层、同步并发/安全和恢复边界修复，以及 Cherry Studio 检测并启用兼容性修复；v1.37.1 候选最新 `npm test` 实测 75/75，`npm run check` 通过。75/75 不得回填为公开 v1.37 的 47/47，也不代表已发布新版本。
+- 2026-09-25 的 1.37.0 本地候选打包快照位于项目根目录 `../../dist/Cherry-AI-Connect-Setup-1.37.exe`，103,152,616 字节，SHA-256：`C9FC4E960643DDAED85491C7AA949CCD509DCDB04F14607579C2B155F542D0AF`；它与公开 Release 安装包不同，作为历史阶段证据保留。最新 v1.37.1 候选见 `21-v1.37.1代码分区与五阶段核查.txt`。
+- 官方 Codex 来源只读 `http://127.0.0.1:43189` 的本机 API，使用独立 45 MiB 裁剪目标 / 50 MiB 硬上限内存缓存，不读取认证文件、会话正文或密钥，不写入中转站账本。该“官方”名称是产品来源标签，不等于 OpenAI 账户级 `/usage` 总量；当前尚未接入云同步、备份和跨设备恢复。
+- OpenAI 官方口径：`/usage` 展示账户令牌活动，`/status` 展示当前会话、上下文和限额。产品本机适配器可能 unavailable 或保留未知指标，不能把它与中转站数字直接相加。

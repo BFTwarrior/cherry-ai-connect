@@ -31,19 +31,8 @@ function atomicWrite(file, bytes) {
   fs.writeFileSync(temporary, bytes);
   try { fs.renameSync(temporary, file); }
   catch (error) {
-    try { fs.copyFileSync(temporary, file); fs.unlinkSync(temporary); }
-    catch {
-      // 中文：清理临时文件失败不能掩盖原始写入错误；临时文件不参与后续同步。
-      // English: Cleanup failure must not hide the original write error; the temporary file is
-      // never considered a sync asset.
-      try { fs.unlinkSync(temporary); }
-      catch {
-        // 中文：清理失败不影响原始错误；下次启动仍只读取正式目标文件。
-        // English: Cleanup failure does not change the original error; the next start reads only
-        // the official destination file.
-      }
-      throw error;
-    }
+    try { fs.unlinkSync(temporary); } catch { /* best effort cleanup */ }
+    throw error;
   }
 }
 
@@ -104,6 +93,37 @@ export class LocalVaultStore {
   }
 
   /**
+   * 中文：vault、受保护 DEK 与同步配置作为一个可回滚提交处理。先保留各文件原字节，
+   * 任一写入或配置提交失败时恢复原文件；首次初始化失败则删除本次新建的文件。
+   * English: Treat the vault, protected DEK, and synchronized config as one rollback-capable
+   * commit. Restore original bytes on any write or config-commit error, or remove newly created
+   * files when first initialization fails.
+   */
+  #commitVaultState(envelope, dek, commitConfig) {
+    const targets = [
+      { file: this.vaultFile, bytes: Buffer.from(JSON.stringify(envelope, null, 2), "utf8") },
+      { file: this.localKeyFile, bytes: Buffer.from(this.protect(dek.toString("base64url"))) },
+    ];
+    const previous = targets.map(({ file }) => ({ file, existed: fs.existsSync(file), bytes: fs.existsSync(file) ? fs.readFileSync(file) : null }));
+    try {
+      this.#saveEnvelope(envelope);
+      atomicWrite(this.localKeyFile, targets[1].bytes);
+      if (typeof commitConfig === "function") commitConfig();
+    } catch (error) {
+      for (const item of previous.reverse()) {
+        try {
+          if (item.existed) atomicWrite(item.file, item.bytes);
+          else if (fs.existsSync(item.file)) fs.unlinkSync(item.file);
+        } catch {
+          // Preserve the original failure. The prior bytes remain available in the vault backup
+          // for the envelope; callers receive the commit failure and must not report success.
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
    * 中文：首次初始化同时写入 envelope 和受保护 DEK；任一步失败都会抛错，避免形成
    * “有 vault 文件但没有本机解锁密钥”的假成功状态。
    * English: Initialization writes the envelope and protected DEK as one logical operation.
@@ -113,8 +133,7 @@ export class LocalVaultStore {
     if (this.readEnvelope()) throw new Error("vault_already_initialized");
     const created = await createVault({ datasetId, secrets, password, kdfOptions });
     try {
-      this.#saveEnvelope(created.envelope);
-      this.#saveDek(created.dek);
+      this.#commitVaultState(created.envelope, created.dek);
       return { envelope: created.envelope, recoveryCode: created.recoveryCode };
     } finally { created.dek.fill(0); }
   }
@@ -137,12 +156,14 @@ export class LocalVaultStore {
 
   /**
    * 中文：导入远端 envelope 的安全顺序：解析 → 校验数据集 → 尝试现有 DEK → 再要求
-   * 用户凭证 → 解密并验证业务数据 → 最后才写本地文件。错误密码不会覆盖本地状态。
+   * 用户凭证 → 解密并验证业务数据 → 调用提交前校验 → 最后才写本地文件。配置层
+   * 仍在校验时，远端 vault 不得先落盘，避免 vault/config 形成跨层半提交状态。
    * English: Remote-import order is parse -> validate dataset -> try the existing DEK -> ask
-   * for a credential -> decrypt and authenticate payload -> write local files last. A wrong
-   * credential therefore cannot overwrite local state.
+   * for a credential -> decrypt and authenticate payload -> run the pre-commit validation ->
+   * write local files last. The remote vault therefore cannot be persisted while configuration
+   * validation is still pending, avoiding a cross-layer half-commit between vault and config.
    */
-  async importEnvelope(bytes, { password = "", recoveryCode = "", expectedDatasetId = "" } = {}) {
+  async importEnvelope(bytes, { password = "", recoveryCode = "", expectedDatasetId = "", beforeCommit, commitConfig } = {}) {
     let remote;
     try { remote = validateVaultEnvelope(JSON.parse(Buffer.from(bytes).toString("utf8")), expectedDatasetId); }
     catch (error) {
@@ -166,8 +187,13 @@ export class LocalVaultStore {
     }
     try {
       const secrets = openVaultWithDek(remote, dek);
-      this.#saveEnvelope(remote);
-      this.#saveDek(dek);
+      // 中文：同步引擎在这里检查公开配置与解密后的 secure 配置；回调失败时不执行任何
+      // 本地写入。回调只能做校验，不应把明文 secrets 上传或持久化到云端。
+      // English: SyncEngine validates public metadata against the decrypted secure config here;
+      // if it fails, no local write is performed. The callback is validation-only and must never
+      // upload or persist the plaintext secrets.
+      if (typeof beforeCommit === "function") await beforeCommit({ envelope: remote, secrets });
+      this.#commitVaultState(remote, dek, typeof commitConfig === "function" ? () => commitConfig({ envelope: remote, secrets }) : undefined);
       return { envelope: remote, secrets };
     } finally { dek.fill(0); }
   }

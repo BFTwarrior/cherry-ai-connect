@@ -193,6 +193,7 @@ export class SyncEngine {
     return {
       remoteConfig: configDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, configDescriptor)) : null,
       remoteVault: vaultDescriptor ? await downloadAndVerify(this.provider, vaultDescriptor) : null,
+      tombstones,
       importedEvents: events.length,
     };
   }
@@ -224,16 +225,45 @@ export class SyncEngine {
           ? revisionOrder(snapshot.publicConfig.configRevision, remote.remoteConfig.configRevision)
           : "equal";
         let importedSecureConfig = null;
+        let remoteConfigCommitted = false;
         if (syncUpstream && options.configPolicy === "remote" && remote.remoteVault && this.vault) {
           // 中文：远端 vault 必须先由专用加密存储层完成密码学验证，验证失败立即停止恢复，
           // 不允许把远端内容当作普通 JSON 或空配置写入本机。
           // English: The dedicated vault layer must authenticate the remote vault first. A
           // failure stops restore immediately; remote bytes are never treated as plain JSON or
           // replaced with an empty local configuration.
+          const replaceOptions = {
+            // 中文：远端缺少本机独有 Key 不代表删除；只有同步协议中的明确 tombstone
+            // 才能删除该元数据。冲突策略仍由 configPolicy 的显式选择决定。
+            // English: An omitted device-local key is not a deletion; only an explicit protocol
+            // tombstone may delete its metadata. Conflict choice remains explicit in configPolicy.
+            allowGenerateClientSecrets: options.allowGenerateClientSecrets === true,
+            tombstones: remote.tombstones,
+          };
+          const shouldCommitConfigWithVault = Boolean(remote.remoteConfig
+            && configOrder !== "equal"
+            && typeof this.source.replaceConfigFromSync === "function");
           const imported = await this.vault.importEnvelope(remote.remoteVault, {
             password: String(options.password || ""),
             recoveryCode: String(options.recoveryCode || ""),
             expectedDatasetId: datasetId,
+            // 中文：先完成完整配置校验，再让 LocalVaultStore 提交 vault；Key 元数据异常时
+            // 不会留下“新 vault + 旧 config”。没有该可选接口的旧 source 仍保持原协议行为。
+            // English: Validate the complete configuration before LocalVaultStore commits the
+            // vault, so invalid key metadata cannot leave a new vault beside an old config.
+            beforeCommit: remote.remoteConfig && typeof this.source.validateConfigFromSync === "function"
+              ? ({ secrets }) => this.source.validateConfigFromSync(remote.remoteConfig, secrets, replaceOptions)
+              : undefined,
+            // 中文：把公开配置写入纳入 vault/DEK 提交边界；配置写入失败时由存储层恢复
+            // 原 vault 与 DEK，避免跨文件半提交。
+            // English: Include public config persistence in the vault/DEK commit boundary; the
+            // store restores the old vault and DEK if config persistence fails.
+            commitConfig: shouldCommitConfigWithVault
+              ? ({ secrets }) => {
+                this.source.replaceConfigFromSync(remote.remoteConfig, secrets, replaceOptions);
+                remoteConfigCommitted = true;
+              }
+              : undefined,
           });
           importedSecureConfig = imported.secrets;
         }
@@ -244,10 +274,11 @@ export class SyncEngine {
               if (!importedSecureConfig) throw new Error("sync_remote_vault_missing");
               secureConfig = importedSecureConfig;
             }
-            this.source.replaceConfigFromSync?.(remote.remoteConfig, secureConfig, {
+            if (!remoteConfigCommitted) this.source.replaceConfigFromSync?.(remote.remoteConfig, secureConfig, {
               // 中文：只有全新设备首次采用远端数据集时才允许创建本机客户端 Key。
               // English: Only a pristine device adopting its first remote dataset may create local client keys.
               allowGenerateClientSecrets: options.allowGenerateClientSecrets === true,
+              tombstones: remote.tombstones,
             });
             snapshot = this.source.getSyncSnapshot();
           } else if (options.configPolicy === "local" || configOrder === "local-newer") {

@@ -57,6 +57,78 @@ test("update backup restores data and completed onboarding after an overwrite", 
   }
 });
 
+test("corrupt critical JSON, device identity, and secret content is never complete", () => {
+  const cases = [
+    ["config.json", "{"],
+    ["device.json", JSON.stringify({ deviceId: "" })],
+    [".gateway-secret", "   "],
+  ];
+  for (const [name, value] of cases) {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-invalid-critical-"));
+    const runtimeDataRoot = seedRuntime(root);
+    try {
+      fs.writeFileSync(path.join(runtimeDataRoot, "gateway-data", name), value, "utf8");
+      assert.equal(criticalDataIsPresent(runtimeDataRoot), false, name);
+      assert.throws(() => createUpdateBackup({
+        runtimeDataRoot,
+        updateRecoveryRoot: path.join(root, "recovery"),
+        legacyUserDataRoot: path.join(root, "pointer"),
+        targetVersion: "1.37",
+      }), /update_source_data_incomplete/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
+test("automatic recovery rejects out-of-bound manifest roots and target versions", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-manifest-boundary-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const recoveryRoot = path.join(root, "recovery");
+  const pointerRoot = path.join(root, "pointer");
+  try {
+    const backup = createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: recoveryRoot, legacyUserDataRoot: pointerRoot, targetVersion: "1.37" });
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    const pointerFile = path.join(pointerRoot, "cherry-ai-connect-update-recovery.json");
+    const pointer = JSON.parse(fs.readFileSync(pointerFile, "utf8"));
+    const manifestFile = path.join(backup.backupRoot, "recovery-manifest.json");
+    const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
+
+    fs.writeFileSync(pointerFile, JSON.stringify({ ...pointer, backupRoot: path.join(root, "outside") }), "utf8");
+    assert.deepEqual(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: pointerRoot, currentVersion: "1.37" }), {
+      restored: false,
+      reason: "invalid-update-backup",
+    });
+
+    fs.writeFileSync(pointerFile, JSON.stringify(pointer), "utf8");
+    fs.writeFileSync(manifestFile, JSON.stringify({ ...manifest, sourceRuntimeDataRoot: path.join(root, "outside-source") }), "utf8");
+    assert.equal(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: pointerRoot, currentVersion: "1.37" }).reason, "invalid-update-backup");
+
+    fs.writeFileSync(manifestFile, JSON.stringify({ ...manifest, targetVersion: "999999999999.1" }), "utf8");
+    assert.equal(restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: pointerRoot, currentVersion: "1.37" }).reason, "invalid-update-backup");
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a failed automatic copy is recorded and never retried on the next launch", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-copy-once-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const pointerRoot = path.join(root, "pointer");
+  try {
+    createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: pointerRoot, targetVersion: "1.37" });
+    fs.rmSync(runtimeDataRoot, { recursive: true, force: true });
+    const originalCpSync = fs.cpSync;
+    try {
+      fs.cpSync = () => { throw new Error("forced-copy-failure"); };
+      assert.throws(() => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: pointerRoot, currentVersion: "1.37" }), /forced-copy-failure/);
+    } finally { fs.cpSync = originalCpSync; }
+
+    const pointerFile = path.join(pointerRoot, "cherry-ai-connect-update-recovery.json");
+    assert.ok(JSON.parse(fs.readFileSync(pointerFile, "utf8")).automaticRecoveryAttemptedAt);
+    assert.throws(
+      () => restoreUpdateBackupIfNeeded({ runtimeDataRoot, legacyUserDataRoot: pointerRoot, currentVersion: "1.37" }),
+      /update_recovery_attempt_already_attempted/,
+    );
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("update recovery preserves desktop settings changed after backup", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-update-settings-test-"));
   const runtimeDataRoot = seedRuntime(root);

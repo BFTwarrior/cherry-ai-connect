@@ -1134,6 +1134,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 /* English: Live records offer compact single-line and detailed two-line layouts, with horizontal scrolling in compact mode. */
 .records-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
 .records-header-actions > small { color: #77717e; font-size: 10px; text-align: right; }
+/* 中文：来源标签与行数切换同级对齐，窄窗口允许整组换行而不挤压历史标题。 */
+/* English: Source tabs align with density controls and wrap as a group on narrow windows instead of compressing the history heading. */
+.usage-source-tabs { display: flex; flex: 0 1 auto; min-width: 0; gap: 3px; padding: 3px; border: 1px solid #393341; border-radius: 8px; background: #111117; }
+.usage-source-tabs button { min-height: 27px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #8c8492; font-size: 10px; white-space: nowrap; cursor: pointer; }
+.usage-source-tabs button:hover, .usage-source-tabs button:focus-visible { color: #e9d9b0; outline: none; }
+.usage-source-tabs button.active { background: linear-gradient(135deg, #6938b4, #453322); color: #fff; box-shadow: inset 0 0 0 1px rgb(217 173 98 / 15%); }
+.usage-live .status-dot.is-muted { background: #b18a52; box-shadow: 0 0 8px rgb(177 138 82 / 35%); }
 .record-density-toggle { display: flex; flex: 0 0 auto; gap: 3px; padding: 3px; border: 1px solid #393341; border-radius: 8px; background: #111117; }
 .record-density-toggle button { min-height: 27px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: #8c8492; font-size: 10px; cursor: pointer; }
 .record-density-toggle button.active { background: linear-gradient(135deg, #6938b4, #453322); color: #fff; box-shadow: inset 0 0 0 1px rgb(217 173 98 / 15%); }
@@ -7543,4 +7550,19 @@ select:focus-visible { outline-color: var(--gold); }
     transition: none !important;
     will-change: auto !important;
   }
+}
+
+@media (max-width: 1180px) {
+  .records-header-actions { align-items: flex-start; flex-wrap: wrap; }
+  /* 中文：窄桌面取消紧凑记录的 1470px 固定宽度，改为上下两区，避免用户被迫横向找字段。
+   * English: On narrow desktop windows, remove the compact row's 1470px floor and stack identity
+   * above metrics so every field remains discoverable without horizontal scrolling. */
+  .mode-compact .usage-record-card { min-width: 0; grid-template-columns: 1fr; }
+  .mode-compact .usage-record-identity { grid-template-columns: repeat(3, minmax(0, 1fr)); border-right: 0; border-bottom: 1px solid #302d34; }
+  .mode-compact .usage-record-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 680px) {
+  .usage-source-tabs { width: 100%; }
+  .usage-source-tabs button { flex: 1 1 0; }
 }

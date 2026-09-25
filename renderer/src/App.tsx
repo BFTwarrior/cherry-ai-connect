@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.37";
+const VERSION = "1.40";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
 type ClientImportTarget = "ccswitch" | "cherry-studio";
@@ -67,6 +67,18 @@ function useCopy() {
   }, []);
 }
 
+class GatewayRequestError extends Error {
+  status: number;
+  details: Record<string, unknown>;
+
+  constructor(message: string, status: number, details: Record<string, unknown> = {}) {
+    super(message);
+    this.name = "GatewayRequestError";
+    this.status = status;
+    this.details = details;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let response: Response;
   try {
@@ -78,8 +90,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   let data: unknown = {};
   try { data = raw ? JSON.parse(raw) : {}; } catch { data = {}; }
   if (!response.ok) {
-    const message = typeof data === "object" && data && "error" in data ? String((data as { error: unknown }).error) : `HTTP ${response.status}`;
-    throw new Error(message);
+    const details = typeof data === "object" && data ? data as Record<string, unknown> : {};
+    const message = "error" in details ? String(details.error) : `HTTP ${response.status}`;
+    throw new GatewayRequestError(message, response.status, details);
   }
   return data as T;
 }
@@ -100,7 +113,7 @@ function levelLabel(level: ReasoningLevel | undefined) {
   return String(level || "unchanged").toUpperCase();
 }
 
-function reasoningOptionLabel(level: ReasoningLevel | undefined, language: Language) {
+function reasoningOptionLabel(level: ReasoningLevel | undefined, _language?: Language) {
   return String(level || "unchanged").toUpperCase();
 }
 
@@ -129,7 +142,6 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>(DEMO_MODE ? DEMO_PROVIDERS : []);
   const [keys, setKeys] = useState<ClientKey[]>(DEMO_MODE ? DEMO_KEYS : []);
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "unchanged", defaultProvider: "" });
-  const [settingsDraftLevel, setSettingsDraftLevel] = useState<ReasoningLevel>("unchanged");
   const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
   const [gatewayPort, setGatewayPort] = useState(DEMO_MODE ? 27891 : 20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
@@ -216,7 +228,6 @@ export default function App() {
         setProviders(DEMO_PROVIDERS);
         setKeys(DEMO_KEYS);
         setSettings({ forcedLevel: "unchanged", defaultProvider: DEMO_PROVIDERS[0].id, reasoningLevels: levels });
-        setSettingsDraftLevel("unchanged");
         setGatewayPort(27891);
         setApiBase("http://127.0.0.1:27891/v1");
         setLastClientRequestAt("2026-09-19T02:05:00.000Z");
@@ -236,7 +247,6 @@ export default function App() {
       setKeys(keyData.keys || []);
       const nextForcedLevel = settingsData.forcedLevel || "unchanged";
       setSettings({ forcedLevel: nextForcedLevel, defaultProvider: settingsData.defaultProvider || "", reasoningLevels: settingsData.reasoningLevels });
-      setSettingsDraftLevel(nextForcedLevel);
       setLastClientRequestAt(statusData.lastClientRequestAt || "");
       setLastClientRequestStatus(statusData.lastClientRequestStatus || "never");
       setLastClientRequestModel(statusData.lastClientRequestModel || "");
@@ -295,7 +305,6 @@ export default function App() {
   }, [reasoningMenuOpen]);
 
 
-  const providerById = useCallback((id: string) => providers.find((provider) => provider.id === id), [providers]);
   const totalModels = useMemo(() => providers.reduce((sum, provider) => sum + (provider.modelCount ?? provider.models.length), 0), [providers]);
   const activeKeys = useMemo(() => keys.filter((key) => key.enabled).length, [keys]);
 
@@ -318,22 +327,19 @@ export default function App() {
     const previous = settings.forcedLevel;
     if (next === previous || reasoningUpdating) return;
     setSettings((current) => ({ ...current, forcedLevel: next }));
-    setSettingsDraftLevel(next);
     setReasoningUpdating(true);
     try {
       if (DEMO_MODE) {
         await new Promise((resolve) => window.setTimeout(resolve, 260));
-        showToast(tr(`演示模式：默认思考强度已设为 ${reasoningOptionLabel(next, "zh")}`, `Demo: default reasoning is now ${reasoningOptionLabel(next, "en")}`), "success");
+        showToast(tr(`演示模式：默认思考强度已设为 ${reasoningOptionLabel(next)}`, `Demo: default reasoning is now ${reasoningOptionLabel(next)}`), "success");
         return;
       }
       const result = await request<GatewaySettings>("/admin/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ forcedLevel: next, applyToExisting: false }) });
       const savedLevel = result.forcedLevel || next;
       setSettings((current) => ({ ...current, ...result, forcedLevel: savedLevel }));
-      setSettingsDraftLevel(savedLevel);
-      showToast(tr(`默认思考强度已设为 ${reasoningOptionLabel(savedLevel, "zh")}；已有客户端 Key 保持独立设置`, `Default reasoning is now ${reasoningOptionLabel(savedLevel, "en")}; existing client keys keep their own levels`), "success");
+      showToast(tr(`默认思考强度已设为 ${reasoningOptionLabel(savedLevel)}；已有客户端 Key 保持独立设置`, `Default reasoning is now ${reasoningOptionLabel(savedLevel)}; existing client keys keep their own levels`), "success");
     } catch (error) {
       setSettings((current) => ({ ...current, forcedLevel: previous }));
-      setSettingsDraftLevel(previous);
       showToast(`${tr("思考强度更新失败", "Could not update reasoning level")}：${error instanceof Error ? error.message : String(error)}`, "error");
     } finally {
       setReasoningUpdating(false);
@@ -404,7 +410,18 @@ export default function App() {
     } catch (error) {
       setSyncFailures((current) => current.includes(id) ? current : [...current, id]);
       await load(true);
-      if (!quiet) showToast(`${tr("线路检测失败", "Route test failed")}：${error instanceof Error ? error.message : String(error)}`, "error");
+      const details = error instanceof GatewayRequestError ? error.details : {};
+      const modelListStatus = String(details.modelListStatus || "");
+      const routeEnabled = details.routeEnabled !== false;
+      const routeVerified = details.routeVerified === true;
+      const catalogMessage = modelListStatus === "unsupported"
+        ? tr("模型目录接口不支持，线路仍保持启用；已有模型仍可尝试调用", "The model catalog is unsupported; the route remains enabled and cached models can still be tried")
+        : modelListStatus === "rate_limited"
+          ? tr("模型目录被限流，线路仍保持启用，请稍后重试", "The model catalog is rate-limited; the route remains enabled, please retry later")
+          : modelListStatus === "auth"
+            ? tr("模型目录鉴权失败，请核对上游 Key；线路配置未被自动删除", "Model catalog authentication failed; check the upstream key. The route configuration was not deleted")
+          : tr("模型目录检测失败，线路仍保持启用", "Model catalog check failed; the route remains enabled");
+      if (!quiet) showToast(`${routeEnabled && routeVerified ? catalogMessage : tr("线路检测未确认，配置仍保留", "Route not verified; configuration was kept")}：${error instanceof Error ? error.message : String(error)}`, routeEnabled && routeVerified ? "info" : "error");
       throw error;
     } finally {
       setSyncing(null);
@@ -577,7 +594,7 @@ export default function App() {
       showToast(tr("当前没有可应用的客户端 Key", "There are no client keys to update"), "info");
       return;
     }
-    const level = reasoningOptionLabel(settings.forcedLevel, language);
+    const level = reasoningOptionLabel(settings.forcedLevel);
     const confirmed = await requestConfirmation({
       title: tr("覆盖已有 Key 的思考强度", "Apply reasoning to existing keys"),
       message: tr(
@@ -593,15 +610,14 @@ export default function App() {
     try {
       if (DEMO_MODE) {
         setKeys((current) => current.map((key) => ({ ...key, reasoningLevel: settings.forcedLevel })));
-        showToast(tr(`演示 Key 已统一为 ${reasoningOptionLabel(settings.forcedLevel, "zh")}`, `Demo keys are now ${reasoningOptionLabel(settings.forcedLevel, "en")}`), "success");
+        showToast(tr(`演示 Key 已统一为 ${reasoningOptionLabel(settings.forcedLevel)}`, `Demo keys are now ${reasoningOptionLabel(settings.forcedLevel)}`), "success");
         return;
       }
       const next = await request<GatewaySettings>("/admin/api/settings", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ forcedLevel: settings.forcedLevel, applyToExisting: true }) });
       const savedLevel = next.forcedLevel || settings.forcedLevel;
       setSettings((current) => ({ ...current, ...next, forcedLevel: savedLevel }));
-      setSettingsDraftLevel(savedLevel);
       await load(true);
-      showToast(tr(`现有客户端 Key 已统一为 ${reasoningOptionLabel(savedLevel, "zh")}`, `Existing client keys are now ${reasoningOptionLabel(savedLevel, "en")}`), "success");
+      showToast(tr(`现有客户端 Key 已统一为 ${reasoningOptionLabel(savedLevel)}`, `Existing client keys are now ${reasoningOptionLabel(savedLevel)}`), "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
     }
@@ -698,8 +714,9 @@ export default function App() {
     }
     setClientImportBusy(null);
     const targetName = target === "cherry-studio" ? "Cherry Studio" : "CC Switch";
-    const skipped = keys.length - succeeded;
-    const summary = tr(`${targetName}：已发送 ${succeeded}/${keys.length} 个有效 Key；每个 Key 仍需在客户端确认${skipped ? `，另有 ${skipped} 个未导入` : ""}。`, `${targetName}: sent ${succeeded}/${keys.length} active keys. Confirm each import in the client${skipped ? `; ${skipped} key(s) were skipped` : ""}.`);
+    const skipped = keys.length - eligible.length;
+    const failed = eligible.length - succeeded;
+    const summary = tr(`${targetName}：已发送 ${succeeded}/${eligible.length} 个有效 Key；每个 Key 仍需在客户端确认${failed ? `，有 ${failed} 个发送失败` : ""}${skipped ? `，另有 ${skipped} 个 Key 不符合导入条件` : ""}。`, `${targetName}: sent ${succeeded}/${eligible.length} active keys. Confirm each import in the client${failed ? `; ${failed} failed to launch` : ""}${skipped ? `; ${skipped} key(s) were ineligible` : ""}.`);
     showToast(summary, succeeded === eligible.length ? "success" : succeeded ? "warning" : "error");
   };
 
@@ -789,7 +806,16 @@ export default function App() {
 
   function StatusBadge({ provider }: { provider: Provider }) {
     const status = provider.lastTestStatus || "never";
-    const label = status === "ok" ? tr("可用", "Ready") : status === "error" ? tr("异常", "Error") : tr("未检测", "Not tested");
+    const routeVerified = provider.routeVerified === true;
+    const label = status === "ok"
+      ? tr("可用", "Ready")
+      : status === "error" && provider.modelListStatus === "auth"
+        ? tr("鉴权异常", "Auth issue")
+        : status === "error" && routeVerified
+          ? tr("目录异常·线路可用", "Catalog issue · Route ready")
+        : status === "error"
+            ? tr("线路未确认", "Route unverified")
+            : tr("未检测", "Not tested");
     return <span className={`status-badge status-${status}`}><span className="status-dot" />{label}</span>;
   }
 
@@ -812,7 +838,7 @@ export default function App() {
         <span className="route-fact route-latency" title={formatDate(provider.lastTestAt || provider.modelFetchedAt, language)}><small>{tr("延迟", "Latency")}</small><b>{provider.lastLatencyMs ? `${provider.lastLatencyMs}ms` : "—"}</b></span>
       </div>
       {showActions && <div className="route-actions">{showSync && <button className="button button-secondary button-small" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id || syncing === "all"}><Icon name="refresh" size={14} />{syncing === provider.id ? tr("检测中", "Testing") : tr("检测线路", "Test route")}</button>}<button className="icon-button" onClick={() => setModal({ kind: "provider", provider })} title={tr("编辑线路", "Edit route")} aria-label={tr("编辑线路", "Edit route")}><Icon name="edit" size={15} /></button><button className="icon-button danger" onClick={() => void deleteProvider(provider.id)} title={tr("删除线路", "Delete route")} aria-label={tr("删除线路", "Delete route")}><Icon name="trash" size={15} /></button></div>}
-      {provider.lastTestStatus === "error" && provider.lastError && <div className="route-error" title={provider.lastError}><Icon name="shield" size={13} /><span><strong>{tr("检测失败", "Sync failed")}</strong>{errorSummary(provider.lastError)}</span><button className="text-button" onClick={() => void copyErrorDetails(provider.lastError || "")}>{tr("复制详情", "Copy details")}</button></div>}
+      {provider.lastTestStatus === "error" && provider.lastError && <div className="route-error" title={provider.lastError}><Icon name="shield" size={13} /><span><strong>{provider.routeVerified ? tr("模型目录检测异常，线路仍可用", "Catalog check issue; route remains ready") : provider.modelListStatus === "auth" ? tr("模型目录鉴权失败", "Model catalog authentication failed") : tr("线路检测未确认", "Route not verified")}</strong>{errorSummary(provider.lastError)}</span><button className="text-button" onClick={() => void copyErrorDetails(provider.lastError || "")}>{tr("复制详情", "Copy details")}</button></div>}
     </article>;
   }
 
@@ -925,8 +951,8 @@ export default function App() {
         <div className="settings-column">
         <article className="settings-card">
           <SettingsHeading icon="spark" title={tr("请求策略", "Request policy")} description={tr("决定新建 Key 的默认思考强度，也可以单独编辑每个客户端 Key。", "Set the default reasoning level for new keys; each client key can override it.")} />
-          <div className="setting-line settings-reasoning-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。选择 UNCHANGED 则保留客户端原始策略。", "Saved immediately; existing keys keep their own level. UNCHANGED preserves each client's original strategy.")}</small></div><MenuSelect className="settings-level-menu" value={settings.forcedLevel} options={levels.map((level) => ({ value: level, label: reasoningOptionLabel(level, language) }))} onChange={(value) => void changeDefaultReasoning(value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} ariaLabel={tr("默认思考强度", "Default reasoning level")} /></div>
-          <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${reasoningOptionLabel(settings.forcedLevel, "zh")} 应用到 ${keys.length} 个已有 Key`, `Apply ${reasoningOptionLabel(settings.forcedLevel, "en")} to ${keys.length} existing key(s)`)}</button>
+          <div className="setting-line settings-reasoning-line"><div><strong>{tr("默认思考强度", "Default reasoning level")}</strong><small>{tr("选择后立即写入网关；已有 Key 保持自己的等级。选择 UNCHANGED 则保留客户端原始策略。", "Saved immediately; existing keys keep their own level. UNCHANGED preserves each client's original strategy.")}</small></div><MenuSelect className="settings-level-menu" value={settings.forcedLevel} options={levels.map((level) => ({ value: level, label: reasoningOptionLabel(level) }))} onChange={(value) => void changeDefaultReasoning(value as ReasoningLevel)} disabled={reasoningUpdating || gatewayResetting} ariaLabel={tr("默认思考强度", "Default reasoning level")} /></div>
+          <button type="button" className="button button-secondary full-width" onClick={() => void applyReasoningToExisting()} disabled={reasoningUpdating || gatewayResetting || !keys.length}><Icon name="spark" size={15} />{tr(`将 ${reasoningOptionLabel(settings.forcedLevel)} 应用到 ${keys.length} 个已有 Key`, `Apply ${reasoningOptionLabel(settings.forcedLevel)} to ${keys.length} existing key(s)`)}</button>
           <div className="settings-note"><Icon name="key" size={14} /><span>{tr("每个客户端 Key 创建时必须绑定且只绑定一条中转站线路。", "Every client key must bind to exactly one upstream route.")}</span></div>
         </article>
         <UpdateCard language={language} currentVersion={VERSION} checkTrigger={settingsVisit} />

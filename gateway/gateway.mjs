@@ -10,21 +10,39 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { UsageLedger } from "./usage-ledger.mjs";
+import { CODEX_OFFICIAL_SOURCE, CodexUsageClient, combineUsageSnapshots, emptySnapshot } from "./codex-usage-client.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.GATEWAY_DATA_DIR || path.join(root, "data");
 const configFile = path.join(dataDir, "config.json");
 const secretFile = path.join(dataDir, ".gateway-secret");
-const listenHost = process.env.GATEWAY_HOST || "127.0.0.1";
+// 中文：网关同时承载管理 API 和客户端 API，监听地址不得由外部环境注入；固定在本机 IPv4 回环接口。
+// English: The gateway serves both management and client APIs, so its bind address must not be
+// controlled by the environment; keep it on the local IPv4 loopback interface.
+const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.37";
+const gatewayVersion = "1.40";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
+let lastPersistedConfig = null;
 
 fs.mkdirSync(dataDir, { recursive: true });
 
 function readJson(file, fallback) {
-  try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return fallback; }
+  if (!fs.existsSync(file)) return fallback;
+  try {
+    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("shape");
+    if (("providers" in value && !Array.isArray(value.providers))
+      || ("clientKeys" in value && !Array.isArray(value.clientKeys))
+      || ("configRevision" in value && (!value.configRevision || typeof value.configRevision !== "object" || Array.isArray(value.configRevision)))
+      || ("lastClientRequest" in value && (!value.lastClientRequest || typeof value.lastClientRequest !== "object" || Array.isArray(value.lastClientRequest)))) {
+      throw new Error("shape");
+    }
+    return value;
+  } catch {
+    throw new Error("gateway_config_file_invalid");
+  }
 }
 
 function writeJson(file, value) {
@@ -33,8 +51,8 @@ function writeJson(file, value) {
   fs.writeFileSync(temporary, JSON.stringify(value, null, 2), "utf8");
   try { fs.renameSync(temporary, file); }
   catch (error) {
-    try { fs.copyFileSync(temporary, file); fs.unlinkSync(temporary); }
-    catch { try { fs.unlinkSync(temporary); } catch { /* best effort cleanup */ } throw error; }
+    try { fs.unlinkSync(temporary); } catch { /* best effort cleanup */ }
+    throw error;
   }
 }
 
@@ -116,6 +134,10 @@ function addUsageTotals(totals, record) {
 }
 
 let usageLedger = new UsageLedger(dataDir);
+// 中文：正版 Codex 统计始终开启，但通过独立的本机 loopback 数据源读取；它不写入中转站账本。
+// English: Official Codex tracking is always on, but reads a separate loopback source and never
+// writes official records into the relay ledger.
+const codexUsageClient = new CodexUsageClient();
 let syncChangeHandler = null;
 
 function appendUsageRecord(record) { return usageLedger.append(record); }
@@ -157,16 +179,39 @@ let config = readJson(configFile, {
   clientKeys: [],
   lastClientRequest: { at: "", status: "never", model: "" },
 });
+lastPersistedConfig = JSON.parse(JSON.stringify(config));
 
 function validReasoningLevel(value) {
   return supportedReasoningLevels.includes(String(value));
 }
 
 function uniqueModels(value) {
-  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean).filter((item, index, list) => list.indexOf(item) === index) : [];
+  if (!Array.isArray(value)) return [];
+  const names = value.map((item) => {
+    if (typeof item === "string") return item;
+    if (item && typeof item === "object") return item.id || item.name || "";
+    return "";
+  }).map((item) => String(item).trim()).filter(Boolean);
+  return names.filter((item, index, list) => list.indexOf(item) === index);
+}
+
+// 中文：模型目录检测失败不等于线路不可用。Cherry Studio 的“检测并启用”会把
+// 模型目录和实际聊天请求分开调用，因此必须把目录状态单独保存。
+// English: A model-catalog failure does not mean that the route is unavailable. Cherry Studio
+// calls catalog discovery and chat separately, so keep catalog health separate from route state.
+const modelListStatuses = ["ok", "unsupported", "rate_limited", "auth", "timeout", "network", "invalid-response", "error", "never"];
+
+function providerModelsError(message, modelListStatus = "error", statusCode = 0, code = "") {
+  const error = new Error(message);
+  error.phase = "model-list";
+  error.modelListStatus = modelListStatuses.includes(modelListStatus) ? modelListStatus : "error";
+  error.statusCode = Number(statusCode || 0);
+  if (code) error.code = String(code);
+  return error;
 }
 
 function saveConfig({ bumpRevision = true } = {}) {
+  const previousPersisted = lastPersistedConfig ? JSON.parse(JSON.stringify(lastPersistedConfig)) : null;
   if (bumpRevision) {
     const previous = config.configRevision && typeof config.configRevision === "object" ? config.configRevision : {};
     config.configRevision = {
@@ -174,7 +219,17 @@ function saveConfig({ bumpRevision = true } = {}) {
       deviceId: usageLedger.identity.deviceId,
     };
   }
-  writeJson(configFile, config);
+  try {
+    writeJson(configFile, config);
+    lastPersistedConfig = JSON.parse(JSON.stringify(config));
+  } catch (error) {
+    // 中文：调用方通常先改内存再保存；落盘失败时必须恢复上次已确认的磁盘快照，
+    // 避免当前进程使用“用户未保存”的 Key、线路或思考强度。
+    // English: Callers update memory before saving. Restore the last durable snapshot on a
+    // failed write so the running process never uses unsaved keys, routes, or policies.
+    if (previousPersisted) config = previousPersisted;
+    throw error;
+  }
 }
 
 function migrateConfig() {
@@ -205,6 +260,7 @@ function migrateConfig() {
     provider.enabled = provider.enabled !== false;
     provider.modelFetchedAt = String(provider.modelFetchedAt || "");
     provider.lastTestStatus = ["ok", "error", "never"].includes(provider.lastTestStatus) ? provider.lastTestStatus : (provider.modelFetchedAt && provider.models.length ? "ok" : "never");
+    provider.modelListStatus = modelListStatuses.includes(provider.modelListStatus) ? provider.modelListStatus : (provider.lastTestStatus === "ok" ? "ok" : "never");
     provider.lastTestAt = String(provider.lastTestAt || "");
     provider.lastError = String(provider.lastError || "");
   }
@@ -299,17 +355,23 @@ function getAuthorizedClient(req) {
 
 function providerView(provider) {
   const clientKeyCount = config.clientKeys.filter((item) => item.providerId === provider.id).length;
+  const models = uniqueModels(provider.models);
+  const modelListStatus = provider.modelListStatus || "never";
+  const routeVerified = provider.lastTestStatus === "ok"
+    || (provider.lastTestStatus === "error" && ["unsupported", "rate_limited"].includes(modelListStatus) && models.length > 0);
   return {
     id: provider.id,
     name: provider.name,
     baseUrl: provider.baseUrl,
-    models: uniqueModels(provider.models),
-    modelCount: uniqueModels(provider.models).length,
+    models,
+    modelCount: models.length,
     enabled: provider.enabled !== false,
     hasApiKey: Boolean(provider.apiKeyEnc && decrypt(provider.apiKeyEnc)),
     modelFetchedAt: provider.modelFetchedAt || "",
     lastTestAt: provider.lastTestAt || "",
     lastTestStatus: provider.lastTestStatus || "never",
+    modelListStatus,
+    routeVerified,
     lastLatencyMs: Number(provider.lastLatencyMs || 0) || undefined,
     lastError: provider.lastError || "",
     clientKeyCount,
@@ -438,7 +500,10 @@ async function proxyRequest(req, res, rawBody) {
   const upstreamReq = requestUpstream(target, req.method, headers, (upstreamRes) => {
     const statusCode = upstreamRes.statusCode || 502;
     const isSse = String(upstreamRes.headers["content-type"] || "").toLowerCase().includes("text/event-stream");
-    updateClientRequestStatus(statusCode >= 200 && statusCode < 400 ? "ok" : "error", payload.model);
+    // 中文：网关不跟随上游重定向；只有完整收到 2xx 响应才算实际调用成功。
+    // English: The gateway does not follow upstream redirects; only a completed 2xx response is
+    // a successful model call.
+    updateClientRequestStatus(statusCode >= 200 && statusCode < 300 ? "ok" : "error", payload.model);
     res.writeHead(upstreamRes.statusCode || 502, {
       ...upstreamRes.headers,
       "access-control-allow-origin": "*",
@@ -458,9 +523,13 @@ async function proxyRequest(req, res, rawBody) {
     });
     upstreamRes.once("end", () => {
       if (isSse) sseRemainder += decoder.end();
+      updateClientRequestStatus(statusCode >= 200 && statusCode < 300 ? "ok" : "error", payload.model);
       finalizeUsage(statusCode);
     });
-    upstreamRes.once("error", (error) => finalizeUsage(statusCode, error.message));
+    upstreamRes.once("error", (error) => {
+      updateClientRequestStatus("error", payload.model);
+      finalizeUsage(statusCode, error.message);
+    });
     upstreamRes.pipe(res);
   });
   upstreamReq.on("error", (error) => {
@@ -494,8 +563,26 @@ function usageRangeDefinition(value) {
   return { key: Object.prototype.hasOwnProperty.call(ranges, value) ? value : "24h", ...(ranges[value] || ranges["24h"]) };
 }
 
-function usageSnapshot(url) {
-  return usageLedger.snapshot(url);
+async function usageSnapshot(url) {
+  // 中文：全部来源必须在两类记录合并后统一分页；先取两条流的前段，避免各自 offset 导致漏项。
+  // English: All-source pagination must happen after merging both streams; fetch each prefix first
+  // so independent offsets cannot drop interleaved records.
+  const sourceUrl = new URL(url);
+  if (String(url.searchParams.get("source") || "all") === "all") {
+    const offset = Math.max(0, Number(url.searchParams.get("recordsOffset") || 0) || 0);
+    const limit = Math.min(5000, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
+    sourceUrl.searchParams.set("recordsOffset", "0");
+    sourceUrl.searchParams.set("limit", String(Math.min(5000, offset + limit)));
+  }
+  const sourceFilter = String(url.searchParams.get("source") || "all");
+  const providerId = String(url.searchParams.get("providerId") || "");
+  const wantsOfficial = sourceFilter !== "relay" && (!providerId || providerId === CODEX_OFFICIAL_SOURCE);
+  const relaySnapshot = usageLedger.snapshot(sourceUrl);
+  // 中文：中转站专用筛选不应等待本机 Codex 服务；官方筛选仍保持显式不可用状态。
+  // English: Relay-only queries must not wait for the local Codex service; official queries still
+  // expose an explicit unavailable state instead of silently fabricating zero usage.
+  const officialSnapshot = wantsOfficial ? await codexUsageClient.safeSnapshot(sourceUrl) : emptySnapshot(sourceUrl, CODEX_OFFICIAL_SOURCE);
+  return combineUsageSnapshots(relaySnapshot, officialSnapshot, url);
 }
 
 async function fetchProviderModels(provider) {
@@ -511,15 +598,32 @@ async function fetchProviderModels(provider) {
       response.on("end", () => {
         const data = bodyJson(Buffer.concat(chunks));
         if (response.statusCode >= 200 && response.statusCode < 300) {
-          const rawModels = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : [];
+          const rawModels = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
+          if (!rawModels) return reject(providerModelsError("上游模型目录响应格式无效", "invalid-response", response.statusCode));
           const models = uniqueModels(rawModels.map((item) => typeof item === "string" ? item : item?.id || item?.name));
+          if (!models.length) return reject(providerModelsError("上游模型目录为空或不含有效模型", "invalid-response", response.statusCode));
           resolve({ status: response.statusCode, latencyMs: Date.now() - started, models });
         } else {
-          reject(new Error(`HTTP ${response.statusCode}${data?.error?.message ? `: ${data.error.message}` : ""}`));
+          const statusCode = Number(response.statusCode || 0);
+          const modelListStatus = [404, 405, 501].includes(statusCode)
+            ? "unsupported"
+            : statusCode === 429
+              ? "rate_limited"
+              : [401, 403].includes(statusCode)
+                ? "auth"
+                : [408, 504].includes(statusCode)
+                  ? "timeout"
+                  : "error";
+          reject(providerModelsError(`HTTP ${statusCode}${data?.error?.message ? `: ${data.error.message}` : ""}`, modelListStatus, statusCode));
         }
       });
     });
-    request.on("error", reject);
+    request.on("error", (error) => reject(providerModelsError(
+      error?.message || "无法连接上游模型目录",
+      error?.message === "upstream_timeout" ? "timeout" : "network",
+      0,
+      error?.code || (error?.message === "upstream_timeout" ? "ETIMEDOUT" : ""),
+    )));
     request.end();
   });
 }
@@ -530,6 +634,9 @@ function providerErrorMessage(error, provider) {
   if (code === "ECONNREFUSED") return `无法连接中转站（ECONNREFUSED）：请检查 API URL、端口和网络代理。地址：${provider.baseUrl}`;
   if (code === "ENOTFOUND") return `找不到中转站域名（ENOTFOUND）：请检查 API URL、DNS 和网络代理。地址：${provider.baseUrl}`;
   if (code === "ETIMEDOUT" || raw === "upstream_timeout") return `连接中转站超时：请检查网络代理、线路速度和上游状态。地址：${provider.baseUrl}`;
+  if (error?.modelListStatus === "unsupported") return `上游不支持模型目录接口，但线路仍保持启用；已有模型仍可尝试调用。地址：${provider.baseUrl}`;
+  if (error?.modelListStatus === "rate_limited") return `模型目录接口被上游限流，请稍后刷新；线路仍保持启用。地址：${provider.baseUrl}`;
+  if (error?.modelListStatus === "invalid-response") return `上游模型目录响应格式无效；线路仍保持启用。地址：${provider.baseUrl}`;
   if (/^HTTP (401|403)/.test(raw)) return `${raw}：请检查中转站 Key 是否有效，以及线路是否有访问权限。`;
   return raw;
 }
@@ -544,7 +651,7 @@ async function admin(req, res, url) {
   if (url.pathname === "/admin/api/providers" && req.method === "GET") return json(res, 200, { version: gatewayVersion, providers: config.providers.map(providerView) });
   if (url.pathname === "/admin/api/settings" && req.method === "GET") return json(res, 200, { forcedLevel: config.forcedLevel || "unchanged", defaultProvider: config.defaultProvider || "", reasoningLevels: supportedReasoningLevels });
   if (url.pathname === "/admin/api/status" && req.method === "GET") return json(res, 200, { version: gatewayVersion, forcedLevel: config.forcedLevel || "unchanged", lastClientRequestAt, lastClientRequestStatus, lastClientRequestModel, ledger: usageLedger.status() });
-  if (url.pathname === "/admin/api/usage" && req.method === "GET") return json(res, 200, usageSnapshot(url));
+  if (url.pathname === "/admin/api/usage" && req.method === "GET") return json(res, 200, await usageSnapshot(url));
   if (url.pathname === "/admin/api/providers" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
     if (!data.id || !data.baseUrl) return json(res, 400, { error: "线路代号和 API URL 必填" });
@@ -557,19 +664,24 @@ async function admin(req, res, url) {
     if (!id) return json(res, 400, { error: "线路代号只能使用字母、数字、下划线或短横线" });
     const old = config.providers.find((item) => item.id === id);
     const normalizedUrl = baseUrl.toString().replace(/\/+$/, "");
+    const preservesUpstreamIdentity = Boolean(old && old.baseUrl === normalizedUrl && !data.apiKey);
     const provider = {
       ...(old || {}),
       id,
       name: String(data.name || id).trim(),
       baseUrl: normalizedUrl,
-      models: old?.models || [],
-      modelFetchedAt: old?.modelFetchedAt || "",
+      // 中文：URL 或上游 Key 改变后，旧目录不再可信；避免 Cherry Studio 看到上一条线路的模型。
+      // English: A changed URL or upstream key invalidates the old catalog; never expose models
+      // from the previous route to Cherry Studio.
+      models: preservesUpstreamIdentity ? old.models || [] : [],
+      modelFetchedAt: preservesUpstreamIdentity ? old.modelFetchedAt || "" : "",
       enabled: true,
       apiKeyEnc: data.apiKey ? encrypt(String(data.apiKey).trim()) : (old?.apiKeyEnc || ""),
-      lastTestStatus: old && old.baseUrl === normalizedUrl && !data.apiKey ? (old.lastTestStatus || "never") : "never",
-      lastTestAt: old && old.baseUrl === normalizedUrl && !data.apiKey ? (old.lastTestAt || "") : "",
-      lastLatencyMs: old && old.baseUrl === normalizedUrl && !data.apiKey ? old.lastLatencyMs : undefined,
-      lastError: old && old.baseUrl === normalizedUrl && !data.apiKey ? (old.lastError || "") : "",
+      lastTestStatus: preservesUpstreamIdentity ? (old.lastTestStatus || "never") : "never",
+      modelListStatus: preservesUpstreamIdentity ? (old.modelListStatus || "never") : "never",
+      lastTestAt: preservesUpstreamIdentity ? (old.lastTestAt || "") : "",
+      lastLatencyMs: preservesUpstreamIdentity ? old.lastLatencyMs : undefined,
+      lastError: preservesUpstreamIdentity ? (old.lastError || "") : "",
     };
     config.providers = old ? config.providers.map((item) => item.id === id ? provider : item) : [...config.providers, provider];
     if (old && old.name !== provider.name) {
@@ -590,6 +702,7 @@ async function admin(req, res, url) {
       provider.modelFetchedAt = new Date().toISOString();
       provider.lastTestAt = provider.modelFetchedAt;
       provider.lastTestStatus = "ok";
+      provider.modelListStatus = "ok";
       provider.lastLatencyMs = result.latencyMs;
       provider.lastError = "";
       saveConfig();
@@ -598,10 +711,20 @@ async function admin(req, res, url) {
     } catch (error) {
       provider.lastTestAt = new Date().toISOString();
       provider.lastTestStatus = "error";
+      provider.modelListStatus = error?.modelListStatus || "error";
       provider.lastError = providerErrorMessage(error, provider);
       saveConfig();
       notifySyncChange("route-health-change");
-      return json(res, 502, { ok: false, error: provider.lastError });
+      return json(res, 502, {
+        ok: false,
+        phase: "model-list",
+        routeEnabled: provider.enabled !== false,
+        routeVerified: providerView(provider).routeVerified,
+        modelListStatus: provider.modelListStatus,
+        status: Number(error?.statusCode || 0) || undefined,
+        error: provider.lastError,
+        provider: providerView(provider),
+      });
     }
   }
   if (url.pathname === "/admin/api/settings" && req.method === "POST") {
@@ -842,6 +965,7 @@ export function getSyncSnapshot() {
       models: uniqueModels(provider.models),
       modelFetchedAt: String(provider.modelFetchedAt || ""),
       lastTestStatus: ["ok", "error", "never"].includes(provider.lastTestStatus) ? provider.lastTestStatus : "never",
+      modelListStatus: modelListStatuses.includes(provider.modelListStatus) ? provider.modelListStatus : "never",
       lastTestAt: String(provider.lastTestAt || ""),
       lastLatencyMs: Number(provider.lastLatencyMs || 0),
     })),
@@ -909,6 +1033,7 @@ function syncProviderFromRemote(publicProvider, secureProvider) {
     models: uniqueModels(publicProvider.models),
     modelFetchedAt: String(publicProvider.modelFetchedAt || ""),
     lastTestStatus: ["ok", "error", "never"].includes(publicProvider.lastTestStatus) ? publicProvider.lastTestStatus : "never",
+    modelListStatus: modelListStatuses.includes(publicProvider.modelListStatus) ? publicProvider.modelListStatus : "never",
     lastTestAt: String(publicProvider.lastTestAt || ""),
     lastLatencyMs: finiteToken(publicProvider.lastLatencyMs),
     lastError: "",
@@ -917,19 +1042,35 @@ function syncProviderFromRemote(publicProvider, secureProvider) {
   };
 }
 
-// 中文：只有用户明确选择云端版本后才调用；安全 URL 和上游 Key 不会在后台静默替换。
-// English: Called only after the user explicitly chooses the cloud copy; secure URLs and upstream keys never change silently.
-export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) {
+function syncTombstoneIds(tombstones) {
+  return new Set((Array.isArray(tombstones) ? tombstones : [])
+    .filter((item) => String(item?.object_type || item?.objectType || "") === "client-key")
+    .map((item) => String(item?.object_id || item?.objectId || ""))
+    .filter(Boolean));
+}
+
+function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
   if (!publicConfig || Number(publicConfig.schemaVersion) !== 1 || !publicConfig.configRevision) throw new Error("sync_invalid_config");
   if (!secureConfig || Number(secureConfig.schemaVersion) !== 1 || secureConfig.datasetId !== usageLedger.identity.datasetId) throw new Error("sync_invalid_secure_config");
-  const secureById = new Map((Array.isArray(secureConfig.providers) ? secureConfig.providers : []).map((item) => [String(item.id || ""), item]));
-  const providers = (Array.isArray(publicConfig.providers) ? publicConfig.providers : []).map((item) => syncProviderFromRemote(item, secureById.get(String(item.id || ""))));
+  if (!Array.isArray(publicConfig.providers) || !Array.isArray(publicConfig.clientKeyMetadata)) throw new Error("sync_invalid_config");
+  if (!Array.isArray(secureConfig.providers)) throw new Error("sync_invalid_secure_config");
+  const secureById = new Map();
+  for (const item of secureConfig.providers) {
+    const id = String(item?.id || "");
+    if (!id || secureById.has(id)) throw new Error("sync_invalid_secure_config");
+    secureById.set(id, item);
+  }
+  const providers = publicConfig.providers.map((item) => syncProviderFromRemote(item, secureById.get(String(item?.id || ""))));
   const providerIds = new Set(providers.map((item) => item.id));
+  if (providerIds.size !== providers.length) throw new Error("sync_invalid_config");
   const previousKeys = new Map(config.clientKeys.map((item) => [item.id, item]));
+  const remoteKeyIds = new Set();
   const clientKeys = (Array.isArray(publicConfig.clientKeyMetadata) ? publicConfig.clientKeyMetadata : []).map((item) => {
     const id = String(item.id || "");
     const providerId = String(item.providerId || "");
     if (!id || !providerIds.has(providerId)) throw new Error("sync_invalid_client_metadata");
+    if (remoteKeyIds.has(id)) throw new Error("sync_invalid_client_metadata");
+    remoteKeyIds.add(id);
     const previous = previousKeys.get(id);
     // 中文：同一设备绝不因更新或同步刷新客户端 Key。只有同步引擎明确确认是全新设备首次恢复时才允许生成。
     // English: Updates and normal syncs never rotate a same-device client key. Generation is allowed only
@@ -949,7 +1090,15 @@ export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) 
       keyEnc: previousSecret ? String(previous.keyEnc) : encrypt(localSecret),
     };
   });
-  config = {
+  const explicitlyDeleted = syncTombstoneIds(options.tombstones);
+  // 中文：远端 config 是某次设备的观察结果，不是本机 Key 的全量删除清单。远端缺少
+  // 本机独有 Key 时保留原条目；只有明确的 client-key tombstone 才表示云端删除。
+  // English: A remote config is one device's observation, not an implicit delete-all list for
+  // this device's keys. Preserve local-only keys; only an explicit client-key tombstone deletes.
+  for (const localKey of config.clientKeys) {
+    if (!remoteKeyIds.has(localKey.id) && !explicitlyDeleted.has(localKey.id)) clientKeys.push(localKey);
+  }
+  return {
     ...config,
     schemaVersion: 1,
     version: 1,
@@ -962,7 +1111,22 @@ export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) 
     providers,
     clientKeys,
   };
-  saveConfig({ bumpRevision: false });
+}
+
+// 中文：仅验证远端 config/vault 的业务关联，不写入本地配置；由 vault 导入的提交前回调调用。
+// English: Validate remote config/vault relationships without writing local config; SyncEngine
+// invokes this from the vault import pre-commit callback.
+export function validateConfigFromSync(publicConfig, secureConfig, options = {}) {
+  prepareConfigFromSync(publicConfig, secureConfig, options);
+  return true;
+}
+
+// 中文：只有用户明确选择云端版本后才调用；安全 URL 和上游 Key 不会在后台静默替换。
+// English: Called only after the user explicitly chooses the cloud copy; secure URLs and upstream keys never change silently.
+export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) {
+  const nextConfig = prepareConfigFromSync(publicConfig, secureConfig, options);
+  writeJson(configFile, nextConfig);
+  config = nextConfig;
   return getSyncSnapshot().publicConfig;
 }
 
