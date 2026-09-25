@@ -44,7 +44,9 @@ GitHub 访问令牌、保险库加密密码/恢复码、上游 API Key 是三类
 
 ## Codex 官方统计的当前口径
 
-界面中的“Codex 官方 / Codex Official”是产品内来源标签，不等于 OpenAI 账户级用量总账。当前未发布工作树只读本机 `http://127.0.0.1:43189` 的 `codex-usage` loopback API，读取 summary、timeseries 和 sessions；不读取 `auth.json`、会话 JSONL、聊天正文或密钥，也不写入中转站 usage ledger。
+界面中的“Codex 官方 / Codex Official”是产品内来源标签，不等于 OpenAI 账户级用量总账。v1.40.3 只读本机 `http://127.0.0.1:43189` 的 `codex-usage` loopback API，读取 summary、timeseries 和请求级 JSON export。没有请求级 export 时不显示官方明细，不回退读取 sessions，避免把会话累计值误显示为单次请求。不读取 `auth.json`、会话 JSONL、聊天正文或密钥，也不写入中转站 usage ledger。
+
+请求历史中的 Codex 官方每一行代表一次模型请求，使用该请求自己的 `usage.input_tokens`、`cached_input_tokens`、`output_tokens` 和 `total_tokens`。sessions 接口中的 `usage` 是整个会话累计值，不再用于新版明细行。上下文压缩本身会产生新的模型调用和 Token 消耗，若统计器把它记为一次请求，其用量会进入对应单次记录；它不能被误并入上一条请求或当成整个会话的一次输入。
 
 官方来源使用独立的 45 MiB 裁剪目标和 50 MiB 硬上限内存缓存。没有 HTTP 状态、耗时或流式字段时，页面显示“未知”；本机服务不可用时显示“已开启但不可用”，不能把故障写成 0 条或把数据合并到某条中转线路。
 

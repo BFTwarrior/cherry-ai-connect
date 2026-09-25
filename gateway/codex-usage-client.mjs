@@ -99,32 +99,30 @@ function pointFromTimeseries(value) {
   };
 }
 
-// 中文：把本机 session 汇总转成统一历史记录；接口没有提供的请求级指标必须保持未知。
-// English: Normalize a local session aggregate into the shared history shape; request-level
-// metrics absent from the API must remain unknown instead of being fabricated.
-function sessionRecord(value) {
+// 中文：优先使用 codex-usage 的 export JSON。它每一条就是一次模型请求，不能改用
+// sessions.usage，因为后者是整个会话的累计值，正是“单条显示十亿 Token”的根因。
+// English: Prefer codex-usage's JSON export, where each item is one model request. Do not use
+// sessions.usage for the detail table: it is a session cumulative total and caused the apparent
+// billion-token single row.
+function requestRecord(value) {
   const row = value && typeof value === "object" ? value : {};
   const usage = row.usage && typeof row.usage === "object" ? row.usage : {};
-  const sessionId = text(firstValue(row.session_id, row.sessionId, row.id));
-  const at = text(firstValue(row.last_usage, row.lastUsage, row.updated_at, row.updatedAt, row.created_at, row.createdAt));
-  // 中文：真实 codex-usage sessions 把 Token 放在 usage 对象；同时兼容旧版扁平字段。
-  // English: Real codex-usage sessions nest token fields under usage; keep flat-field fallback
-  // for older service builds and test fixtures.
-  const inputTokens = boundedNumber(firstValue(usage.input, usage.input_tokens, row.input_tokens, row.inputTokens));
-  const outputTokens = boundedNumber(firstValue(usage.output, usage.output_tokens, row.output_tokens, row.outputTokens));
-  const totalTokens = boundedNumber(firstValue(usage.total, usage.total_tokens, row.total_tokens, row.totalTokens, inputTokens + outputTokens));
+  const requestId = text(firstValue(row.id, row.response_id, row.turn_id));
+  const at = text(firstValue(row.timestamp, row.observed_at));
+  const inputTokens = boundedNumber(firstValue(usage.input, usage.input_tokens));
+  const outputTokens = boundedNumber(firstValue(usage.output, usage.output_tokens));
+  const totalTokens = boundedNumber(firstValue(usage.total, usage.total_tokens, inputTokens + outputTokens));
   return {
-    id: `codex-session:${sessionId || cryptoRandomFallback(row)}`,
+    id: `codex-request:${requestId || cryptoRandomFallback(row)}`,
     at,
     clientKeyName: CODEX_OFFICIAL_LABEL_EN,
     providerId: CODEX_OFFICIAL_SOURCE,
     providerName: CODEX_OFFICIAL_LABEL_EN,
     model: text(firstValue(row.model, "—")),
-    endpoint: "/local/codex/session",
-    reasoningLevel: text(firstValue(row.service_mode, row.serviceMode, row.mode, "—")),
-    // 中文：本机 Codex sessions API 不提供 HTTP 状态或请求延迟，不能伪造成功和 0ms。
-    // English: The local Codex sessions API exposes no HTTP status or latency; never fabricate
-    // success or zero-millisecond timings for display.
+    endpoint: "/local/codex/request",
+    reasoningLevel: text(firstValue(row.service_mode, row.service_tier, "—")),
+    // 中文：官方 export 没有 HTTP 状态或请求耗时，继续明确显示未知。
+    // English: The official export has no HTTP status or latency; keep those fields unknown.
     status: null,
     durationMs: null,
     ttftMs: null,
@@ -132,12 +130,11 @@ function sessionRecord(value) {
     inputTokens,
     outputTokens,
     totalTokens,
-    cacheReadTokens: boundedNumber(firstValue(usage.cached_input, usage.cached_input_tokens, row.cached_input_tokens, row.cachedInputTokens, row.cached_input)),
-    cacheWriteTokens: boundedNumber(firstValue(usage.cache_write_input, usage.cache_write_input_tokens, row.cache_write_input_tokens, row.cacheWriteInputTokens, row.cache_write_input)),
-    // 中文：sessions 接口返回的是整个会话的累计输入，不是单次请求输入；保留口径标记供界面明确展示。
-    // English: The sessions API reports cumulative input for the whole session, not one request;
-    // keep an explicit semantic marker so the UI cannot present it as a single prompt.
-    usageKind: "session-cumulative",
+    cacheReadTokens: boundedNumber(firstValue(usage.cached_input, usage.cached_input_tokens)),
+    cacheWriteTokens: boundedNumber(firstValue(usage.cache_write_input, usage.cache_write_input_tokens)),
+    // 中文：这是一条单次模型请求，不是 session 累计值。
+    // English: This row represents one model request, not a cumulative session value.
+    usageKind: "request",
     usageAvailable: true,
     source: CODEX_OFFICIAL_SOURCE,
     sourceLabel: CODEX_OFFICIAL_LABEL_EN,
@@ -145,7 +142,7 @@ function sessionRecord(value) {
 }
 
 function cryptoRandomFallback(row) {
-  // This is only a defensive UI key fallback. Stable session IDs are supplied by the API.
+  // This is only a defensive UI key fallback. Stable request IDs are supplied by the API.
   const raw = JSON.stringify(row || {});
   let hash = 2166136261;
   for (let index = 0; index < raw.length; index += 1) hash = Math.imul(hash ^ raw.charCodeAt(index), 16777619);
@@ -162,9 +159,9 @@ export class CodexUsageClient {
     this.origin = localOrigin(origin).replace(/\/+$/, "");
     this.fetchImpl = fetchImpl;
     this.timeoutMs = Math.max(200, Number(timeoutMs) || 1200);
-    // 中文：官方明细按查询模型分桶但共享一个全局内存预算；达到 45 MB 目标值后从全局最旧会话开始裁剪，绝不占用 relay ledger 配额。
+    // 中文：官方明细按查询模型分桶但共享一个全局内存预算；达到 45 MB 目标值后从全局最旧请求开始裁剪，绝不占用 relay ledger 配额。
     // English: Official detail records keep model-scoped buckets but share one global memory
-    // budget; once the 45 MB target is exceeded, the oldest session across all buckets is
+    // budget; once the 45 MB target is exceeded, the oldest request across all buckets is
     // trimmed without consuming the relay ledger budget.
     this.recordCaches = new Map();
   }
@@ -205,8 +202,16 @@ export class CodexUsageClient {
   #rememberRecords(model, records) {
     const key = String(model || "*");
     const cache = this.recordCaches.get(key) || new Map();
+    // 中文：清掉旧版本可能遗留在当前进程内存中的会话累计明细。旧记录不能继续
+    // 混入请求明细，否则即使本次 export 已改为单次请求，页面仍可能再次显示十亿 Token。
+    // English: Remove legacy session-cumulative rows that may still exist in this process.
+    // Otherwise an old row could reappear even though the current export is request-level.
+    for (const [id, record] of cache) {
+      if (record?.usageKind !== "request" || String(id).startsWith("codex-session:")) cache.delete(id);
+    }
     for (const record of records) cache.set(record.id, record);
     if (cache.size) this.recordCaches.set(key, cache);
+    else this.recordCaches.delete(key);
     this.#pruneRecords();
     return [...(this.recordCaches.get(key)?.values() || [])].sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(right.id).localeCompare(String(left.id)));
   }
@@ -221,14 +226,14 @@ export class CodexUsageClient {
       const response = await this.fetchImpl(target, { method: "GET", headers: { accept: "application/json" }, cache: "no-store", signal: controller.signal });
       const value = await response.json().catch(() => null);
       if (!response.ok) throw new Error(`codex_usage_http_${response.status}`);
-      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("codex_usage_invalid_payload");
+      if (!value || typeof value !== "object") throw new Error("codex_usage_invalid_payload");
       return value;
     } finally { clearTimeout(timer); }
   }
 
   async snapshot(url) {
-    // 中文：摘要、趋势和 session 明细都只读 loopback API；不会读取认证文件、聊天正文或写入中转账本。
-    // English: Read summaries, trends, and session details only from the loopback API; never read
+    // 中文：摘要、趋势和请求级明细都只读 loopback API；不会读取认证文件、聊天正文或写入中转账本。
+    // English: Read summaries, trends, and request-level detail only from the loopback API; never read
     // auth files or chat content, and never write into the relay ledger.
     const range = rangeKey(queryValue(url, "range", "24h"));
     const model = queryValue(url, "model");
@@ -238,25 +243,53 @@ export class CodexUsageClient {
     // 中文：官方接口的深分页能力不能假定；只读取从 0 开始且不超过 5000 条的可证明前缀。
     // English: Do not assume deep-page support from the official API; read only a provable
     // prefix starting at zero, capped at 5000 records.
-    const sessionLimit = Math.min(CODEX_OFFICIAL_MAX_RECORD_FETCH, requestedOffset + requestedLimit);
     const since = range;
     const bucket = range === "24h" ? "hour" : "day";
     const baseParams = model ? { since: "all", model } : { since: "all" };
     const currentParams = model ? { since, model } : { since };
-    const [currentSummary, lifetimeSummary, timeseries, sessions] = await Promise.all([
+    const [currentSummary, lifetimeSummary, timeseries] = await Promise.all([
       this.#get("/api/v1/summary", currentParams),
       this.#get("/api/v1/summary", baseParams),
       this.#get("/api/v1/timeseries", { ...currentParams, bucket }),
-      this.#get("/api/v1/sessions", { ...baseParams, model: model || undefined, limit: sessionLimit, offset: 0 }),
     ]);
-    if (!Array.isArray(timeseries?.points) || (!Array.isArray(sessions?.items) && !Array.isArray(sessions))) throw new Error("codex_usage_invalid_payload");
-    const incomingRecords = (Array.isArray(sessions?.items) ? sessions.items : Array.isArray(sessions) ? sessions : []).map(sessionRecord).filter((item) => item.at);
+    if (!Array.isArray(timeseries?.points)) throw new Error("codex_usage_invalid_payload");
+
+    let exportRecords = null;
+    let requestExportAvailable = false;
+    try {
+      // 中文：export 是请求级明细；查询范围沿用当前页面范围，避免为 24 小时明细读取全部历史。
+      // English: The export is request-level detail. Reuse the current page range so a 24-hour
+      // view never reads the entire lifetime history just to render its table.
+      const exported = await this.#get("/api/v1/export", { ...currentParams, model: model || undefined, format: "json" });
+      if (Array.isArray(exported)) {
+        exportRecords = exported;
+        requestExportAvailable = true;
+      }
+    } catch {
+      // Do not fall back to sessions: sessions.usage is cumulative and must never become a
+      // request record. The aggregate summary remains available, while detail stays empty.
+      exportRecords = null;
+    }
+
+    let incomingRecords;
+    let reportedTotal;
+    let exportTruncated = false;
+    if (Array.isArray(exportRecords)) {
+      reportedTotal = exportRecords.length;
+      exportTruncated = exportRecords.length > CODEX_OFFICIAL_MAX_RECORD_FETCH;
+      incomingRecords = exportRecords
+        .slice(0, CODEX_OFFICIAL_MAX_RECORD_FETCH)
+        .map(requestRecord)
+        .filter((item) => item.at);
+    } else {
+      incomingRecords = [];
+      reportedTotal = 0;
+    }
     const records = this.#rememberRecords(model, incomingRecords);
-    const reportedTotal = firstValue(sessions?.total, sessions?.total_count, sessions?.totalCount, sessions?.data?.total);
     const total = reportedTotal === undefined ? records.length : boundedNumber(reportedTotal);
     const availableRecords = reportedTotal === undefined ? records : records.slice(0, total);
-    const unknownDeepPage = reportedTotal === undefined && requestedOffset > 0 && requestedOffset >= availableRecords.length;
-    const truncated = total > availableRecords.length || unknownDeepPage;
+    const unknownDeepPage = false;
+    const truncated = exportTruncated || total > availableRecords.length;
     const lastKnownPageOffset = availableRecords.length > 0 ? Math.floor((availableRecords.length - 1) / requestedLimit) * requestedLimit : 0;
     const requestedPageOffset = total > 0 ? Math.min(requestedOffset, Math.floor((total - 1) / requestedLimit) * requestedLimit) : 0;
     const pageAvailable = !unknownDeepPage && (!truncated || requestedPageOffset < availableRecords.length);
@@ -271,10 +304,11 @@ export class CodexUsageClient {
       truncated,
       availableCount: availableRecords.length,
       maxAvailableOffset: lastKnownPageOffset,
+      ...(!requestExportAvailable ? { available: false, reason: "request_export_unavailable" } : {}),
       ...(truncated ? { reason: pageAvailable ? "official_history_prefix_only" : "official_deep_pagination_unavailable" } : {}),
     };
-    // 中文：官方会话没有 HTTP 状态；选择“仅成功/仅失败”时不能把未知状态冒充任一结果。
-    // English: Official sessions have no HTTP status; success/error filters must not classify
+    // 中文：官方请求明细没有 HTTP 状态；选择“仅成功/仅失败”时不能把未知状态冒充任一结果。
+    // English: Official request detail has no HTTP status; success/error filters must not classify
     // unknown status as either outcome.
     const statusFiltered = statusFilter === "all" ? {
       lifetime: totalsFromSummary(lifetimeSummary),
@@ -285,14 +319,14 @@ export class CodexUsageClient {
     } : { lifetime: emptyTotals(), summary: emptyTotals(), series: [], records: [], total: 0 };
     const response = {
       source: CODEX_OFFICIAL_SOURCE,
-      official: { enabled: true, available: true, source: CODEX_OFFICIAL_SOURCE, label: CODEX_OFFICIAL_LABEL_EN, origin: this.origin, checkedAt: new Date().toISOString(), status: "available" },
+      official: { enabled: true, available: true, detailAvailable: requestExportAvailable, detailStatus: requestExportAvailable ? "available" : "request_export_unavailable", source: CODEX_OFFICIAL_SOURCE, label: CODEX_OFFICIAL_LABEL_EN, origin: this.origin, checkedAt: new Date().toISOString(), status: "available" },
       detailCache: { ...this.#cacheStorage(), maxBytes: CODEX_OFFICIAL_CACHE_MAX_BYTES, targetBytes: CODEX_OFFICIAL_CACHE_TARGET_BYTES, pageLimit: requestedLimit, storage: "codex-usage-memory-cache" },
       lifetime: statusFiltered.lifetime,
       summary: statusFiltered.summary,
       series: statusFiltered.series,
       records: statusFiltered.records,
       recordPagination: statusFilter === "all" ? pagination : { total: statusFiltered.total, offset: 0, limit: requestedLimit, requestedOffset, available: true, truncated: false, availableCount: 0, maxAvailableOffset: 0 },
-      filters: { providers: [{ id: CODEX_OFFICIAL_SOURCE, name: CODEX_OFFICIAL_LABEL_EN }], models: [] },
+      filters: { providers: [{ id: CODEX_OFFICIAL_SOURCE, name: CODEX_OFFICIAL_LABEL_EN }], models: [...new Set(incomingRecords.map((item) => item.model).filter((item) => item && item !== "—"))].sort() },
       range,
       updatedAt: new Date().toISOString(),
     };

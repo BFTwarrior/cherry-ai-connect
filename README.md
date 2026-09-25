@@ -114,7 +114,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 ### Current Codex usage boundary
 
-The v1.40.2 build adds a `Codex Official` source that reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. It keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
+The v1.40.3 build keeps `Codex Official` as a separate source and reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. The detail table now uses the helper's JSON export, where each row is one model request; it no longer displays the session's cumulative input as if it were one request. The adapter keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
 
 “Official” is a product source label, not a replacement for OpenAI account usage. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
 

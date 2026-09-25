@@ -37,6 +37,7 @@ test("official Codex API stays separate and has an independent 50 MB cache budge
     const path = new URL(url).pathname;
     if (path.endsWith("/summary")) return response({ event_count: 2, usage: { input: 100, cached_input: 40, output: 20, total: 120 }, first_event: "2026-09-24T00:00:00Z", last_event: "2026-09-25T00:00:00Z" });
     if (path.endsWith("/timeseries")) return response({ points: [{ time: "2026-09-25T00:00:00Z", event_count: 2, usage: { input: 100, cached_input: 40, output: 20, total: 120 } }] });
+    if (path.endsWith("/export")) return response([{ id: "request-1", timestamp: "2026-09-25T00:00:00Z", model: "gpt-6-luna", usage: { input: 100, cached_input: 40, output: 20, total: 120 } }]);
     if (path.endsWith("/sessions")) return response({ items: [{ session_id: "session-1", last_usage: "2026-09-25T00:00:00Z", model: "gpt-6-luna", input_tokens: 100, output_tokens: 20, total_tokens: 120, cached_input_tokens: 40 }] });
     throw new Error(`unexpected ${path}`);
   }});
@@ -51,7 +52,7 @@ test("official Codex API stays separate and has an independent 50 MB cache budge
   assert.equal(value.records[0].ttftMs, null);
 });
 
-test("official session records read nested usage fields from the real API shape", async () => {
+test("official detail never falls back to session cumulative values", async () => {
   const client = new CodexUsageClient({ fetchImpl: async (url) => {
     const path = new URL(url).pathname;
     if (path.endsWith("/summary")) return response({ event_count: 1, usage: { input: 12, output: 3, total: 15 } });
@@ -60,12 +61,29 @@ test("official session records read nested usage fields from the real API shape"
     throw new Error(`unexpected ${path}`);
   }});
   const value = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&limit=20"));
-  assert.equal(value.records[0].inputTokens, 12);
-  assert.equal(value.records[0].outputTokens, 3);
-  assert.equal(value.records[0].totalTokens, 15);
-  assert.equal(value.records[0].cacheReadTokens, 4);
-  assert.equal(value.records[0].cacheWriteTokens, 1);
-  assert.equal(value.records[0].usageKind, "session-cumulative");
+  assert.deepEqual(value.records, []);
+  assert.equal(value.official.detailAvailable, false);
+  assert.equal(value.recordPagination.reason, "request_export_unavailable");
+});
+
+test("official detail records use one request from the JSON export instead of session totals", async () => {
+  const client = new CodexUsageClient({ fetchImpl: async (url) => {
+    const path = new URL(url).pathname;
+    if (path.endsWith("/summary")) return response({ event_count: 2, usage: { input: 1300000000, cached_input: 1290000000, output: 4000, total: 1300004000 } });
+    if (path.endsWith("/timeseries")) return response({ points: [] });
+    if (path.endsWith("/export")) return response([
+      { id: "request-2", timestamp: "2026-09-25T00:00:02Z", model: "gpt-6-luna", usage: { input: 180, cached_input: 160, output: 12, total: 192 } },
+      { id: "request-1", timestamp: "2026-09-25T00:00:01Z", model: "gpt-6-luna", usage: { input: 240, cached_input: 200, output: 20, total: 260 } },
+    ]);
+    throw new Error(`unexpected ${path}`);
+  }});
+  const value = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&limit=20"));
+  assert.equal(value.records.length, 2);
+  assert.equal(value.records[0].inputTokens, 180);
+  assert.equal(value.records[0].usageKind, "request");
+  assert.equal(value.records[0].endpoint, "/local/codex/request");
+  assert.equal(value.records[0].cacheReadTokens, 160);
+  assert.deepEqual(value.filters.models, ["gpt-6-luna"]);
 });
 
 test("official detail cache enforces one global budget across model buckets", async () => {
@@ -76,9 +94,9 @@ test("official detail cache enforces one global budget across model buckets", as
     const path = target.pathname;
     if (path.endsWith("/summary")) return response({ event_count: 1, usage: { input: 1, output: 1, total: 2 } });
     if (path.endsWith("/timeseries")) return response({ points: [] });
-    if (path.endsWith("/sessions")) {
+    if (path.endsWith("/export")) {
       const model = target.searchParams.get("model") || "all";
-      return response({ items: [{ session_id: `${model}-${padding}`, last_usage: `2026-09-${models.indexOf(model) + 1}T00:00:00Z`, model, input_tokens: 1, output_tokens: 1, total_tokens: 2 }] });
+      return response([{ id: `${model}-${padding}`, timestamp: `2026-09-${String(models.indexOf(model) + 1).padStart(2, "0")}T00:00:00Z`, model, usage: { input: 1, output: 1, total: 2 } }]);
     }
     throw new Error(`unexpected ${path}`);
   }});
@@ -93,35 +111,23 @@ test("official detail cache enforces one global budget across model buckets", as
 });
 
 test("official deep pagination never fabricates records beyond the fetched prefix", async () => {
-  const sessionRequests = [];
   const client = new CodexUsageClient({ fetchImpl: async (url) => {
     const target = new URL(url);
     const path = target.pathname;
     if (path.endsWith("/summary")) return response({ event_count: 6001, usage: { input: 1, output: 1, total: 2 } });
     if (path.endsWith("/timeseries")) return response({ points: [] });
-    if (path.endsWith("/sessions")) {
-      sessionRequests.push({ limit: Number(target.searchParams.get("limit")), offset: Number(target.searchParams.get("offset") || 0) });
-      return response({
-        total: 6001,
-        items: [
-          { session_id: "prefix-1", last_usage: "2026-09-25T02:00:00Z", model: "gpt-6-luna", input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-          { session_id: "prefix-2", last_usage: "2026-09-25T01:00:00Z", model: "gpt-6-luna", input_tokens: 1, output_tokens: 1, total_tokens: 2 },
-        ],
-      });
-    }
+    if (path.endsWith("/export")) return response(Array.from({ length: 6001 }, (_, index) => ({ id: `request-${index}`, timestamp: `2026-09-25T${String(23 - Math.floor(index / 3600)).padStart(2, "0")}:${String(Math.floor(index / 60) % 60).padStart(2, "0")}:${String(index % 60).padStart(2, "0")}Z`, model: "gpt-6-luna", usage: { input: 1, output: 1, total: 2 } })));
     throw new Error(`unexpected ${path}`);
   }});
 
   const firstPage = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&limit=100&recordsOffset=0"));
-  assert.equal(firstPage.records.length, 2);
+  assert.equal(firstPage.records.length, 100);
   assert.equal(firstPage.recordPagination.total, 6001);
   assert.equal(firstPage.recordPagination.truncated, true);
   assert.equal(firstPage.recordPagination.available, true);
-  assert.equal(firstPage.recordPagination.availableCount, 2);
+  assert.equal(firstPage.recordPagination.availableCount, CODEX_OFFICIAL_MAX_RECORD_FETCH);
 
   const deepPage = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&limit=100&recordsOffset=5000"));
-  assert.equal(sessionRequests.at(-1).limit, CODEX_OFFICIAL_MAX_RECORD_FETCH);
-  assert.equal(sessionRequests.at(-1).offset, 0, "the adapter does not claim unsupported deep offsets were fetched");
   assert.deepEqual(deepPage.records, []);
   assert.equal(deepPage.recordPagination.total, 6001);
   assert.equal(deepPage.recordPagination.requestedOffset, 5000);
@@ -130,28 +136,12 @@ test("official deep pagination never fabricates records beyond the fetched prefi
   assert.equal(deepPage.recordPagination.reason, "official_deep_pagination_unavailable");
 });
 
-test("official deep pagination stays unavailable when the service omits a total", async () => {
-  const client = new CodexUsageClient({ fetchImpl: async (url) => {
-    const path = new URL(url).pathname;
-    if (path.endsWith("/summary")) return response({ event_count: 2, usage: { input: 1, output: 1, total: 2 } });
-    if (path.endsWith("/timeseries")) return response({ points: [] });
-    if (path.endsWith("/sessions")) return response({ items: [{ session_id: "only-prefix", last_usage: "2026-09-25T00:00:00Z", model: "gpt-6-luna", input_tokens: 1, output_tokens: 1, total_tokens: 2 }] });
-    throw new Error(`unexpected ${path}`);
-  }});
-
-  const value = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&limit=100&recordsOffset=5000"));
-  assert.deepEqual(value.records, [], "without a total, the adapter must not return the first page for a deep-page request");
-  assert.equal(value.recordPagination.available, false);
-  assert.equal(value.recordPagination.truncated, true);
-  assert.equal(value.recordPagination.reason, "official_deep_pagination_unavailable");
-});
-
-test("official sessions stay out of success and error filters because HTTP status is unknown", async () => {
+test("official requests stay out of success and error filters because HTTP status is unknown", async () => {
   const client = new CodexUsageClient({ fetchImpl: async (url) => {
     const path = new URL(url).pathname;
     if (path.endsWith("/summary")) return response({ event_count: 1, usage: { input: 12, output: 3, total: 15 } });
     if (path.endsWith("/timeseries")) return response({ points: [] });
-    if (path.endsWith("/sessions")) return response({ items: [{ session_id: "unknown-status", last_usage: "2026-09-25T00:00:00Z", usage: { input: 12, output: 3, total: 15 } }] });
+    if (path.endsWith("/export")) return response([{ id: "unknown-status", timestamp: "2026-09-25T00:00:00Z", usage: { input: 12, output: 3, total: 15 } }]);
     throw new Error(`unexpected ${path}`);
   }});
   const value = await client.snapshot(new URL("http://gateway.test/admin/api/usage?range=24h&status=success"));

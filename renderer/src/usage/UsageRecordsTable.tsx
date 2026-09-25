@@ -28,7 +28,7 @@ export type UsageRecord = {
   totalTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
-  usageKind?: "session-cumulative" | "request" | string;
+  usageKind?: "request" | string;
 };
 
 // 中文：阈值与产品文档一致；后续若测试数据调整，只需修改这一处。
@@ -87,7 +87,7 @@ export const UsageRecordsTable = memo(function UsageRecordsTable({ records, lang
           <div><small>{tr("状态", "Status")}</small><span className={`request-status ${record.status === null ? "unknown" : successful ? "ok" : "error"}`}>{record.status === null ? tr("未知", "Unknown") : record.status}</span></div>
         </header>
         <div className="usage-record-metrics">
-          <div className="token-input"><small>{record.usageKind === "session-cumulative" ? tr("累计输入 Token", "Session input") : tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(record.inputTokens)}</strong>{record.usageKind === "session-cumulative" && <em>{tr("官方会话累计", "Cumulative session total")}</em>}</div>
+          <div className="token-input"><small>{tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(record.inputTokens)}</strong>{record.usageKind === "request" ? <em>{tr("单次请求", "Single request")}</em> : null}</div>
           <div className="token-output"><small>{tr("输出 Token", "Output tokens")}</small><strong>{formattedNumber(record.outputTokens)}</strong></div>
           <div className="token-cache"><small>{tr("缓存 Token", "Cache tokens")}</small><strong>{formattedNumber(record.cacheReadTokens)}</strong><em>{tr("写入", "Write")} +{formattedNumber(record.cacheWriteTokens)}</em></div>
           <div className="token-total"><small>{tr("总 Token", "Total tokens")}</small><strong>{formattedNumber(record.totalTokens)}</strong></div>

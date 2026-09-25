@@ -82,8 +82,8 @@ const DEMO_USAGE: UsageResponse = (() => {
     const outputTokens = 4_200 + index * 600;
     return {
       id: `demo-codex-session-${index + 1}`, at: new Date(base + (10 - index) * 2 * 60 * 60 * 1000).toISOString(), clientKeyName: "Codex Official",
-      providerId: "codex-official", providerName: "Codex Official", source: "codex-official", model: ["gpt-6-luna", "gpt-6-sol"][index], endpoint: "/local/codex/session", reasoningLevel: "—",
-      status: 200, durationMs: 0, ttftMs: 0, stream: false, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cacheReadTokens: 18_000 + index * 2_000, cacheWriteTokens: 0,
+      providerId: "codex-official", providerName: "Codex Official", source: "codex-official", model: ["gpt-6-luna", "gpt-6-sol"][index], endpoint: "/local/codex/request", reasoningLevel: "—",
+      status: null, durationMs: null, ttftMs: null, stream: null, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cacheReadTokens: 18_000 + index * 2_000, cacheWriteTokens: 0, usageKind: "request",
     };
   });
   const combinedRecords = [...records, ...officialRecords];

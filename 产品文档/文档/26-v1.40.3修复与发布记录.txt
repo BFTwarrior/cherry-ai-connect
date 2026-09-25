@@ -21,9 +21,10 @@
 
 ### 3. Codex 官方十亿级 Token 显示口径
 
-- 官方 sessions 记录明确标记为 `session-cumulative`。
-- 使用统计中显示为“累计输入 Token / Session input”，并标注“官方会话累计 / Cumulative session total”。
-- 不对官方服务返回的累计值进行除法、重复累加或虚构单次请求值；缓存输入仍单独显示。
+- 根因：官方 `sessions` 接口的 `usage.input` 是整个会话累计输入；长会话或上下文压缩后继续运行时，单个 session 行可能达到十亿级，不能把它当成一次请求。
+- v1.40.3 优先读取 `codex-usage` 的 `/api/v1/export?format=json`，每条明细对应一次模型请求，使用该条自己的输入、缓存输入、输出和总 Token。
+- 如果统计器没有 JSON export，官方明细保持为空并标记不可用；不回退读取 sessions，也不写入任何 `session-cumulative` 明细，避免累计值进入单次请求列表。
+- 上下文压缩会产生额外模型调用和 Token 消耗；如果 helper 将其记录为请求级 usage，则计入对应单次请求，不能并入上一条或重复计入整个 session。
 
 ### 4. 使用统计来源按钮卡顿
 
