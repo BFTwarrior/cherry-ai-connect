@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Cherry AI Connect product overview</title>
+  <desc id="desc">A dark purple product overview showing routes, a local gateway, client keys, usage, and private sync.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#171124"/><stop offset=".58" stop-color="#25163a"/><stop offset="1" stop-color="#101018"/></linearGradient>
+    <linearGradient id="purple" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#9c63ff"/><stop offset="1" stop-color="#5a2ca8"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#e7b85f"/><stop offset="1" stop-color="#93612d"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="18" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <style>text{font-family:Inter,Segoe UI,Arial,sans-serif}.muted{fill:#aa9fb8}.tiny{font-size:15px;letter-spacing:1.6px}.label{font-size:18px;font-weight:700}.value{font-size:28px;font-weight:800;fill:#f5efff}.line{fill:none;stroke-linecap:round}</style>
+  </defs>
+  <rect width="1200" height="560" rx="28" fill="url(#bg)"/>
+  <circle cx="1030" cy="72" r="180" fill="#9c63ff" opacity=".12" filter="url(#glow)"/>
+  <path d="M36 430 C250 350 292 478 510 398 S840 310 1165 408" class="line" stroke="#a96eff" stroke-opacity=".35" stroke-width="2"/>
+  <path d="M30 460 C260 380 320 515 540 423 S880 345 1165 444" class="line" stroke="#e4b768" stroke-opacity=".28" stroke-width="2"/>
+  <text x="58" y="72" fill="#e7b85f" class="tiny">CHERRY AI CONNECT · PRODUCT OVERVIEW</text>
+  <text x="58" y="118" fill="#fff" font-size="42" font-weight="800">One local control plane.</text>
+  <text x="58" y="151" class="muted" font-size="20">Routes, client access, usage intelligence, and private sync in one boundary.</text>
+
+  <g transform="translate(58 204)">
+    <rect width="252" height="180" rx="18" fill="#17151f" stroke="#59427b"/>
+    <rect x="20" y="20" width="46" height="46" rx="13" fill="#332347" stroke="#d9ad62"/>
+    <path d="M34 43h18M43 34v18" stroke="#f2c875" stroke-width="3" stroke-linecap="round"/>
+    <text x="82" y="43" fill="#f7f1ff" class="label">Workspace</text>
+    <text x="82" y="64" class="muted" font-size="14">LOCAL OPERATIONS</text>
+    <line x1="20" y1="88" x2="232" y2="88" stroke="#342c42"/>
+    <text x="20" y="119" class="muted" font-size="14">UPSTREAM ROUTES</text><text x="20" y="148" class="value">08</text>
+    <text x="132" y="119" class="muted" font-size="14">CLIENT KEYS</text><text x="132" y="148" class="value">12</text>
+  </g>
+  <g transform="translate(454 186)">
+    <rect width="292" height="224" rx="22" fill="#1b1727" stroke="#d9ad62" stroke-opacity=".75"/>
+    <rect x="22" y="20" width="248" height="32" rx="16" fill="#13131b" stroke="#423651"/>
+    <circle cx="40" cy="36" r="5" fill="#55d8a7"/><text x="56" y="42" fill="#cfc4d9" font-size="14">127.0.0.1 · protected gateway</text>
+    <text x="24" y="92" fill="#fff" font-size="24" font-weight="800">Local gateway</text>
+    <text x="24" y="119" class="muted" font-size="15">One boundary for every compatible client.</text>
+    <g transform="translate(24 145)"><rect width="72" height="43" rx="10" fill="#382456" stroke="#744bc1"/><text x="12" y="27" fill="#d9bfff" font-size="13">ROUTES</text></g>
+    <g transform="translate(110 145)"><rect width="72" height="43" rx="10" fill="#3b2a1d" stroke="#a2763d"/><text x="11" y="27" fill="#e6be72" font-size="13">KEYS</text></g>
+    <g transform="translate(196 145)"><rect width="72" height="43" rx="10" fill="#18382f" stroke="#3e9d7d"/><text x="9" y="27" fill="#76e0b8" font-size="13">SYNC</text></g>
+  </g>
+  <g transform="translate(890 204)">
+    <rect width="252" height="180" rx="18" fill="#17151f" stroke="#59427b"/>
+    <text x="20" y="39" fill="#f7f1ff" class="label">Compatible clients</text>
+    <text x="20" y="65" class="muted" font-size="14">USE THE SAME LOCAL API</text>
+    <g transform="translate(20 88)"><rect width="212" height="31" rx="9" fill="#2b1c42"/><circle cx="16" cy="15" r="4" fill="#a96eff"/><text x="30" y="21" fill="#eadfff" font-size="14">Cherry Studio</text></g>
+    <g transform="translate(20 129)"><rect width="212" height="31" rx="9" fill="#2a2119"/><circle cx="16" cy="15" r="4" fill="#e7b85f"/><text x="30" y="21" fill="#f1dfbb" font-size="14">CC Switch</text></g>
+  </g>
+  <g transform="translate(340 472)">
+    <circle cx="0" cy="0" r="7" fill="#e7b85f"/><text x="20" y="6" fill="#c9bfd4" font-size="16">route</text>
+    <circle cx="128" cy="0" r="7" fill="#a96eff"/><text x="148" y="6" fill="#c9bfd4" font-size="16">gateway</text>
+    <circle cx="278" cy="0" r="7" fill="#55d8a7"/><text x="298" y="6" fill="#c9bfd4" font-size="16">client</text>
+    <circle cx="410" cy="0" r="7" fill="#f08a9f"/><text x="430" y="6" fill="#c9bfd4" font-size="16">private sync</text>
+  </g>
+</svg>

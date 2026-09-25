@@ -25,6 +25,36 @@
 
 > **Current release · v1.40.2** — Windows x64 packaging, Web Demo, update metadata, local gateway routing, usage separation, and Cherry Studio / CC Switch import flows are consolidated in this release. This patch also fixes the displayed-version mismatch, starts the bundled Codex Official loopback service, and keeps catalog-incompatible relay routes discoverable to Cherry Studio. Device-specific acceptance remains explicitly tracked below.
 
+## Product tour
+
+Cherry AI Connect is built around a simple idea: keep the operational boundary local, make every route visible, and make sensitive sync explicit. The visual system below summarizes the current product surface without hiding the important boundaries.
+
+<table>
+  <tr>
+    <td width="33%" align="center"><img src="docs/images/brand/product-overview.svg" alt="Cherry AI Connect local control plane" width="100%"><br><strong>Local control plane</strong><br><sub>Routes, client keys, compatible clients, and a protected local gateway.</sub></td>
+    <td width="33%" align="center"><img src="docs/images/brand/usage-intelligence.svg" alt="Usage analytics with relay and Codex Official sources" width="100%"><br><strong>Usage intelligence</strong><br><sub>Lifetime totals, trends, cache reads, request history, and separated sources.</sub></td>
+    <td width="33%" align="center"><img src="docs/images/brand/private-sync-boundary.svg" alt="Private GitHub sync boundary" width="100%"><br><strong>Private sync boundary</strong><br><sub>Encrypted configuration, least-privilege GitHub access, and conflict recovery.</sub></td>
+  </tr>
+</table>
+
+### What is included in v1.40.2
+
+| Surface | What it does | Boundary worth knowing |
+| --- | --- | --- |
+| Local gateway | Routes OpenAI-compatible requests across multiple upstream providers. | The default listener stays on `127.0.0.1`. |
+| Client Keys | Creates one key per route and generates safe import flows for Cherry Studio and CC Switch. | Decrypted upstream keys do not return to the renderer or logs. |
+| Usage analytics | Shows relay traffic and `Codex Official` usage with source, route, model, status, and history filters. | Relay and official Codex usage use separate ledgers and separate cache budgets. |
+| Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
+| Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
+
+### The user journey
+
+1. **Connect** — add upstream routes and verify their model catalogs.
+2. **Bind** — create client keys that point to exactly one route.
+3. **Import** — send the generated local endpoint and key to a compatible client.
+4. **Observe** — inspect trends, cache behavior, source-separated usage, and request history.
+5. **Protect** — optionally sync encrypted configuration to a private GitHub repository and resolve conflicts explicitly.
+
 ## Why Cherry AI Connect?
 
 AI tools become difficult to operate when every client keeps its own endpoint, key, model list, and usage history. Cherry AI Connect gives that layer a home:
@@ -214,6 +244,7 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [User guide](产品文档/文档/01-使用说明.txt)
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
+- [v1.40.2 usage analytics issue review](产品文档/文档/25-v1.40.2新增问题-使用统计核查.txt)
 - [v1.40 final delivery and cross-validation](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt)
 - [v1.40.1 update-state fix (historical)](产品文档/文档/23-v1.40.1更新状态修复.txt)
 - [v1.40.2 critical fixes](产品文档/文档/24-v1.40.2关键修复.txt)

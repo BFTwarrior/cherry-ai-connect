@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Usage intelligence dashboard</title>
+  <desc id="desc">A stylized usage dashboard with separate Codex Official and relay sources, token metrics, and a trend chart.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#14111f"/><stop offset=".6" stop-color="#21162e"/><stop offset="1" stop-color="#111119"/></linearGradient>
+    <linearGradient id="chart" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#a96eff" stop-opacity=".5"/><stop offset="1" stop-color="#a96eff" stop-opacity="0"/></linearGradient>
+    <style>text{font-family:Inter,Segoe UI,Arial,sans-serif}.muted{fill:#a99fb6}.kicker{font-size:15px;letter-spacing:1.8px;fill:#e7b85f}.metric{font-size:27px;font-weight:800;fill:#fff}.small{font-size:14px}.label{font-size:16px;font-weight:700}</style>
+  </defs>
+  <rect width="1200" height="560" rx="28" fill="url(#bg)"/>
+  <text x="54" y="68" class="kicker">USAGE INTELLIGENCE · SEPARATE SOURCES</text>
+  <text x="54" y="112" fill="#fff" font-size="40" font-weight="800">See the whole picture.</text>
+  <text x="54" y="145" class="muted" font-size="19">Relay traffic and Codex Official usage stay visible, named, and budgeted separately.</text>
+  <g transform="translate(54 186)">
+    <rect width="1092" height="106" rx="18" fill="#17151f" stroke="#4e3b68"/>
+    <g transform="translate(22 20)"><rect width="48" height="48" rx="14" fill="#332347" stroke="#d9ad62"/><path d="M20 18h9l7 7v13H20zM29 18v8h7" fill="none" stroke="#e7b85f" stroke-width="2"/></g>
+    <text x="88" y="38" class="label" fill="#f7f1ff">LIFETIME TOKENS</text><text x="88" y="70" class="metric">2,403,087,790</text>
+    <g transform="translate(530 20)"><rect width="165" height="66" rx="12" fill="#211a2f" stroke="#5c3e85"/><text x="16" y="24" class="muted small">RELAY</text><text x="16" y="53" class="metric" font-size="23">988</text></g>
+    <g transform="translate(710 20)"><rect width="165" height="66" rx="12" fill="#2d211a" stroke="#936b39"/><text x="16" y="24" class="muted small">CODEX OFFICIAL</text><text x="16" y="53" class="metric" font-size="23">19,021</text></g>
+    <g transform="translate(890 20)"><rect width="180" height="66" rx="12" fill="#18372f" stroke="#3a9276"/><text x="16" y="24" class="muted small">CACHE HIT</text><text x="16" y="53" class="metric" font-size="23">96.4%</text></g>
+  </g>
+  <g transform="translate(54 324)">
+    <rect width="1092" height="180" rx="18" fill="#12121a" stroke="#382c49"/>
+    <g stroke="#2d2738" stroke-dasharray="4 8"><path d="M26 42H1066M26 88H1066M26 134H1066"/></g>
+    <path d="M32 148 L116 125 L178 139 L260 92 L326 112 L404 70 L468 101 L548 55 L624 98 L702 44 L774 81 L850 60 L928 120 L1002 84 L1060 101 L1060 154 L32 154Z" fill="url(#chart)"/>
+    <path d="M32 148 L116 125 L178 139 L260 92 L326 112 L404 70 L468 101 L548 55 L624 98 L702 44 L774 81 L850 60 L928 120 L1002 84 L1060 101" fill="none" stroke="#b57eff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M32 151 L116 146 L178 148 L260 136 L326 143 L404 126 L468 137 L548 117 L624 133 L702 108 L774 123 L850 114 L928 140 L1002 123 L1060 132" fill="none" stroke="#e7b85f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="32" y="174" class="muted small">24 HOURS</text><text x="960" y="174" class="muted small">NOW</text>
+    <g transform="translate(804 18)"><circle cx="0" cy="0" r="5" fill="#b57eff"/><text x="14" y="5" class="muted small">total / input</text><circle cx="105" cy="0" r="5" fill="#e7b85f"/><text x="119" y="5" class="muted small">cache read</text></g>
+  </g>
+</svg>

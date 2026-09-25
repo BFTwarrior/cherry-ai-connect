@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" role="img" aria-labelledby="title desc">
+  <title id="title">Private GitHub sync boundary</title>
+  <desc id="desc">A visual explanation of encrypted local data, private GitHub sync, conflict recovery, and the protected local gateway boundary.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#171323"/><stop offset=".58" stop-color="#261a31"/><stop offset="1" stop-color="#121219"/></linearGradient>
+    <linearGradient id="vault" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#6d3db7"/><stop offset="1" stop-color="#33204e"/></linearGradient>
+    <style>text{font-family:Inter,Segoe UI,Arial,sans-serif}.muted{fill:#a99fb6}.kicker{font-size:15px;letter-spacing:1.8px;fill:#e7b85f}.label{font-size:19px;font-weight:800}.small{font-size:14px}</style>
+  </defs>
+  <rect width="1200" height="560" rx="28" fill="url(#bg)"/>
+  <text x="54" y="68" class="kicker">PRIVATE SYNC · EXPLICIT PROTECTED PATH</text>
+  <text x="54" y="112" fill="#fff" font-size="40" font-weight="800">Sync what you choose.</text>
+  <text x="54" y="145" class="muted" font-size="19">Encrypted configuration moves through a private repository; prompts and secrets stay out.</text>
+  <g transform="translate(54 214)">
+    <rect width="278" height="190" rx="20" fill="#17151f" stroke="#59427b"/>
+    <circle cx="48" cy="49" r="26" fill="#3a2751" stroke="#d9ad62"/><path d="M39 49h18M48 40v18" stroke="#e7b85f" stroke-width="3" stroke-linecap="round"/>
+    <text x="88" y="49" fill="#fff" class="label">Local vault</text><text x="88" y="72" class="muted small">ENCRYPTED AT REST</text>
+    <line x1="24" y1="99" x2="254" y2="99" stroke="#352b42"/>
+    <text x="24" y="130" class="muted small">Routes · client metadata</text><text x="24" y="158" class="muted small">Sync records · backups</text>
+  </g>
+  <g transform="translate(470 250)">
+    <path d="M0 52H150" stroke="#e7b85f" stroke-width="3" stroke-dasharray="8 9"/><path d="m137 42 18 10-18 10" fill="none" stroke="#e7b85f" stroke-width="3"/>
+    <rect x="42" y="20" width="70" height="64" rx="18" fill="url(#vault)" stroke="#c79afc"/>
+    <path d="M62 53h30M69 45l-7 8 7 8M83 45l7 8-7 8" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="34" y="115" fill="#d7c3ee" class="small">encrypt · sync</text>
+  </g>
+  <g transform="translate(728 214)">
+    <rect width="350" height="190" rx="20" fill="#17151f" stroke="#936b39"/>
+    <circle cx="49" cy="49" r="26" fill="#3a2b1c" stroke="#e7b85f"/><path d="M38 53l9 9 17-20" fill="none" stroke="#f1c979" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="88" y="49" fill="#fff" class="label">Private GitHub repo</text><text x="88" y="72" class="muted small">ONLY THE SELECTED REPOSITORY</text>
+    <line x1="24" y1="99" x2="326" y2="99" stroke="#453421"/>
+    <text x="24" y="130" class="muted small">Contents: Read and write</text><text x="24" y="158" class="muted small">Metadata: Read-only</text>
+  </g>
+  <g transform="translate(275 466)">
+    <rect width="650" height="52" rx="15" fill="#211a2c" stroke="#59427b"/>
+    <circle cx="28" cy="26" r="6" fill="#55d8a7"/><text x="46" y="32" fill="#d9cde3" font-size="16">Conflict recovery: Keep Local</text>
+    <circle cx="350" cy="26" r="6" fill="#e7b85f"/><text x="368" y="32" fill="#d9cde3" font-size="16">or Use Cloud</text>
+  </g>
+</svg>
