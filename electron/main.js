@@ -459,14 +459,14 @@ async function downloadAndInstallLatestUpdate() {
   clearMajorSyncTimer();
   let installerHandedOff = false;
   updateRun = (async () => {
+    // 中文：先写入运行快照，再等待网关重置；切回设置页时不能读到旧的 idle/completed 状态。
+    // English: Publish the running snapshot before waiting for gateway reset so a remounted
+    // Settings page cannot mistake this update for an old idle or completed task.
+    emitUpdateProgress({ stage: "syncing", percent: 0 });
     // 中文：网关重置和更新都可能停止/启动同一个本地服务；更新必须等待已开始的重置完成。
     // English: Gateway reset and update can both stop/start the same local service; an update
     // waits for a reset that already began instead of interleaving with it.
     if (gatewayResetRun) await gatewayResetRun;
-    // 中文：暂停同步本身可能需要等待当前网络轮次；先发布可恢复快照，切到其他页面再回来时仍显示更新进行中。
-    // English: Pausing may wait for an active network round; publish a resumable snapshot first
-    // so remounting another page cannot make the update look idle or lost.
-    emitUpdateProgress({ stage: "syncing", percent: 0 });
     if (syncManager) {
       await syncManager.pauseForUpdate();
       updateSyncPaused = true;

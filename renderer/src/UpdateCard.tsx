@@ -42,11 +42,13 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState("");
   const latestProgressSequence = useRef(0);
+  const updateActiveRef = useRef(false);
 
   const applyProgress = useCallback((next: UpdateProgress) => {
     if (next.sequence && next.sequence < latestProgressSequence.current) return;
     if (next.sequence) latestProgressSequence.current = next.sequence;
     setProgress(next);
+    updateActiveRef.current = next.stage !== "error" && next.stage !== "completed";
     if (next.stage === "error") {
       setInstalling(false);
       setError(next.error || tr("更新失败", "Update failed"));
@@ -59,6 +61,18 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
 
   // 中文：更新任务属于主进程，页面切换只会卸载卡片，不应丢失任务状态。
   // English: The update belongs to the main process; changing pages must not lose its state.
+  const check = useCallback(async () => {
+    // 中文：后台更新期间禁止设置页的自动检查抢占更新卡片状态。
+    // English: A settings-page availability check must never compete with an active update.
+    if (updateActiveRef.current) return;
+    if (!window.desktop?.checkForUpdates) return setError(tr("当前环境不支持检查更新", "Update checks are unavailable in this environment"));
+    setChecking(true);
+    setError("");
+    try { setResult(await window.desktop.checkForUpdates()); }
+    catch (reason) { setError(readableUpdateError(reason, language)); }
+    finally { setChecking(false); }
+  }, [language, tr]);
+
   useEffect(() => {
     let mounted = true;
     const unsubscribe = window.desktop?.onUpdateProgress?.(applyProgress);
@@ -77,29 +91,19 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
       // 也不能把更新重置成未开始。
       // English: `active` is the authoritative main-process task signal; a stale idle status read
       // during a remount must never reset an update that is still running.
-      if (snapshot.active && snapshot.status !== "error" && snapshot.status !== "completed") setInstalling(true);
+      const snapshotIsActive = Boolean(snapshot.active) && snapshot.status !== "error" && snapshot.status !== "completed";
+      updateActiveRef.current = snapshotIsActive;
+      if (snapshotIsActive) setInstalling(true);
       else if (snapshot.status === "running") setInstalling(Boolean(snapshot.progress));
       else if (snapshot.status === "error" || snapshot.status === "completed" || snapshot.status === "idle") setInstalling(false);
-    }).catch(() => {});
+      if (checkTrigger > 0 && !snapshotIsActive) void check();
+    }).catch(() => { if (mounted && checkTrigger > 0 && !updateActiveRef.current) void check(); });
+    if (!progressPromise && checkTrigger > 0) void check();
     return () => {
       mounted = false;
       unsubscribe?.();
     };
-  }, [applyProgress]);
-
-  const check = useCallback(async () => {
-    if (!window.desktop?.checkForUpdates) return setError(tr("当前环境不支持检查更新", "Update checks are unavailable in this environment"));
-    setChecking(true);
-    setError("");
-    try { setResult(await window.desktop.checkForUpdates()); }
-    catch (reason) { setError(readableUpdateError(reason, language)); }
-    finally { setChecking(false); }
-  }, [language]);
-
-  // Entering Settings checks availability only; it never downloads or installs automatically.
-  useEffect(() => {
-    if (checkTrigger > 0 && window.desktop?.checkForUpdates) void check();
-  }, [checkTrigger, check]);
+  }, [applyProgress, check, checkTrigger]);
 
   const install = async () => {
     if (!window.desktop?.downloadAndInstallUpdate || installing) return;
