@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.3** — This focused patch preserves the v1.40.2 release while fixing route-filter visibility, Cherry Studio model-catalog compatibility, official Codex session-token labeling, and usage-source switching performance. Device-specific acceptance remains explicitly tracked below.
+> **Current release · v1.40.4** — This focused patch keeps the v1.40.3 behavior unchanged while making private GitHub sync faster by reusing the asset catalog within a sync round and verifying uploaded assets directly. Device-specific acceptance remains explicitly tracked below.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.3.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Setup-1.40.3.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.4.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Setup-1.40.4.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.3) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Setup-1.40.3.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.3/Cherry-AI-Connect-Web-Demo-1.40.3.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.4) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Setup-1.40.4.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Web-Demo-1.40.4.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  774147B9C65C180AC10795B69064F2C30B2FD778E4600F847B7DF0882EC119DD
+SHA-256  F8A534B974328411396583A2C9C9CCCB9665295D424907DC1A1869635864653F
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -281,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.3 · Windows x64
+Cherry AI Connect · v1.40.4 · Windows x64
 
 </div>
