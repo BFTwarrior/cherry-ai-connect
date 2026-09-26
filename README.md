@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current source · v1.40.5 · Latest public release · v1.40.4** — This update-flow patch syncs pending local changes before downloading the installer and checks again for changes made during the download. The public installer links below remain on v1.40.4 until a v1.40.5 release is published.
+> **Current release · v1.40.5** — The updater now syncs pending local changes before downloading the installer, skips unnecessary sync rounds, and checks again for changes made during the download before installation.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.4.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Setup-1.40.4.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.5.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Setup-1.40.5.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.4) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Setup-1.40.4.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.4/Cherry-AI-Connect-Web-Demo-1.40.4.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.5) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Setup-1.40.5.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Web-Demo-1.40.5.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  F8A534B974328411396583A2C9C9CCCB9665295D424907DC1A1869635864653F
+SHA-256  2A39B02745B993865E9C61D052F90FF80B2EBE0D5A19FDFCE022F3CBC0B4830D
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
