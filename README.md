@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.4** — This focused patch keeps the v1.40.3 behavior unchanged while making private GitHub sync faster by reusing the asset catalog within a sync round and verifying uploaded assets directly. Device-specific acceptance remains explicitly tracked below.
+> **Current source · v1.40.5 · Latest public release · v1.40.4** — This update-flow patch syncs pending local changes before downloading the installer and checks again for changes made during the download. The public installer links below remain on v1.40.4 until a v1.40.5 release is published.
 
 ## Product tour
 
@@ -281,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.4 · Windows x64
+Cherry AI Connect · v1.40.5 · Windows x64
 
 </div>
