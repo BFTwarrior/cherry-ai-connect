@@ -49,6 +49,7 @@ let gatewayResetRun;
 let updateRun;
 let updateSyncDirty = false;
 let updateSyncPaused = false;
+let updateSyncChangeVersion = 0;
 let pendingShowWindow = false;
 let mainWindowReady = false;
 let codexUsageProcess;
@@ -223,6 +224,7 @@ function clearMajorSyncTimer() {
 }
 
 function scheduleMajorSync(reason) {
+  updateSyncChangeVersion += 1;
   clearMajorSyncTimer();
   if (updateRun) {
     updateSyncDirty = true;
@@ -234,6 +236,37 @@ function scheduleMajorSync(reason) {
     majorSyncTimer = null;
     void syncManager.syncNow(reason).catch(() => {});
   }, 1500);
+}
+
+// 中文：更新同步只在本机确有待提交变更时执行；检查账本 outbox 和配置变更标记，避免每次更新都做一次完整云同步。
+// English: Sync before an update only when local changes are pending; inspect the ledger outbox
+// and config-change marker so a clean device does not perform a full cloud sync unnecessarily.
+function hasPendingUpdateSync() {
+  const pendingUsage = Number(gatewayModule?.getSyncSnapshot?.().ledger?.pendingCount || 0);
+  return Boolean(updateSyncDirty || majorSyncTimer || pendingUsage > 0);
+}
+
+// 中文：同步期间若配置再次变化，保留 dirty 标记供下载后最后检查；同步完成仍有 outbox 时拒绝继续安装。
+// English: Preserve changes made during sync for a post-download check, and do not install while
+// the ledger still reports uncommitted outbox entries.
+async function syncPendingUpdateChanges() {
+  const changeVersionAtStart = updateSyncChangeVersion;
+  updateSyncDirty = false;
+  await syncManager.syncBeforeUpdate();
+  const pendingUsage = Number(gatewayModule?.getSyncSnapshot?.().ledger?.pendingCount || 0);
+  updateSyncDirty = updateSyncChangeVersion !== changeVersionAtStart || pendingUsage > 0;
+  if (pendingUsage > 0) throw new Error("update_sync_pending_data");
+}
+
+// 中文：自动同步已启用且本机有待提交变更时，必须先确认账号连接可用；避免明知无法同步仍下载大安装包。
+// English: When sync is enabled and local data is pending, require a usable account connection
+// before downloading the large installer instead of knowingly wasting the download.
+async function syncForUpdateIfNeeded() {
+  if (!hasPendingUpdateSync()) return;
+  const status = syncManager?.status();
+  if (!status?.enabled) return;
+  if (!status.connected) throw new Error("sync_github_auth_required");
+  await syncPendingUpdateChanges();
 }
 
 async function initializeSyncManager() {
@@ -456,10 +489,11 @@ async function restoreGatewayAfterUpdateFailure(error) {
   }
 }
 
-// 中文：一键更新的顺序固定为下载校验、云同步、停止网关、离线备份、启动安装器。
-// 任一步失败都停止安装并保留当前版本，避免用“重新同步”掩盖本地数据丢失。
-// English: One-click update always verifies, syncs, stops the gateway, creates an offline backup,
-// and only then launches the installer. Any failure keeps the current version running.
+// 中文：一键更新先检查版本和待同步数据；有待提交变更时先同步，再下载校验。
+// 下载期间若再次产生变更，则安装前补做一次同步。失败时保留当前版本和本地数据。
+// English: Check the release and pending local data first. Sync dirty data before downloading;
+// if new changes appear during download, sync once more before backup and installer handoff.
+// Any failed sync keeps the current version and local data intact.
 async function downloadAndInstallLatestUpdate() {
   if (updateRun) return updateRun;
   updateSyncDirty = Boolean(majorSyncTimer);
@@ -495,6 +529,10 @@ async function downloadAndInstallLatestUpdate() {
       return { ok: true, updateAvailable: false, release };
     }
     if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
+    if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
+      emitUpdateProgress({ stage: "syncing", percent: 0 });
+      await syncForUpdateIfNeeded();
+    }
     const installerDir = path.join(updateRecoveryRoot, "installers");
     const installerPath = path.join(installerDir, `${Date.now()}-${release.asset.name}`);
     emitUpdateProgress({ stage: "downloading", percent: 0, received: 0, total: release.asset.size || 0 });
@@ -503,12 +541,13 @@ async function downloadAndInstallLatestUpdate() {
       destination: installerPath,
       onProgress: (progress) => emitUpdateProgress({ stage: "downloading", ...progress }),
     });
-    // 中文：渲染层只需要阶段，不需要接收本机安装器路径；路径仅留在主进程用于启动校验后的文件。
-    // English: The renderer needs the stage but never the local installer path; keep that path in
-    // the main process for the verified launch only.
-    emitUpdateProgress({ stage: "syncing", percent: 100 });
-    const syncStatus = syncManager?.status();
-    if (syncStatus?.enabled && syncStatus?.connected) await syncManager.syncBeforeUpdate();
+    // 中文：下载期间更新可能产生新的待同步变更；只在检测到变化时执行最后一轮同步。
+    // English: New local changes may arrive while downloading; run a final sync only when the
+    // change marker or durable usage outbox indicates that there is something new to commit.
+    if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
+      emitUpdateProgress({ stage: "syncing", percent: 100 });
+      await syncForUpdateIfNeeded();
+    }
     try {
       await stopGateway();
     } catch (error) {
