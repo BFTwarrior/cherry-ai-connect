@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.7** — Fixes cloud sync pause feedback and recovery during app updates. Interrupted or cancelled installer downloads now clean up safely and resume sync; paused controls use a clear, stationary amber state. Client Key metadata/order sync and locally generated full keys remain as introduced in v1.40.6.
+> **Current release · v1.40.8** — Restores Cherry's glossy purple tab and button treatment while cloud sync is paused for an app update. The pause icon stays still, the status chip gets a brief highlight sweep, and the original button sheen remains active. Also includes v1.40.7's sync recovery and interrupted-download cleanup.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.7.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Setup-1.40.7.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.8.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.8/Cherry-AI-Connect-Setup-1.40.8.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.7) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Setup-1.40.7.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Web-Demo-1.40.7.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.8) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.8/Cherry-AI-Connect-Setup-1.40.8.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.8/Cherry-AI-Connect-Web-Demo-1.40.8.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  2354DCFB7ED73C2A48AAB634FCFFAC733AEDC403F6FDC0254FDF85C2CD638670
+SHA-256  A86F257D7962163A9679E0CE7D40DF411B1D28B5BD75E9A16EA1FDAF113828AF
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -281,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.7 · Windows x64
+Cherry AI Connect · v1.40.8 · Windows x64
 
 </div>

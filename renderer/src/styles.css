@@ -935,6 +935,10 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .update-site-link:hover { color: #ffe3a0; }
 .update-actions { display: flex; gap: 8px; }
 .update-actions .button svg { width: 14px; height: 14px; }
+.update-card .update-install-button.is-running:disabled { opacity: 1 !important; color: #fff !important; cursor: progress; }
+.update-install-spinner { width: 13px; height: 13px; flex: 0 0 auto; border: 2px solid rgb(255 255 255 / 32%); border-top-color: #f5d28c; border-right-color: #cba1ff; border-radius: 50%; animation: cherry-update-spinner .82s linear infinite; }
+@keyframes cherry-update-spinner { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-install-spinner { animation: none; } }
 
 /* 中文：品牌标记保留紫色底，外圈使用金色；中心星标保持白色，与产品标识分离。 */
 .brand-mark { border-color: var(--gold); background: #302047; color: #fff; box-shadow: 0 8px 22px rgb(128 75 219 / 30%); }

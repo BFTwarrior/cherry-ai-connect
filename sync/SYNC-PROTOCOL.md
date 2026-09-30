@@ -1,7 +1,7 @@
 # Cherry AI Connect Cloud Sync Protocol — Schema 1
 
-> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前源码 v1.40.7）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
-> English: This document describes the compatible cloud-sync data contract. The product version (current source v1.40.7) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
+> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前源码 v1.40.8）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
+> English: This document describes the compatible cloud-sync data contract. The product version (current source v1.40.8) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
 
 ## 1. Safety boundary / 安全边界
 
