@@ -269,6 +269,12 @@
 
 .reasoning-menu { animation: ef-menu-settle .16s ease-out both; }
 
+/* These main actions share the adjacent buttons' surface, sweep and hover effects.
+ * Only the text color is brighter; decorative layers keep the same brightness. */
+.button-text-emphasis > .button-action-label {
+  color: #fff !important;
+}
+
 /* A paused sync stops its progress spinner but keeps the product's glossy purple
  * tab and button surfaces. The status chip gets one restrained sweep on entry. */
 @keyframes cherry-sync-pause-settle {
@@ -289,7 +295,6 @@
   background: linear-gradient(112deg, #2c1d3a 0%, #382344 52%, #2e1e3a 100%);
   color: #d9bdff;
   box-shadow: inset 0 1px rgb(255 255 255 / 12%), 0 0 9px rgb(160 99 219 / 20%);
-  animation: cherry-sync-pause-settle 200ms ease-out both;
 }
 .cloud-sync-card .sync-state-chip.state-paused-update::after {
   content: "";
@@ -304,7 +309,14 @@
 .cloud-sync-card .sync-state-chip.state-paused-update > svg,
 .cloud-sync-card .sync-state-chip.state-paused-update > span {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+}
+.cloud-sync-card .sync-state-chip.state-paused-update > .sync-state-label {
+  color: #d9bdff;
+  background: transparent;
+  animation: none !important;
+  filter: none !important;
+  text-shadow: none;
 }
 .sync-state-chip.state-paused-update > svg {
   width: 11px;

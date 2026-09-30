@@ -959,7 +959,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .cloud-icon svg, .cloud-sync-card button svg, .github-permission-note svg, .sync-security-line svg, .account-avatar svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .cloud-title-line { display: flex; align-items: center; gap: 10px; }
 .sync-state-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid #3b3744; border-radius: 999px; background: #15151b; color: #8d8793; font-size: 9px; }
-.sync-state-chip > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.sync-state-chip > span:not(.sync-state-label) { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .sync-state-chip.state-idle { border-color: #2e5c4b; background: #173128; color: #59d6a7; }
 .sync-state-chip.state-syncing { border-color: #65438c; background: #2b1e3d; color: #c49bff; }
 .sync-state-chip.state-dirty, .sync-state-chip.state-pending_network { border-color: #745532; background: #2e2418; color: #f2b969; }

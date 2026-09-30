@@ -170,6 +170,18 @@
 /* Pseudo-particle boundary: generic control ::after layers stay disabled. The
  * visible particle systems below own their origin explicitly (nav and metric sparks). */
 .button-secondary::after,
+.route-actions > .button-secondary::after,
+.route-actions > .button-secondary:hover:not(:disabled)::after,
+.route-actions > .button-secondary:focus-visible:not(:disabled)::after,
+.route-actions > .icon-button:not(.danger)::after,
+.route-actions > .icon-button:not(.danger):hover:not(:disabled)::after,
+.route-actions > .icon-button:not(.danger):focus-visible:not(:disabled)::after,
+.key-quick-actions > .quick-copy-button::after,
+.key-quick-actions > .quick-copy-button:hover:not(:disabled)::after,
+.key-quick-actions > .quick-copy-button:focus-visible:not(:disabled)::after,
+.key-card-actions > .icon-text-button:not(.danger-text)::after,
+.key-card-actions > .icon-text-button:not(.danger-text):hover:not(:disabled)::after,
+.key-card-actions > .icon-text-button:not(.danger-text):focus-visible:not(:disabled)::after,
 .button-ghost::after,
 .icon-button:not(.danger)::after,
 .icon-text-button:not(.danger-text)::after,
@@ -187,4 +199,3 @@
   background: none !important;
   animation: none !important;
 }
-

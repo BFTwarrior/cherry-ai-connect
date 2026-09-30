@@ -14,7 +14,7 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.40.8";
+const VERSION = "1.40.9";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
 const DEMO_SYNC_PAUSED = DEMO_MODE && new URLSearchParams(window.location.search).get("syncUpdate") === "1";
@@ -1065,7 +1065,7 @@ export default function App() {
         </article>
         <article className="settings-card compact-settings">
           <SettingsHeading icon="shield" title={tr("安全与连接", "Security & connection")} description={tr("上游密钥使用本机加密保存；Cherry 只连接下面的本地地址。", "Upstream keys are encrypted locally; Cherry only connects to this local address.")} />
-          <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button settings-copy-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} />{tr("复制", "Copy")}</button></div>
+          <div className="connection-box"><div><small>{tr("本地 API 地址", "Local API address")}</small><code>{apiBase}</code></div><button type="button" className="icon-text-button settings-copy-button" onClick={() => void copyApiAddress()}><Icon name="copy" size={14} /><span className="settings-copy-label">{tr("复制", "Copy")}</span></button></div>
           <div className="connection-note"><Icon name="refresh" size={13} /><span>{tr("“重置连接服务”会停止旧监听器并切换到新的随机端口，用来避开端口冲突；线路、模型、统计和客户端 Key 都会保留。", "Resetting the connection service switches to a random port to avoid conflicts; routes, models, analytics, and client keys are preserved.")}</span></div>
           <button type="button" className="button button-secondary full-width" onClick={openDataFolder}><Icon name="folder" size={15} />{tr("打开数据目录", "Open data folder")}</button>
           <div className="settings-note"><Icon name="folder" size={14} /><span>{tr("正式版数据保存在安装程序目录旁的独立数据文件夹，覆盖更新不会清理它；安装到 D 盘时主要数据也保留在 D 盘。", "Packaged data stays in a separate folder beside the app directory, outside the installer's cleanup area. Installing on drive D keeps primary data on drive D.")}</span></div>
@@ -1088,7 +1088,6 @@ export default function App() {
     const close = () => setModal(null);
     return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <div className="modal" role="dialog" aria-modal="true">
-        <button className="modal-close" onClick={close} aria-label={tr("关闭", "Close")}>×</button>
         {modal.kind === "provider" && <>
           <div className="modal-icon"><Icon name="route" size={19} /></div>
           <div className="modal-kicker">{modal.provider ? tr("EDIT UPSTREAM ROUTE", "EDIT UPSTREAM ROUTE") : tr("NEW UPSTREAM ROUTE", "NEW UPSTREAM ROUTE")}</div>
@@ -1151,7 +1150,7 @@ export default function App() {
     {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
   </div>;
 
-  function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-primary" disabled={disabled}>{submit}</button></div>; }
+  function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-secondary button-text-emphasis" disabled={disabled}><span className="button-action-label">{submit}</span></button></div>; }
   function ConfirmDialog() {
     if (!confirmDialog) return null;
     const tone = confirmDialog.tone || "primary";

@@ -17,6 +17,15 @@
   white-space: nowrap;
 }
 
+.connection-box .settings-copy-button > .settings-copy-label {
+  position: relative;
+  z-index: 2;
+  color: #d0c8d8 !important;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: normal;
+}
+
 .update-icon {
   border: 1px solid rgb(201 155 70 / 48%);
   background: linear-gradient(145deg, #35271a, #211a2d) !important;
@@ -223,4 +232,3 @@
   .client-import-all-actions { width: 100%; justify-content: flex-start; }
   .client-import-key-actions { flex-basis: 100%; }
 }
-
