@@ -16,5 +16,9 @@ Cherry AI Connect v1.40.6 — 候选版本记录
 - `latest.yml` 标记版本 1.40.6、安装包大小 99,922,759；Web Demo ZIP 已生成并可读取内部文件列表。`npm run web-demo:build` 首次调用因本机 PowerShell 自动加载 Archive 模块失败，后手动加载同一系统模块完成压缩。
 - v1.40.5 构建目录已完整保存在 `软件/开发文件/dist/releases-archive/v1.40.5`，未覆盖旧版本资产。
 
-当前状态
-本地 v1.40.6 构建和检查完成。发布前核实 GitHub Latest 为 v1.40.5；待创建 v1.40.6 源码提交、tag 与 Release 并上传四项正式资产后，再补充远端链接、哈希核对和现场更新验收结果。
+发布结果
+- 源码提交：`963463832880af06486bef3d4b3211a6180e62a0`；tag：`v1.40.6`。
+- GitHub Release：https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.6；GitHub Latest 已确认返回 `v1.40.6`。
+- 四项资产均返回 `uploaded`；安装包远端 SHA-256 与本地一致，远端 `latest.yml` 下载 HTTP 200，版本 1.40.6、大小 99,922,759。
+- GitHub 未认证 API 当时返回限流 403；认证 API 与公开 Release 页面均解析到 v1.40.6，公开更新清单可直接访问。
+- 尚待真机验收：客户端点“重新检查”后的显示、下载和升级、双设备自动收敛及旧设备升级边界。未操作安装中的应用或其用户数据。

@@ -8,7 +8,7 @@
 - 完整测试 96/96、`npm run check`、前端生产构建和 Windows x64 安装包构建均已通过；Web Demo ZIP 已生成并通过 ZIP 目录读取。
 - 安装包：`../开发文件/dist/current-build/Cherry-AI-Connect-Setup-1.40.6.exe`；SHA-256：`4240215ED423521DEC0FD16C0D5E29F1B95988B0ABCB7B671D1E76B1358ABD10`；大小 99,922,759 bytes。
 - GitHub Release / Latest、双电脑现场同步和已安装应用内更新尚待发布后核验；真实设备验收不得用自动化通过代替。
-- 当前 GitHub Latest 在本次发布前核实为 v1.40.5；只有 v1.40.6 Release 发布完成后，更新器才会报告 v1.40.6。
+- GitHub Latest 已发布为 v1.40.6；公开 Release 页面和 `latest.yml` 下载已确认可用，`latest.yml` 内版本与安装包大小一致。
 
 ## 版本与同步安全
 
