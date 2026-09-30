@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.6.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Setup-1.40.6.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.7.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Setup-1.40.7.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.6) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Setup-1.40.6.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Web-Demo-1.40.6.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.7) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Setup-1.40.7.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.7/Cherry-AI-Connect-Web-Demo-1.40.7.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  4240215ED423521DEC0FD16C0D5E29F1B95988B0ABCB7B671D1E76B1358ABD10
+SHA-256  2354DCFB7ED73C2A48AAB634FCFFAC733AEDC403F6FDC0254FDF85C2CD638670
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -207,7 +207,7 @@ The screenshot is a sanitized reference. Confirm that exactly one private sync r
 
 公开源码仓库和你自己的私有同步仓库不是一回事。细粒度令牌只需要指定私有同步仓库，`Contents` 设置为 `Read and write`，`Metadata` 保持 `Read-only`。不要添加 Actions、Administration、Issues、Pull requests、Secrets 或账号级权限。
 
-令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。当前未发布源码改为自动合并最新记录，不再选择保留本机或使用云端。客户端 Key 条目与顺序使用 GitHub Token 同步，实际 Key 在各设备本地生成；中转站 Key/地址须经保险库密码或恢复码认证后加密同步。本机修改去重触发同步，其他设备每分钟检查一次。
+令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。同步逻辑自动合并最新记录，不再选择保留本机或使用云端。客户端 Key 条目与顺序使用 GitHub Token 同步，实际 Key 在各设备本地生成；中转站 Key/地址须经保险库密码或恢复码认证后加密同步。本机修改去重触发同步，其他设备每分钟检查一次。
 
 <p align="center">
   <a href="https://github.com/settings/personal-access-tokens/new">🇨🇳 创建 GitHub API 令牌</a>
@@ -281,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.6 · Windows x64
+Cherry AI Connect · v1.40.7 · Windows x64
 
 </div>
