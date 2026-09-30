@@ -12,9 +12,11 @@ test("release version, installer name, and isolated build output agree", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"));
   const lock = JSON.parse(fs.readFileSync(path.join(projectRoot, "package-lock.json"), "utf8"));
 
-  assert.equal(pkg.version, "1.40.5");
+  assert.match(pkg.version, /^\d+\.\d+\.\d+$/);
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
+  assert.ok(fs.readFileSync(path.join(projectRoot, "gateway", "gateway.mjs"), "utf8").includes(`const gatewayVersion = "${pkg.version}"`));
+  assert.ok(fs.readFileSync(path.join(projectRoot, "renderer", "src", "App.tsx"), "utf8").includes(`const VERSION = "${pkg.version}"`));
   assert.equal(pkg.build.win.artifactName, "Cherry-AI-Connect-Setup-${version}.${ext}");
   assert.equal(pkg.build.directories.output, "dist/current-build");
 });

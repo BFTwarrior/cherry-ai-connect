@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.5** — The updater now syncs pending local changes before downloading the installer, skips unnecessary sync rounds, and checks again for changes made during the download before installation.
+> **Current release · v1.40.6** — Automatic sync merges Client Key metadata and ordering across devices while each full Client Key secret remains generated and stored locally. This release also fixes tombstone/config consistency and adds drag-and-drop ordering.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.5.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Setup-1.40.5.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.6.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Setup-1.40.6.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.5) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Setup-1.40.5.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.5/Cherry-AI-Connect-Web-Demo-1.40.5.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.6) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Setup-1.40.6.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.6/Cherry-AI-Connect-Web-Demo-1.40.6.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  2A39B02745B993865E9C61D052F90FF80B2EBE0D5A19FDFCE022F3CBC0B4830D
+SHA-256  4240215ED423521DEC0FD16C0D5E29F1B95988B0ABCB7B671D1E76B1358ABD10
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -281,6 +281,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.5 · Windows x64
+Cherry AI Connect · v1.40.6 · Windows x64
 
 </div>

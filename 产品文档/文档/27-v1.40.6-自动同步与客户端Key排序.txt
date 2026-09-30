@@ -1,0 +1,20 @@
+Cherry AI Connect v1.40.6 — 候选版本记录
+
+目的
+发布2026-09-30完成的自动同步、Client Key 元数据与拖动排序修复。上游密钥仍须用户提供密码/恢复码解锁后加密同步；完整 Client Key secret 每台设备本机生成和保留，云端只存同步元数据。
+
+变更
+- 每轮自动合并各设备新增的 Client Key 元数据和顺序；GitHub Token 连接即可同步；本机生成实际 Client Key secret。
+- 上游路由密钥保持加密保险库同步；删除使用 tombstone，迟到或陈旧副本不得复活已删除 Key。
+- 同步失败保留上一份有效远端密文，配置写入与删除账本通过持久意图和启动恢复保持一致。
+- 客户端 Key 列表使用一个拖动手柄排序，Cherry 自有紫金风格和动画；顺序同步至其他设备。
+- 隔离回归此前验证 96/96；同步协议写入版本1.2。正式版必须要求全部设备升级到1.40.6；不得与旧写入端共同操作同一同步数据集。
+
+构建与验证
+- `npm test`：96/96 通过；`npm run check`：通过；`npm run renderer:build`：通过。
+- `npm run dist`：通过；Windows x64 安装包 99,922,759 bytes（门槛 100,000,000 bytes），SHA-256 `4240215ED423521DEC0FD16C0D5E29F1B95988B0ABCB7B671D1E76B1358ABD10`。
+- `latest.yml` 标记版本 1.40.6、安装包大小 99,922,759；Web Demo ZIP 已生成并可读取内部文件列表。`npm run web-demo:build` 首次调用因本机 PowerShell 自动加载 Archive 模块失败，后手动加载同一系统模块完成压缩。
+- v1.40.5 构建目录已完整保存在 `软件/开发文件/dist/releases-archive/v1.40.5`，未覆盖旧版本资产。
+
+当前状态
+本地 v1.40.6 构建和检查完成。发布前核实 GitHub Latest 为 v1.40.5；待创建 v1.40.6 源码提交、tag 与 Release 并上传四项正式资产后，再补充远端链接、哈希核对和现场更新验收结果。
