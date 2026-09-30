@@ -16,6 +16,9 @@ function readableUpdateError(reason: unknown, language: Language) {
   const raw = reason instanceof Error ? reason.message : String(reason || "");
   const tr = (zh: string, en: string) => language === "zh" ? zh : en;
   const messages: Array<[string, string, string]> = [
+    ["update_cancelled", "更新已取消，云同步已恢复，可以稍后重试。", "Update cancelled. Cloud sync has resumed; you can retry later."],
+    ["update_download_timeout", "安装包下载超时，更新已停止，云同步已恢复。请检查网络后重试。", "Installer download timed out. The update stopped and cloud sync resumed. Check the network and retry."],
+    ["update_download_interrupted", "安装包下载连接中断，更新已停止，云同步已恢复。请重新下载。", "The installer download was interrupted. The update stopped and cloud sync resumed. Download again."],
     ["update_checksum_missing", "安装包没有可信的 SHA-256 校验值，已停止更新。", "The installer has no trusted SHA-256 value; the update was stopped."],
     ["update_checksum_mismatch", "安装包校验失败，文件已删除，未运行安装器。", "Installer verification failed. The file was removed and not launched."],
     ["update_source_data_incomplete", "本地数据尚未准备完整，已停止更新以免丢失数据。", "Local data is incomplete, so the update stopped to prevent data loss."],
@@ -38,6 +41,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
   const [progress, setProgress] = useState<UpdateProgress | null>(null);
   const [error, setError] = useState("");
@@ -50,14 +54,16 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     setProgress(next);
     updateActiveRef.current = next.stage !== "error" && next.stage !== "completed";
     if (next.stage === "error") {
+      setCancelling(false);
       setInstalling(false);
-      setError(next.error || tr("更新失败", "Update failed"));
+      setError(readableUpdateError(next.error || tr("更新失败", "Update failed"), language));
     } else if (next.stage === "completed") {
+      setCancelling(false);
       setInstalling(false);
     } else {
       setInstalling(true);
     }
-  }, [tr]);
+  }, [tr, language]);
 
   // 中文：更新任务属于主进程，页面切换只会卸载卡片，不应丢失任务状态。
   // English: The update belongs to the main process; changing pages must not lose its state.
@@ -122,6 +128,18 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     }
   };
 
+  const cancel = async () => {
+    if (!window.desktop?.cancelUpdate || cancelling) return;
+    setCancelling(true);
+    try {
+      const result = await window.desktop.cancelUpdate();
+      if (!result.ok) setCancelling(false);
+    } catch (reason) {
+      setCancelling(false);
+      setError(readableUpdateError(reason, language));
+    }
+  };
+
   const stageText = useMemo(() => ({
     checking: tr("正在检查版本", "Checking version"),
     downloading: tr(`正在下载安装包 ${progress?.percent || 0}%`, `Downloading installer ${progress?.percent || 0}%`),
@@ -160,6 +178,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     <div className="update-actions">
       <button type="button" className="button button-secondary" onClick={() => void check()} disabled={checking || installing}>{checking ? tr("检查中…", "Checking…") : result ? tr("重新检查", "Check again") : tr("检查更新", "Check now")}</button>
       {result?.updateAvailable && <button type="button" className="button button-primary update-install-button" onClick={() => void install()} disabled={!canInstall || installing}>{installing ? stageText : tr("下载并更新", "Download and update")}</button>}
+      {installing && progress?.canCancel && <button type="button" className="button button-secondary" onClick={() => void cancel()} disabled={cancelling}>{cancelling ? tr("正在取消…", "Cancelling…") : tr("取消更新", "Cancel update")}</button>}
     </div>
     <div className="update-footnote">{tr("更新不会刷新同一设备上的客户端 API Key；只有新设备首次同步才会生成新 Key。", "Updates never rotate client API keys on this device; only a new device creates keys on first sync.")}</div>
     <div className="update-footnote update-local-mode-note">{tr("上游 API Key 可以留空；本地配置、界面和安全更新不依赖它。只有调用上游线路时才需要填写。", "An upstream API key may remain empty; local configuration, the interface, and safe updates do not depend on it. It is only needed when calling an upstream route.")}</div>

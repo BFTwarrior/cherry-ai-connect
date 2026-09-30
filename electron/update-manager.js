@@ -512,49 +512,93 @@ function sha256File(file) {
   return hash.digest("hex");
 }
 
-function downloadFile(url, destination, onProgress = () => {}, redirects = 0) {
+function downloadFile(url, destination, onProgress = () => {}, options = {}, redirects = 0) {
   return new Promise((resolve, reject) => {
     if (redirects > 6) return reject(new Error("update_too_many_redirects"));
     let parsed;
     try { parsed = new URL(String(url)); }
     catch { return reject(new Error("update_invalid_download_url")); }
     if (parsed.protocol !== "https:" || !ALLOWED_DOWNLOAD_HOSTS.has(parsed.hostname)) return reject(new Error("update_untrusted_download_url"));
-    const request = https.get(parsed, { headers: { "user-agent": "Cherry-AI-Connect-Updater" }, timeout: 30000 }, (response) => {
-      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-        response.resume();
-        return downloadFile(new URL(response.headers.location, parsed).toString(), destination, onProgress, redirects + 1).then(resolve, reject);
-      }
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        response.resume();
-        return reject(new Error(`update_download_http_${response.statusCode || 0}`));
-      }
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      const temporary = `${destination}.${process.pid}.part`;
-      const output = fs.createWriteStream(temporary, { flags: "w" });
-      const total = Math.max(0, Number(response.headers["content-length"] || 0));
-      let received = 0;
-      response.on("data", (chunk) => {
-        received += chunk.length;
-        onProgress({ received, total, percent: total ? Math.min(100, Math.round((received / total) * 100)) : 0 });
-      });
-      response.pipe(output);
-      output.on("finish", () => {
-        output.close(() => {
-          try { fs.renameSync(temporary, destination); resolve({ file: destination, bytes: received }); }
-          catch (error) { reject(error); }
+    const { signal, requestImpl = https.get, timeoutMs = 30000 } = options;
+    const temporary = `${destination}.${process.pid}.part`;
+    let request, response, output;
+    let settled = false;
+    let connectTimer;
+    const cleanup = () => { clearTimeout(connectTimer); signal?.removeEventListener("abort", onAbort); };
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // Wait for the writer to close before removing its partial file on Windows.
+      const finishFailure = () => { try { fs.unlinkSync(temporary); } catch {} reject(error); };
+      if (output && !output.closed) { output.once("close", finishFailure); output.destroy(); }
+      else finishFailure();
+      response?.destroy();
+      request?.destroy();
+    };
+    const onAbort = () => fail(signal.reason instanceof Error ? signal.reason : new Error("update_cancelled"));
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener("abort", onAbort, { once: true });
+    // Also bound DNS/connection setup, where the socket inactivity timeout may not start.
+    connectTimer = setTimeout(() => fail(new Error("update_download_timeout")), timeoutMs);
+    try {
+      request = requestImpl(parsed, { headers: { "user-agent": "Cherry-AI-Connect-Updater" }, timeout: timeoutMs }, (incoming) => {
+        response = incoming;
+        response.on("error", fail);
+        response.on("aborted", () => fail(new Error("update_download_interrupted")));
+        response.on("close", () => { if (response.complete === false) fail(new Error("update_download_interrupted")); });
+        if (settled) { response.destroy(); return; }
+        clearTimeout(connectTimer);
+        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+          response.resume();
+          settled = true;
+          cleanup();
+          return downloadFile(new URL(response.headers.location, parsed).toString(), destination, onProgress, options, redirects + 1).then(resolve, reject);
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) return fail(new Error(`update_download_http_${response.statusCode || 0}`));
+        try {
+          fs.mkdirSync(path.dirname(destination), { recursive: true });
+          output = fs.createWriteStream(temporary, { flags: "w" });
+        } catch (error) { fail(error); return; }
+        const total = Math.max(0, Number(response.headers["content-length"] || 0));
+        let received = 0;
+        let finished = false;
+        response.on("data", (chunk) => {
+          received += chunk.length;
+          try { onProgress({ received, total, percent: total ? Math.min(100, Math.round((received / total) * 100)) : 0 }); }
+          catch (error) { fail(error); }
         });
+        output.on("error", fail);
+        output.on("finish", () => { finished = true; });
+        output.on("close", () => {
+          if (settled || !finished) return;
+          if (response.complete === false || (total && received !== total)) return fail(new Error("update_download_interrupted"));
+          try {
+            fs.renameSync(temporary, destination);
+            settled = true;
+            cleanup();
+            resolve({ file: destination, bytes: received });
+          } catch (error) { fail(error); }
+        });
+        response.pipe(output);
       });
-      output.on("error", (error) => { output.close(); try { fs.unlinkSync(temporary); } catch {} reject(error); });
-    });
-    request.on("timeout", () => request.destroy(new Error("update_download_timeout")));
-    request.on("error", reject);
+      request.on("timeout", () => fail(new Error("update_download_timeout")));
+      request.on("error", fail);
+    } catch (error) { fail(error); }
   });
 }
 
-async function downloadVerifiedInstaller({ asset, destination, onProgress }) {
+async function downloadVerifiedInstaller({ asset, destination, onProgress, signal, requestImpl, timeoutMs }) {
   const expected = normalizeSha256(asset?.sha256 || asset?.digest);
   if (!expected) throw new Error("update_checksum_missing");
-  const result = await downloadFile(asset.url, destination, onProgress);
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(new Error("update_download_timeout")), 15 * 60 * 1000);
+  let result;
+  try {
+    result = await downloadFile(asset.url, destination, onProgress, {
+      signal: signal ? AbortSignal.any([signal, deadline.signal]) : deadline.signal, requestImpl, timeoutMs,
+    });
+  } finally { clearTimeout(timer); }
   const actual = sha256File(destination);
   if (actual !== expected) {
     try { fs.unlinkSync(destination); } catch {}

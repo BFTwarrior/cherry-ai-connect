@@ -14,9 +14,10 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.40.6";
+const VERSION = "1.40.7";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
+const DEMO_SYNC_PAUSED = DEMO_MODE && new URLSearchParams(window.location.search).get("syncUpdate") === "1";
 type ClientImportTarget = "ccswitch" | "cherry-studio";
 
 function ClientImportMark({ target }: { target: ClientImportTarget }) {
@@ -1078,7 +1079,7 @@ export default function App() {
   function CloudSyncView() {
     return <section className="page-view cloud-sync-workspace">
       <PageIntro kicker={tr("云同步", "CLOUD SYNC")} description={tr("用量、客户端条目和顺序使用 GitHub Token 自动同步；中转站密钥需要保险库凭证，加密合并最新版本。", "Usage, client entries and order sync automatically with a GitHub token; upstream keys require vault authentication to merge the latest encrypted version.")} action={undefined} />
-      <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} demoConflict={DEMO_SYNC_CONFLICT} />
+      <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} demoConflict={DEMO_SYNC_CONFLICT} demoPausedForUpdate={DEMO_SYNC_PAUSED} />
     </section>;
   }
 

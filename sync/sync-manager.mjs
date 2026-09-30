@@ -182,6 +182,9 @@ export class SyncManager {
     const snapshot = this.source.getSyncSnapshot();
     return {
       ...this.state,
+      // The update pause is transient: expose it to every page, never persist a lock.
+      pausedForUpdate: this.#updatePaused,
+      nextSyncAt: this.#updatePaused ? "" : this.state.nextSyncAt,
       // 中文：未连接时不宣称开启中转站 API 同步；已连接的旧状态默认保持原有加密同步行为。
       // English: Do not claim upstream sync is enabled while disconnected; legacy connected
       // states keep encrypted upstream sync unless the user explicitly chose usage-only mode.
@@ -338,7 +341,7 @@ export class SyncManager {
     return this.#startSync(reason, options);
   }
 
-  async pauseForUpdate() {
+  async pauseForUpdate({ signal } = {}) {
     // 中文：先封锁新触发并撤销定时器，再等待已有轮次完成，避免更新和同步并行读写。
     // English: Block new triggers and clear the timer before waiting for the active round, so an
     // update cannot overlap synchronization reads or writes.
@@ -346,8 +349,10 @@ export class SyncManager {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     try {
-      if (this.#controlInFlight) await this.#controlInFlight;
-      if (this.#syncInFlight) await this.#syncInFlight;
+      this.notify(this.status());
+      if (this.#controlInFlight) await withAbort(this.#controlInFlight, signal);
+      if (this.#syncInFlight) await withAbort(this.#syncInFlight, signal);
+      if (signal?.aborted) throw abortError(signal);
       return this.status();
     } catch (error) {
       this.resumeAfterUpdate();
@@ -388,6 +393,7 @@ export class SyncManager {
     this.#clearUpdateAbortWatch();
     this.#updatePaused = false;
     this.#schedule();
+    if (!this.state.enabled) this.notify(this.status());
     return this.status();
   }
 

@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.6** — Automatic sync merges Client Key metadata and ordering across devices while each full Client Key secret remains generated and stored locally. This release also fixes tombstone/config consistency and adds drag-and-drop ordering.
+> **Current release · v1.40.7** — Fixes cloud sync pause feedback and recovery during app updates. Interrupted or cancelled installer downloads now clean up safely and resume sync; paused controls use a clear, stationary amber state. Client Key metadata/order sync and locally generated full keys remain as introduced in v1.40.6.
 
 ## Product tour
 

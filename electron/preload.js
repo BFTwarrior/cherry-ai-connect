@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("desktop", {
   resetGateway: () => ipcRenderer.invoke("reset-gateway"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
   downloadAndInstallUpdate: () => ipcRenderer.invoke("download-and-install-update"),
+  cancelUpdate: () => ipcRenderer.invoke("cancel-update"),
   // 中文：页面切换后只读取主进程快照；不把更新控制权交给渲染层。
   // English: Renderer pages read the main-process snapshot after navigation; update control stays
   // outside the renderer lifecycle.

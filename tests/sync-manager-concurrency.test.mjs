@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { UsageLedger } from "../gateway/usage-ledger.mjs";
+import { runWithUpdateSyncPaused } from "../electron/update-sync-lifecycle.js";
 import { SyncManager } from "../sync/sync-manager.mjs";
 
 const datasetId = "ds_11995f2c-7f5a-7b21-a8d2-6dfc50f4a901";
@@ -139,14 +140,16 @@ function createFixture() {
     recordSyncRun: (payload) => { syncRuns.push({ ...payload }); ledger.recordSyncRun(payload); },
   };
   const provider = new BlockingProvider();
+  const notifications = [];
   const manager = new SyncManager({
     dataDir: path.join(root, "manager"),
     source,
     protect,
     unprotect,
     providerFactory: () => provider,
+    notify: (status) => notifications.push(status),
   });
-  return { root, ledger, manager, provider, syncRuns };
+  return { root, ledger, manager, provider, syncRuns, notifications };
 }
 
 function append(ledger, eventId, totalTokens = 10) {
@@ -374,6 +377,99 @@ test("an update waits for an already-started connect control operation", async (
     manager.resumeAfterUpdate();
   } finally {
     provider.releaseEnsureReady();
+    closeFixture(fixture);
+  }
+});
+
+test("download failure and timeout restore manual sync and keep the outbox retryable", async () => {
+  for (const message of ["simulated_download_failure", "update_download_timeout"]) {
+    const fixture = await connectedFixture();
+    const { ledger, manager, notifications } = fixture;
+    const failure = new Error(message);
+    try {
+      append(ledger, `event-${message}`, 41);
+
+      await assert.rejects(
+        runWithUpdateSyncPaused({
+          manager,
+          run: async () => {
+            const paused = manager.status();
+            assert.equal(paused.pausedForUpdate, true, "download starts only after sync is paused");
+            assert.equal(paused.nextSyncAt, "", "paused sync has no scheduled next-run time");
+            throw failure;
+          },
+        }),
+        (error) => error === failure,
+        "the original download error must reach the caller unchanged",
+      );
+
+      assert.equal(manager.status().pausedForUpdate, false, "failed download must release update pause");
+      assert.ok(manager.timer, "failed download must restore the scheduled sync timer");
+      assert.equal(ledger.pendingUsage().length, 1, "download failure must not discard pending usage");
+      assert.ok(notifications.some((status) => status.pausedForUpdate === true && status.nextSyncAt === ""), "pause state must be published to listeners");
+      assert.ok(notifications.some((status) => status.pausedForUpdate === false && status.nextSyncAt), "resume state and next run must be published to listeners");
+
+      await manager.syncNow(`manual-after-${message}`);
+      assert.equal(ledger.pendingUsage().length, 0, "manual sync must commit the retained outbox after update failure");
+    } finally {
+      closeFixture(fixture);
+    }
+  }
+});
+
+test("cancelling update pause while an active network round drains resumes without overlap", async () => {
+  const fixture = await connectedFixture();
+  const { ledger, manager, provider } = fixture;
+  try {
+    append(ledger, "event-active-round-before-update-cancel", 43);
+    provider.blockNextUpload();
+    const activeRound = manager.syncNow("manual-before-update-cancel");
+    await provider.waitUntilBlocked();
+    append(ledger, "event-outbox-during-update-cancel", 47);
+
+    const controller = new AbortController();
+    let runStarted = false;
+    const update = runWithUpdateSyncPaused({
+      manager,
+      signal: controller.signal,
+      run: async () => { runStarted = true; },
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(manager.status().pausedForUpdate, true, "new sync triggers are paused while the active round drains");
+    controller.abort();
+    await assert.rejects(update, { name: "AbortError" });
+    assert.equal(runStarted, false, "cancellation while draining must not start the update operation");
+    assert.equal(manager.status().pausedForUpdate, false, "cancellation must clear the pause");
+    assert.ok(manager.timer, "cancellation must restore the delayed timer");
+
+    provider.releaseUpload();
+    await activeRound;
+    assert.equal(provider.maxActive, 1, "cancellation must not overlap provider operations");
+    assert.equal(ledger.pendingUsage().length, 1, "the entry added after the active round snapshot remains retryable");
+    await manager.syncNow("manual-after-update-wait-cancel");
+    assert.equal(ledger.pendingUsage().length, 0);
+  } finally {
+    provider.releaseUpload();
+    closeFixture(fixture);
+  }
+});
+
+test("successful installer handoff keeps sync paused until application shutdown", async () => {
+  const fixture = await connectedFixture();
+  const { manager } = fixture;
+  let installerHandedOff = false;
+  try {
+    await runWithUpdateSyncPaused({
+      manager,
+      run: async () => { installerHandedOff = true; },
+      shouldResume: () => !installerHandedOff,
+    });
+
+    assert.equal(manager.status().pausedForUpdate, true, "installer handoff must retain the pause");
+    assert.equal(manager.status().nextSyncAt, "", "handoff must not advertise a scheduled sync");
+    assert.equal(manager.timer, null, "handoff must not recreate the timer before shutdown");
+  } finally {
+    manager.resumeAfterUpdate();
     closeFixture(fixture);
   }
 });

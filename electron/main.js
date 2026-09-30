@@ -23,6 +23,7 @@ const {
   restoreUpdateBackupWithConsent,
 } = require("./update-manager");
 const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
+const { runWithUpdateSyncPaused } = require("./update-sync-lifecycle");
 const { buildClientImportDeepLink } = require("./client-import-links.cjs");
 const {
   CODEX_USAGE_BINARY,
@@ -48,7 +49,8 @@ let majorSyncTimer;
 let gatewayResetRun;
 let updateRun;
 let updateSyncDirty = false;
-let updateSyncPaused = false;
+let updateAbortController;
+let updateCanCancel = false;
 let updateSyncChangeVersion = 0;
 let pendingShowWindow = false;
 let mainWindowReady = false;
@@ -251,10 +253,10 @@ function hasPendingUpdateSync() {
 // 中文：同步期间若配置再次变化，保留 dirty 标记供下载后最后检查；同步完成仍有 outbox 时拒绝继续安装。
 // English: Preserve changes made during sync for a post-download check, and do not install while
 // the ledger still reports uncommitted outbox entries.
-async function syncPendingUpdateChanges() {
+async function syncPendingUpdateChanges(signal) {
   const changeVersionAtStart = updateSyncChangeVersion;
   updateSyncDirty = false;
-  await syncManager.syncBeforeUpdate();
+  await syncManager.syncBeforeUpdate({ signal });
   const pendingUsage = Number(gatewayModule?.getSyncSnapshot?.().ledger?.pendingCount || 0);
   updateSyncDirty = updateSyncChangeVersion !== changeVersionAtStart || pendingUsage > 0;
   if (pendingUsage > 0) throw new Error("update_sync_pending_data");
@@ -263,12 +265,12 @@ async function syncPendingUpdateChanges() {
 // 中文：自动同步已启用且本机有待提交变更时，必须先确认账号连接可用；避免明知无法同步仍下载大安装包。
 // English: When sync is enabled and local data is pending, require a usable account connection
 // before downloading the large installer instead of knowingly wasting the download.
-async function syncForUpdateIfNeeded() {
+async function syncForUpdateIfNeeded(signal) {
   if (!hasPendingUpdateSync()) return;
   const status = syncManager?.status();
   if (!status?.enabled) return;
   if (!status.connected) throw new Error("sync_github_auth_required");
-  await syncPendingUpdateChanges();
+  await syncPendingUpdateChanges(signal);
 }
 
 async function initializeSyncManager() {
@@ -320,13 +322,16 @@ function releaseResult(latestVersion, releaseUrl, publishedAt = "", asset = null
   };
 }
 
-function fetchLatestReleaseFromApi() {
+function fetchLatestReleaseFromApi(signal) {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_API, {
       headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "Cherry-AI-Connect" },
       timeout: 12000,
+      signal,
     }, (response) => {
       const chunks = [];
+      response.on("error", reject);
+      response.on("aborted", () => reject(new Error("update_github_network_unavailable")));
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
         try {
@@ -352,13 +357,16 @@ function fetchLatestReleaseFromApi() {
   });
 }
 
-function requestText(url, headers = {}) {
+function requestText(url, headers = {}, signal) {
   return new Promise((resolve, reject) => {
     const request = https.get(url, {
       headers: { "user-agent": "Cherry-AI-Connect", ...headers },
       timeout: 12000,
+      signal,
     }, (response) => {
       const chunks = [];
+      response.on("error", reject);
+      response.on("aborted", () => reject(new Error("update_github_network_unavailable")));
       response.on("data", (chunk) => chunks.push(chunk));
       response.on("end", () => {
         if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -376,11 +384,12 @@ function requestText(url, headers = {}) {
 // 中文：匿名 GitHub API 被限流时，读取官方 Release 页面和资产片段，保留安装包 URL 与 SHA-256。
 // English: If the anonymous GitHub API is rate-limited, read the official Release page and asset
 // fragment so the installer URL and SHA-256 remain available without weakening verification.
-function fetchLatestReleaseFromRedirect() {
+function fetchLatestReleaseFromRedirect(signal) {
   return new Promise((resolve, reject) => {
     const request = https.get(RELEASE_LATEST_PAGE, {
       headers: { "user-agent": "Cherry-AI-Connect" },
       timeout: 12000,
+      signal,
     }, (response) => {
       const location = String(response.headers.location || "");
       const releaseUrl = location ? new URL(location, RELEASE_LATEST_PAGE).toString() : "";
@@ -390,13 +399,14 @@ function fetchLatestReleaseFromRedirect() {
       response.resume();
       if (response.statusCode >= 300 && response.statusCode < 400 && tag) {
         void (async () => {
-          const releaseHtml = await requestText(releaseUrl);
+          const releaseHtml = await requestText(releaseUrl, {}, signal);
           const page = releasePageMetadata(releaseHtml);
           const expandedUrl = page.expandedAssetsUrl || `${RELEASE_PAGE_PREFIX}releases/expanded_assets/${encodeURIComponent(`v${tag.replace(/^v/i, "")}`)}`;
           let asset = null;
           try {
-            asset = expandedReleaseAsset(await requestText(expandedUrl), page.sha256);
+            asset = expandedReleaseAsset(await requestText(expandedUrl, {}, signal), page.sha256);
           } catch {
+            signal?.throwIfAborted();
             // 中文：页面元数据不可用时仍返回版本，但没有可信哈希就继续禁止安装。
             // English: Keep the version result when metadata is unavailable; installation remains blocked without a trusted hash.
           }
@@ -411,9 +421,12 @@ function fetchLatestReleaseFromRedirect() {
   });
 }
 
-async function fetchLatestRelease() {
-  try { return await fetchLatestReleaseFromApi(); }
-  catch { return fetchLatestReleaseFromRedirect(); }
+async function fetchLatestRelease(signal) {
+  try { return await fetchLatestReleaseFromApi(signal); }
+  catch {
+    signal?.throwIfAborted();
+    return fetchLatestReleaseFromRedirect(signal);
+  }
 }
 
 function emitUpdateProgress(value) {
@@ -422,6 +435,7 @@ function emitUpdateProgress(value) {
   // the latest snapshot before receiving later events.
   const safeValue = {
     stage: value.stage,
+    canCancel: Boolean(updateCanCancel && updateAbortController && value.stage !== "error" && value.stage !== "completed"),
     percent: Math.max(0, Math.min(100, Number(value.percent) || 0)),
     ...(Number.isFinite(Number(value.received)) ? { received: Math.max(0, Number(value.received)) } : {}),
     ...(Number.isFinite(Number(value.total)) ? { total: Math.max(0, Number(value.total)) } : {}),
@@ -501,6 +515,9 @@ async function downloadAndInstallLatestUpdate() {
   updateSyncDirty = Boolean(majorSyncTimer);
   clearMajorSyncTimer();
   let installerHandedOff = false;
+  updateAbortController = new AbortController();
+  updateCanCancel = true;
+  const signal = updateAbortController.signal;
   updateRun = (async () => {
     // 中文：先写入运行快照，再等待网关重置；切回设置页时不能读到旧的 idle/completed 状态。
     // English: Publish the running snapshot before waiting for gateway reset so a remounted
@@ -510,21 +527,20 @@ async function downloadAndInstallLatestUpdate() {
     // English: Gateway reset and update can both stop/start the same local service; an update
     // waits for a reset that already began instead of interleaving with it.
     if (gatewayResetRun) await gatewayResetRun;
-    if (syncManager) {
-      await syncManager.pauseForUpdate();
-      updateSyncPaused = true;
-    }
+    return runWithUpdateSyncPaused({ manager: syncManager, signal, shouldResume: () => !installerHandedOff, run: async () => {
     emitUpdateProgress({ stage: "checking", percent: 0 });
     let release;
     try {
-      release = await fetchLatestRelease();
+      release = await fetchLatestRelease(signal);
     } catch (error) {
+      signal.throwIfAborted();
       const raw = String(error?.message || error || "");
       if (/(ETIMEDOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|EAI_AGAIN|ENOTFOUND|GitHub request timed out|connect timed out)/i.test(raw)) {
         throw new Error("update_github_network_timeout");
       }
       throw error;
     }
+    signal.throwIfAborted();
     cacheUpdateRelease(release);
     if (!release.updateAvailable) {
       emitUpdateProgress({ stage: "completed", percent: 100 });
@@ -533,7 +549,7 @@ async function downloadAndInstallLatestUpdate() {
     if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
     if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
       emitUpdateProgress({ stage: "syncing", percent: 0 });
-      await syncForUpdateIfNeeded();
+      await syncForUpdateIfNeeded(signal);
     }
     const installerDir = path.join(updateRecoveryRoot, "installers");
     const installerPath = path.join(installerDir, `${Date.now()}-${release.asset.name}`);
@@ -541,6 +557,7 @@ async function downloadAndInstallLatestUpdate() {
     const downloaded = await downloadVerifiedInstaller({
       asset: release.asset,
       destination: installerPath,
+      signal,
       onProgress: (progress) => emitUpdateProgress({ stage: "downloading", ...progress }),
     });
     // 中文：下载期间更新可能产生新的待同步变更；只在检测到变化时执行最后一轮同步。
@@ -548,8 +565,11 @@ async function downloadAndInstallLatestUpdate() {
     // change marker or durable usage outbox indicates that there is something new to commit.
     if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
       emitUpdateProgress({ stage: "syncing", percent: 100 });
-      await syncForUpdateIfNeeded();
+      await syncForUpdateIfNeeded(signal);
     }
+    signal.throwIfAborted();
+    // Once shutdown/backup begins, cancellation cannot interrupt the installer handoff.
+    updateCanCancel = false;
     try {
       await stopGateway();
     } catch (error) {
@@ -587,6 +607,7 @@ async function downloadAndInstallLatestUpdate() {
     shutdownComplete = true;
     setTimeout(() => app.quit(), 250);
     return { ok: true, updateAvailable: true, launched: true, version: release.latestVersion };
+    } });
   })().catch((error) => {
     const message = redactLocalUpdatePaths(error?.message || error);
     if (error && typeof error === "object" && typeof error.message === "string") error.message = message;
@@ -594,10 +615,8 @@ async function downloadAndInstallLatestUpdate() {
     throw error;
   }).finally(() => {
     updateRun = null;
-    if (updateSyncPaused && !installerHandedOff) {
-      updateSyncPaused = false;
-      syncManager?.resumeAfterUpdate();
-    }
+    updateCanCancel = false;
+    updateAbortController = null;
     if (updateSyncDirty && !installerHandedOff) {
       updateSyncDirty = false;
       scheduleMajorSync("after-update");
@@ -833,6 +852,11 @@ ipcMain.handle("get-gateway-info", () => gatewayInfo());
 ipcMain.handle("reset-gateway", async () => resetGateway());
 ipcMain.handle("check-for-updates", async () => cacheUpdateRelease(await fetchLatestRelease()));
 ipcMain.handle("download-and-install-update", async () => downloadAndInstallLatestUpdate());
+ipcMain.handle("cancel-update", () => {
+  if (!updateRun || !updateCanCancel || !updateAbortController) return { ok: false };
+  updateAbortController.abort(new Error("update_cancelled"));
+  return { ok: true };
+});
 // 中文：只返回更新状态快照，不把本机安装器路径或其他无关敏感数据发给渲染层；查询不会启动或取消更新。
 // English: Return only the update snapshot without exposing the local installer path or unrelated
 // sensitive data; querying never starts or cancels an update.

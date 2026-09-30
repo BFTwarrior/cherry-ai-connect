@@ -269,3 +269,51 @@
 
 .reasoning-menu { animation: ef-menu-settle .16s ease-out both; }
 
+/* A paused sync is a stationary amber state. Only entering the state settles once;
+ * continuous movement belongs to a sync that is actually running. */
+@keyframes cherry-sync-pause-settle {
+  from { opacity: .4; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes cherry-sync-working { to { transform: rotate(360deg); } }
+.cloud-sync-card .sync-state-chip.state-paused-update {
+  border-color: #745532;
+  background: #2e2418;
+  color: #f2c678;
+  animation: cherry-sync-pause-settle 200ms ease-out both;
+}
+.sync-state-chip.state-paused-update > svg {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.cloud-sync-card .sync-update-notice { animation: cherry-sync-pause-settle 200ms ease-out both; }
+.cloud-sync-card .sync-actions .sync-paused:disabled {
+  opacity: 1 !important;
+  color: #dfbd82 !important;
+  background: #2e2418 !important;
+  border: 1px solid #745532 !important;
+  box-shadow: none !important;
+  filter: none !important;
+  cursor: not-allowed;
+}
+.cloud-sync-card.is-update-paused .sync-actions .button,
+.cloud-sync-card.is-update-paused .sync-actions .button::before,
+.cloud-sync-card.is-update-paused .sync-actions .button::after,
+.cloud-sync-card.is-update-paused .sync-actions .button svg {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+.cloud-sync-card.is-update-paused .sync-actions .button::before,
+.cloud-sync-card.is-update-paused .sync-actions .button::after { content: none !important; }
+.cloud-sync-card .sync-working > svg { animation: cherry-sync-working 1.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .cloud-sync-card .sync-state-chip.state-paused-update,
+  .cloud-sync-card .sync-update-notice,
+  .cloud-sync-card .sync-working > svg { animation: none !important; transform: none !important; }
+}

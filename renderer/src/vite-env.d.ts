@@ -30,6 +30,7 @@ interface UpdateCheckResult {
 // English: Main-process progress contract; sequence prevents an older async snapshot from
 // overwriting a newer live event.
 interface UpdateProgress {
+  canCancel?: boolean;
   sequence: number;
   stage: "checking" | "downloading" | "syncing" | "backing-up" | "installing" | "completed" | "error";
   percent: number;
@@ -47,6 +48,7 @@ interface UpdateProgressSnapshot {
 }
 
 interface CloudSyncStatus {
+  pausedForUpdate?: boolean;
   enabled: boolean;
   syncUpstream: boolean;
   connected: boolean;
@@ -90,6 +92,7 @@ interface Window {
     resetGateway: () => Promise<{ ok: boolean } & GatewayInfo>;
     checkForUpdates: () => Promise<UpdateCheckResult>;
     downloadAndInstallUpdate: () => Promise<{ ok: boolean; updateAvailable: boolean; launched?: boolean; version?: string }>;
+    cancelUpdate: () => Promise<{ ok: boolean }>;
     getUpdateProgress: () => Promise<UpdateProgressSnapshot>;
     onUpdateProgress: (listener: (progress: UpdateProgress) => void) => () => void;
     getSyncStatus: () => Promise<CloudSyncStatus>;
