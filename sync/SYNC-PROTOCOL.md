@@ -1,7 +1,7 @@
 # Cherry AI Connect Cloud Sync Protocol — Schema 1
 
-> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前 v1.35）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
-> English: This document describes the compatible cloud-sync data contract. The product version (currently v1.35) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
+> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前源码 v1.40.5）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
+> English: This document describes the compatible cloud-sync data contract. The product version (current source v1.40.5) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
 
 ## 1. Safety boundary / 安全边界
 
@@ -36,6 +36,7 @@ All stored protocol timestamps use UTC ISO-8601. The interface displays UTC+8 or
 ```text
 manifest-20260917-183025-123-ssync_<uuid>.json
 summary-20260917-183025-123-ssync_<uuid>.json.gz
+client-metadata-20260917-183025-123-ssync_<uuid>.json.gz
 config-20260917-183025-123-ssync_<uuid>.json.gz
 vault-20260917-183025-123-ssync_<uuid>.enc
 usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-20260917-183025-123-ssync_<uuid>.jsonl.gz
@@ -51,13 +52,14 @@ The date-time segment is generated in UTC+8 as `YYYYMMDD-HHmmss-SSS`. Version 1.
 {
   "format": "cherry-ai-connect-sync",
   "schemaVersion": 1,
-  "minReaderVersion": "1.1",
-  "minWriterVersion": "1.1",
+  "minReaderVersion": "1.2",
+  "minWriterVersion": "1.2",
   "datasetId": "ds_...",
   "syncId": "sync_...",
   "generation": 42,
   "parentGeneration": 41,
   "parentManifestSha256": "hex-or-empty",
+  "mergedManifestSha256s": ["hash-of-each-observed-manifest"],
   "writerDeviceId": "dev_...",
   "writerDeviceEpoch": 1,
   "createdAtUtc": "2026-09-16T10:30:00.000Z",
@@ -99,9 +101,16 @@ An interrupted candidate without a committed manifest is an orphan and is never 
 - Usage events merge by `eventId`; duplicates are ignored.
 - Each `deviceId + deviceEpoch` counter merges by field-wise maximum. Global lifetime usage is the sum of all device counters.
 - A counter must never decrease.
-- Tombstones win over an older object revision and prevent deleted routes/client metadata from silently reappearing.
-- Public configuration uses `{counter, deviceId}` revisions. Different-device edits to the same field create a conflict preview; they are not silently overwritten.
-- Client-key secret values are local-only and are never uploaded. Normal sync and same-device updates must preserve the existing secret. Only a pristine new device may generate a local secret during its first remote adoption; a missing secret on an existing device is a protective error, not a rotation trigger.
+- Explicit tombstones permanently suppress their stable ID. Omission, old snapshots, failed decrypts, and empty lists are never deletion instructions. Recreating a deleted object requires a new ID.
+- Client metadata/order merge every round with GitHub credentials alone in a separate `client-metadata` asset. Public route references contain only ID/name; URL/API Key/local client secret/hash/ciphertext are excluded.
+- Records use independent `{counter, deviceId}` revisions: compare the monotonic counter, then device ID; equal revisions use deterministic content order. Missing records are unioned. This merges whole records, not individual fields within one record.
+- Local counters observe every incoming record, settings and ordering revision before the next edit; they use `max(Date.now(), observed + 1)`. Wall-clock skew can affect which concurrent edit wins, but both devices converge to the same result.
+- Client-key order has its own revision and cannot overwrite key names/bindings. Unknown concurrent additions are appended deterministically; stale reorder lists are rejected.
+- Client bearer secrets remain local-only. Every newly received stable key ID creates one local secret, including on an existing device. An existing ID preserves its secret; unreadable existing secrets are protective errors, never automatic rotation triggers.
+- Route secrets merge only after vault authentication. Metadata-only route references remain pending until authenticated route data arrives; they do not block existing route sync.
+- Usage and metadata continue when vault authentication fails, retaining all valid encrypted config/vault branch assets. Local/remote configuration choices are removed from the current UI; credentials only authorize decryption.
+- A delete first persists the removed object and durable deletion intent in config, then writes the SQLite tombstone. Config-write failure rolls back without a tombstone; a later ledger failure is replayed on restart and the durable intent remains exportable.
+- Merge every unmerged manifest branch, including late lower-generation siblings. Compare the full observed manifest hash set before and after candidate upload; retry with fresh immutable names if cloud heads or local config change.
 - Vault changes require a valid password/recovery key, matching `datasetId`, valid AAD, and a non-decreasing `keyEpoch`.
 
 ## 7. Vault format / 加密仓库
@@ -159,7 +168,7 @@ ERROR_RECOVERABLE
 ERROR_FATAL
 ```
 
-Automatic sync checks every 30 minutes. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, route changes, route health tests, and model refreshes trigger an additional deduplicated sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
+Automatic sync checks other devices every 60 seconds; local changes trigger the existing 1.5-second deduplicated timer. This is near-real-time polling, not push delivery. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, route changes, route health tests, and model refreshes trigger an additional deduplicated sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
 
 ## 10. GitHub errors / GitHub 错误
 
@@ -174,6 +183,10 @@ Automatic sync checks every 30 minutes. Enabling sync, disabling sync, applicati
 Retries have a maximum count. Exit sync has a short deadline and leaves durable outbox data for the next start.
 
 ## 11. Compatibility / 兼容性
+
+- The new writer uses protocol version 1.2 with schema 1. Separate metadata/order revisions and branch merging require minReaderVersion/minWriterVersion 1.2. Read old 1.1 assets and seed missing record/order revisions from legacy configRevision; preserve the original local key order.
+- Update all devices before enabling this candidate on a shared dataset. The current reader fails protectively on a newer required protocol. Historical old clients may skip unsupported manifests; mixed-version writes are not validated or supported.
+
 
 - `schemaVersion = 1` remains the data schema. Product releases do not raise `minReaderVersion` or `minWriterVersion` unless an incompatible cloud-format change is explicitly designed and migrated.
 - Readers reject a manifest with a higher `minReaderVersion`.

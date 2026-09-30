@@ -4,6 +4,7 @@ dist/
 renderer/dist/
 dist-web-demo/
 dist-upload-check/
+.test-runtime/
 .vite/
 
 # Local delivery copies; source and release history remain in the project folders.

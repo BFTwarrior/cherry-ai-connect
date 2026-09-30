@@ -21,7 +21,7 @@ import { GitHubReleaseProvider } from "./github-provider.mjs";
 import { LocalVaultStore } from "./local-vault-store.mjs";
 import { SyncEngine } from "./sync-engine.mjs";
 
-const INTERVAL_MS = 30 * 60 * 1000;
+const INTERVAL_MS = 60 * 1000;
 
 function atomicJson(file, value) {
   // 中文：同步状态也采用临时文件替换，避免 UI 读到半截 JSON。
@@ -192,7 +192,7 @@ export class SyncManager {
       connected: Boolean(this.state.account && this.#hasReadableToken()),
       pendingCount: Number(snapshot.ledger?.pendingCount || this.state.pendingCount || 0),
       datasetId: snapshot.identity.datasetId,
-      intervalMinutes: 30,
+      intervalMinutes: 1,
       vault: this.vault.status(),
     };
   }
@@ -221,7 +221,8 @@ export class SyncManager {
     }
     syncUpstream = Boolean(syncUpstream);
     const remoteHasVault = Boolean(latest?.manifest?.files?.some((item) => item.type === "vault"));
-    const keepLocalVault = syncUpstream && (!remoteHasVault || !pristine);
+    const automatic = typeof this.source.mergeConfigFromSync === "function";
+    const keepLocalVault = syncUpstream && (!remoteHasVault || (!automatic && !pristine));
     let recoveryCode = "";
     const vaultStatus = this.vault.status();
     if (keepLocalVault && !vaultStatus.initialized) {
@@ -249,7 +250,7 @@ export class SyncManager {
     try {
       result = await this.#startSync("connect", latest && pristine
         ? { adoptRemoteIfPristine: true, configPolicy: "remote", allowGenerateClientSecrets: true, password: String(password), syncUpstream }
-        : { syncUpstream }, { allowDuringUpdate: true });
+        : { syncUpstream, password: String(password) }, { allowDuringUpdate: true });
     } catch (error) {
       // 中文：连接已建立时仍返回状态，尤其要保证新生成的恢复码能展示给用户。
       // English: Return the connected state so a newly generated recovery code is never hidden by a first-sync failure.
@@ -268,6 +269,25 @@ export class SyncManager {
     // English: Clear error state only after a successful unlock; preserve vault errors on failure
     // so the UI cannot claim that sensitive sync has recovered prematurely.
     if (this.#updatePaused) throw new Error("sync_paused_for_update");
+    if (typeof this.source.mergeConfigFromSync === "function") {
+      const releaseControlOperation = this.#acquireControlOperation();
+      try {
+        if (this.#syncInFlight) await this.#syncInFlight;
+        const latest = await this.#makeEngine(this.#provider()).inspectLatest();
+        const hasRemoteVault = latest?.manifest.files.some((item) => item.type === "vault");
+        let nextRecoveryCode = "";
+        if (!hasRemoteVault && !this.vault.status().initialized) {
+          if (String(password || "").length < 8) throw new Error("vault_password_required");
+          const snapshot = this.source.getSyncSnapshot();
+          const initialized = await this.vault.initialize({ datasetId: snapshot.identity.datasetId, secrets: snapshot.secureConfig, password });
+          nextRecoveryCode = initialized.recoveryCode;
+        } else if (!hasRemoteVault) await this.vault.unlock({ password, recoveryCode });
+        this.#publish({ syncUpstream: true });
+        const status = await this.#startSync("unlock-vault", { password, recoveryCode });
+        if (status.errorCode) throw new Error(status.errorCode);
+        return { ok: true, recoveryCode: nextRecoveryCode, status: this.status() };
+      } finally { releaseControlOperation(); }
+    }
     const result = await this.vault.unlock({ password, recoveryCode });
     this.#publish({ error: "", errorCode: "" });
     return { ok: true, ...result, status: this.status() };
@@ -392,6 +412,10 @@ export class SyncManager {
   }
 
   async resolveConflict({ choice, password = "", recoveryCode = "" } = {}) {
+    if (typeof this.source.mergeConfigFromSync === "function") {
+      if (password || recoveryCode) return this.unlockVault({ password, recoveryCode });
+      return { ok: true, status: await this.syncNow("automatic-merge") };
+    }
     // 中文：只有明确选择“本地”时才准备本机 vault；选择“远端”由 engine 先认证远端 vault。
     // English: Prepare the local vault only for an explicit local choice; a remote choice lets
     // the engine authenticate the remote vault first.
@@ -493,4 +517,4 @@ export class SyncManager {
   }
 }
 
-export const syncIntervalMinutes = 30;
+export const syncIntervalMinutes = 1;

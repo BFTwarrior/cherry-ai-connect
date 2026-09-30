@@ -311,7 +311,7 @@ test("a wrong restore password never writes the remote vault or replaces local c
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
-test("equal-counter edits from different devices stop for an explicit conflict choice", async () => {
+test("legacy source compatibility: equal-counter edits still require its explicit conflict choice", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-sync-conflict-"));
   const sharedDataset = "ds_51995f2c-7f5a-7b21-a8d2-6dfc50f4a901";
   const provider = new FakeProvider();

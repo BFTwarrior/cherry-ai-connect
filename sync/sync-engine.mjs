@@ -35,6 +35,7 @@ import {
   validateManifest,
   verifyAsset,
 } from "./sync-common.mjs";
+import { clientMetadata } from "./config-merge.mjs";
 
 const MAX_SYNC_ATTEMPTS = 3;
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -105,13 +106,33 @@ async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog
       if (expectedDatasetId && manifest.datasetId !== expectedDatasetId) { datasetConflict = true; continue; }
       candidates.push({ manifest, bytes: Buffer.from(bytes), asset });
     } catch (error) {
+      if (/sync_(reader|writer)_too_old/.test(String(error?.message || ""))) throw error;
       // 中文：损坏或未提交的候选不能成为当前代，继续查看更早的完整代。
       // English: A damaged candidate cannot become current; fall back to an earlier committed generation.
     }
   }
   candidates.sort((left, right) => Number(right.manifest.generation) - Number(left.manifest.generation)
-    || String(right.manifest.createdAtUtc || "").localeCompare(String(left.manifest.createdAtUtc || "")));
-  if (candidates.length) return candidates[0];
+    || String(right.manifest.createdAtUtc || "").localeCompare(String(left.manifest.createdAtUtc || ""))
+    || right.asset.name.localeCompare(left.asset.name));
+  if (candidates.length) {
+    const selected = candidates[0];
+    const byHash = new Map(candidates.map((item) => [sha256(item.bytes), item]));
+    const included = new Set(selected.manifest.mergedManifestSha256s || []);
+    let ancestor = selected;
+    while (ancestor) {
+      const hash = sha256(ancestor.bytes);
+      included.add(hash);
+      const parentHash = ancestor.manifest.parentManifestSha256;
+      if (!parentHash || included.has(parentHash)) break;
+      included.add(parentHash);
+      ancestor = byHash.get(parentHash);
+    }
+    // 中文：晚到的旧代分支也必须合并；只比较最大代会遗漏迟到的删除或记录。
+    // English: Include late older forks too; max-generation comparison alone loses delayed edits/deletes.
+    selected.siblings = candidates.filter((item) => item.manifest.datasetId === selected.manifest.datasetId && !included.has(sha256(item.bytes)));
+    selected.headHashes = [...byHash.keys()].sort();
+    return selected;
+  }
   if (datasetConflict) throw new Error("sync_dataset_conflict");
   return null;
 }
@@ -171,7 +192,7 @@ export class SyncEngine {
     // 中文：用量明细先合并；配置公开索引与加密 vault 分开返回，确保“只同步用量”不触碰敏感配置。
     // English: Merge usage details independently; return public config and encrypted vault
     // separately so usage-only mode never touches sensitive configuration.
-    if (!latest) return { remoteConfig: null, remoteVault: null, importedEvents: 0 };
+    if (!latest) return { remoteConfig: null, remoteVault: null, remoteMetadata: null, tombstones: [], branches: [], importedEvents: 0 };
     const summaryDescriptor = latest.manifest.files.find((item) => item.type === "summary");
     let counters = [];
     let tombstones = latest.manifest.tombstones || [];
@@ -189,18 +210,61 @@ export class SyncEngine {
       events.push(...parseCompressedJsonLines(await downloadAndVerify(this.provider, descriptor, assetCatalog)));
     }
     if (events.length || counters.length || tombstones.length) this.source.mergeRemoteUsage({ datasetId, events, counters, tombstones });
-    const configDescriptor = latest.manifest.files.find((item) => item.type === "config");
-    const vaultDescriptor = latest.manifest.files.find((item) => item.type === "vault");
+    const configDescriptors = latest.manifest.files.filter((item) => item.type === "config");
+    const vaultDescriptors = latest.manifest.files.filter((item) => item.type === "vault");
+    const configDescriptor = configDescriptors[0];
+    const matchingVault = (descriptor) => vaultDescriptors.find((item) => item.assetName === descriptor?.assetName.replace(/^config-/, "vault-").replace(/\.json\.gz$/, ".enc")) || (configDescriptors.length === 1 ? vaultDescriptors[0] : null);
+    const vaultDescriptor = matchingVault(configDescriptor);
+    const pendingBranches = [];
+    for (const descriptor of configDescriptors.slice(1)) {
+      const encrypted = matchingVault(descriptor);
+      pendingBranches.push({ remoteConfig: parseCompressedJson(await downloadAndVerify(this.provider, descriptor, assetCatalog)), remoteVault: encrypted ? await downloadAndVerify(this.provider, encrypted, assetCatalog) : null, remoteMetadata: null, tombstones, branches: [] });
+    }
+    const metadataDescriptor = latest.manifest.files.find((item) => item.type === "client-metadata");
     return {
+      remoteMetadata: metadataDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, metadataDescriptor, assetCatalog)) : null,
       remoteConfig: configDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, configDescriptor, assetCatalog)) : null,
       remoteVault: vaultDescriptor ? await downloadAndVerify(this.provider, vaultDescriptor, assetCatalog) : null,
       tombstones,
       importedEvents: events.length,
+      branches: pendingBranches,
     };
+  }
+
+  async #mergeAutomatic(remote, options) {
+    // 中文：公开客户端条目先独立合并；上游配置必须经认证的 vault，失败时仍发布用量/元数据。
+    // English: Client metadata merges independently. Upstream config requires an authenticated
+    // vault; failures leave valid encrypted assets intact while usage/metadata can still commit.
+    const branches = [...remote.branches.flatMap((branch) => [...branch.branches, branch]), remote];
+    let upstreamError = "";
+    for (const branch of branches) {
+      const metadata = branch.remoteMetadata || branch.remoteConfig;
+      if (metadata) this.source.mergeClientMetadataFromSync(metadata, { tombstones: remote.tombstones });
+      if (options.syncUpstream !== false && branch.remoteConfig?.providers?.length && !branch.remoteVault) upstreamError = "sync_remote_vault_missing";
+      if (options.syncUpstream !== false && branch.remoteConfig && branch.remoteVault && this.vault) {
+        try {
+          const localEnvelope = this.vault.readEnvelope();
+          const sameEnvelope = stableJson(localEnvelope) === stableJson(JSON.parse(Buffer.from(branch.remoteVault).toString("utf8")));
+          if (sameEnvelope && this.vault.status().unlocked && typeof this.vault.readSecrets === "function") {
+            const secrets = this.vault.readSecrets(this.source.getSyncSnapshot().identity.datasetId);
+            this.source.mergeConfigFromSync(branch.remoteConfig, secrets, { tombstones: remote.tombstones });
+            continue;
+          }
+          await this.vault.importEnvelope(branch.remoteVault, {
+            password: String(options.password || ""), recoveryCode: String(options.recoveryCode || ""),
+            expectedDatasetId: this.source.getSyncSnapshot().identity.datasetId,
+            beforeCommit: ({ secrets }) => this.source.mergeConfigFromSync(branch.remoteConfig, secrets, { tombstones: remote.tombstones, validateOnly: true }),
+            commitConfig: ({ secrets }) => this.source.mergeConfigFromSync(branch.remoteConfig, secrets, { tombstones: remote.tombstones }),
+          });
+        } catch (error) { upstreamError = String(error?.message || error); }
+      }
+    }
+    return upstreamError;
   }
 
   async #run(reason, options = {}) {
     const syncUpstream = options.syncUpstream !== false;
+    const automatic = typeof this.source.mergeConfigFromSync === "function" && typeof this.source.mergeClientMetadataFromSync === "function";
     const startedAtUtc = this.now().toISOString();
     const syncId = randomId("sync");
     this.emit({ state: "SYNCING", reason, errorCode: "", error: "", startedAtUtc });
@@ -215,6 +279,7 @@ export class SyncEngine {
         let datasetId = initial.identity.datasetId;
         const initialAssetCatalog = await this.provider.listAssets();
         let latest = await readLatestManifest(this.provider, "", initialAssetCatalog);
+        const initialHeads = stableJson(latest?.headHashes || []);
         if (latest && latest.manifest.datasetId !== datasetId) {
           if (!options.adoptRemoteIfPristine || !this.source.canAdoptSyncDataset?.()) throw new Error("sync_dataset_conflict");
           this.source.adoptSyncDataset(latest.manifest.datasetId);
@@ -222,13 +287,21 @@ export class SyncEngine {
           datasetId = initial.identity.datasetId;
         }
         const remote = await this.#pullRemote(latest, datasetId, initialAssetCatalog);
+        if (automatic) {
+          for (const sibling of latest?.siblings || []) {
+            const branch = await this.#pullRemote(sibling, datasetId, initialAssetCatalog);
+            remote.branches.push(branch);
+            remote.tombstones.push(...branch.tombstones);
+          }
+        }
+        const upstreamError = automatic ? await this.#mergeAutomatic(remote, { ...options, syncUpstream }) : "";
         let snapshot = this.source.getSyncSnapshot();
         const configOrder = remote.remoteConfig
           ? revisionOrder(snapshot.publicConfig.configRevision, remote.remoteConfig.configRevision)
           : "equal";
         let importedSecureConfig = null;
         let remoteConfigCommitted = false;
-        if (syncUpstream && options.configPolicy === "remote" && remote.remoteVault && this.vault) {
+        if (!automatic && syncUpstream && options.configPolicy === "remote" && remote.remoteVault && this.vault) {
           // 中文：远端 vault 必须先由专用加密存储层完成密码学验证，验证失败立即停止恢复，
           // 不允许把远端内容当作普通 JSON 或空配置写入本机。
           // English: The dedicated vault layer must authenticate the remote vault first. A
@@ -269,7 +342,7 @@ export class SyncEngine {
           });
           importedSecureConfig = imported.secrets;
         }
-        if (remote.remoteConfig && configOrder !== "equal") {
+        if (!automatic && remote.remoteConfig && configOrder !== "equal") {
           if (syncUpstream && options.configPolicy === "remote") {
             let secureConfig = { schemaVersion: 1, datasetId, providers: [] };
             if ((remote.remoteConfig.providers || []).length) {
@@ -300,8 +373,8 @@ export class SyncEngine {
         }
         const parent = latest?.manifest || null;
         let currentVault = null;
-        let vaultWarning = "";
-        if (syncUpstream && this.vault) {
+        let vaultWarning = upstreamError ? "sync_vault_unavailable_usage_only" : "";
+        if (syncUpstream && this.vault && !upstreamError) {
           try {
             currentVault = await this.vault.getEnvelope(snapshot.secureConfig, datasetId);
           } catch (error) {
@@ -314,7 +387,7 @@ export class SyncEngine {
             vaultWarning = "sync_vault_unavailable_usage_only";
           }
         }
-        const keepRemoteConfig = Boolean(parent && (!syncUpstream || vaultWarning));
+        const keepRemoteConfig = Boolean(parent && (!syncUpstream || vaultWarning || !currentVault));
         // 中文：本机 vault 暂不可用时继承远端 config/vault 描述，保证用量新 manifest 不会
         // 把云端已有的加密配置从文件列表中删除。
         // English: When the local vault is unavailable, inherit the remote config/vault entries
@@ -322,20 +395,28 @@ export class SyncEngine {
         const effectivePublicConfig = keepRemoteConfig && remote.remoteConfig
           ? remote.remoteConfig
           : snapshot.publicConfig;
-        const noLocalChanges = snapshot.events.length === 0
+        const secureIds = new Set(snapshot.secureConfig.providers.map((item) => item.id));
+        const publishPublicConfig = automatic ? { ...snapshot.publicConfig, providers: snapshot.publicConfig.providers.filter((item) => secureIds.has(item.id)), clientKeyMetadata: snapshot.publicConfig.clientKeyMetadata.filter((item) => secureIds.has(item.providerId)) } : snapshot.publicConfig;
+        const metadata = automatic ? clientMetadata(snapshot.publicConfig, datasetId) : null;
+        const metadataChanged = automatic && stableJson(metadata) !== stableJson(remote.remoteMetadata);
+        const tombstonesChanged = parent && stableJson(snapshot.tombstones) !== stableJson(remote.tombstones);
+        const publicChanged = automatic && !keepRemoteConfig && stableJson(publishPublicConfig) !== stableJson(remote.remoteConfig && Object.fromEntries(Object.entries(remote.remoteConfig).filter(([key]) => !["format", "datasetId"].includes(key))));
+        const noLocalChanges = !metadataChanged && !tombstonesChanged && !publicChanged && !(latest?.siblings?.length)
+          && snapshot.events.length === 0
           && parent
           && sameRevision(parent.configRevision, effectivePublicConfig.configRevision)
           && (keepRemoteConfig || Number(parent.vaultRevision || 0) === Number(currentVault?.vaultRevision || 0));
         if (noLocalChanges) {
           const finishedAtUtc = this.now().toISOString();
           this.source.recordSyncRun?.({ syncId, state: "IDLE", generation: parent.generation, startedAtUtc, finishedAtUtc, summary: `no-op:${reason}` });
-          return this.emit({ state: "IDLE", generation: parent.generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : "") });
+          return this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", errorCode: upstreamError, error: upstreamError, generation: parent.generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : "") });
         }
 
         const generation = Number(parent?.generation || 0) + 1;
         const generatedAt = this.now();
         const generatedAtUtc = generatedAt.toISOString();
-        const assetTag = syncAssetTag(syncId, generatedAt);
+        const candidateSyncId = attempt === 1 ? syncId : randomId("sync");
+        const assetTag = syncAssetTag(candidateSyncId, generatedAt);
         const summaryBytes = gzipJson({
           format: SYNC_FORMAT,
           schemaVersion: SYNC_SCHEMA_VERSION,
@@ -348,26 +429,32 @@ export class SyncEngine {
           { descriptor: assetDescriptor("summary", `summary-${assetTag}.json.gz`, summaryBytes), bytes: summaryBytes, eventIds: [] },
           ...usageAssets(snapshot.events, assetTag),
         ];
+        if (automatic) {
+          const bytes = gzipJson(metadata);
+          candidates.splice(1, 0, { descriptor: assetDescriptor("client-metadata", `client-metadata-${assetTag}.json.gz`, bytes), bytes, eventIds: [] });
+        }
         if (currentVault) {
           const configBytes = gzipJson({
             format: SYNC_FORMAT,
             schemaVersion: SYNC_SCHEMA_VERSION,
             datasetId,
-            ...snapshot.publicConfig,
+            ...publishPublicConfig,
           });
           candidates.splice(1, 0, { descriptor: assetDescriptor("config", `config-${assetTag}.json.gz`, configBytes), bytes: configBytes, eventIds: [] });
           const bytes = jsonBuffer(currentVault);
           candidates.push({ descriptor: assetDescriptor("vault", `vault-${assetTag}.enc`, bytes), bytes, eventIds: [] });
         }
-        const inherited = (parent?.files || []).filter((item) => item.type === "usage-segment"
-          || (keepRemoteConfig && (item.type === "config" || item.type === "vault")));
+        const allParentFiles = [parent, ...(latest?.siblings || []).map((item) => item.manifest)].filter(Boolean).flatMap((item) => item.files);
+        const inherited = [...new Map(allParentFiles.filter((item) => item.type === "usage-segment"
+          || (keepRemoteConfig && (item.type === "config" || item.type === "vault"))).map((item) => [item.assetName, item])).values()];
 
         // 中文：提交前必须强制刷新远端清单，继续保留并发写入检测；普通读取则复用本轮缓存。
         // English: Force a fresh catalog before commit to preserve concurrent-write detection;
         // ordinary reads reuse the round-local cache.
         const commitAssetCatalog = await this.provider.listAssets({ refresh: true });
         latest = await readLatestManifest(this.provider, datasetId, commitAssetCatalog);
-        if (Number(latest?.manifest?.generation || 0) !== Number(parent?.generation || 0)
+        if ((automatic && stableJson(latest?.headHashes || []) !== initialHeads)
+          || Number(latest?.manifest?.generation || 0) !== Number(parent?.generation || 0)
           || String(latest ? sha256(latest.bytes) : "") !== String(latest && parent ? sha256(jsonBuffer(parent)) : "")) {
           if (attempt < MAX_SYNC_ATTEMPTS) continue;
           throw new Error("sync_parent_changed");
@@ -387,13 +474,27 @@ export class SyncEngine {
             await downloadAndVerify(this.provider, candidate.descriptor);
           }
         }
+        // 中文：上传期间的本地修改和远端并发提交必须重新合并，不能清除未提交的新变更。
+        // English: Re-merge local edits and remote commits observed during upload before committing.
+        if (automatic) {
+          const refreshed = await readLatestManifest(this.provider, datasetId, await this.provider.listAssets({ refresh: true }));
+          const localNow = this.source.getSyncSnapshot();
+          if (stableJson(refreshed?.headHashes || []) !== initialHeads
+            || stableJson(localNow.publicConfig) !== stableJson(snapshot.publicConfig)
+            || Number(refreshed?.manifest?.generation || 0) !== Number(parent?.generation || 0)
+            || String(refreshed ? sha256(refreshed.bytes) : "") !== String(latest ? sha256(latest.bytes) : "")) {
+            if (attempt < MAX_SYNC_ATTEMPTS) continue;
+            throw new Error("sync_parent_changed");
+          }
+        }
         const manifest = {
           format: SYNC_FORMAT,
           schemaVersion: SYNC_SCHEMA_VERSION,
           minReaderVersion: SYNC_PRODUCT_VERSION,
           minWriterVersion: SYNC_PRODUCT_VERSION,
           datasetId,
-          syncId,
+          syncId: candidateSyncId,
+          ...(automatic ? { mergedManifestSha256s: latest?.headHashes || [] } : {}),
           generation,
           parentGeneration: Number(parent?.generation || 0),
           parentManifestSha256: latest ? sha256(latest.bytes) : "",
@@ -410,7 +511,7 @@ export class SyncEngine {
           retention: { localDetailCacheBytes: 50 * 1024 ** 2, localDetailTargetBytes: 45 * 1024 ** 2, prunedBeforeUtc: null },
         };
         const manifestBytes = jsonBuffer(manifest);
-        const name = manifestName(syncId, generatedAt);
+        const name = manifestName(candidateSyncId, generatedAt);
         const uploadedManifestResult = await this.provider.uploadAsset(name, manifestBytes, "manifest");
         const uploadedManifest = uploadedManifestResult && Number.isSafeInteger(Number(uploadedManifestResult.id))
           ? uploadedManifestResult
@@ -424,7 +525,7 @@ export class SyncEngine {
         this.source.markSyncEvents(eventIds);
         const finishedAtUtc = this.now().toISOString();
         this.source.recordSyncRun?.({ syncId, state: "IDLE", generation, startedAtUtc, finishedAtUtc, summary: `${reason}: ${eventIds.length} event(s)` });
-        this.emit({ state: "IDLE", generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : ""), errorCode: "", error: "" });
+        this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : ""), errorCode: upstreamError, error: upstreamError });
         await this.collectGarbage().catch(() => {});
         return this.status();
       }

@@ -173,6 +173,7 @@ export class LocalVaultStore {
 
     let dek = null;
     const local = this.readEnvelope();
+    if (local?.datasetId === remote.datasetId && remote.keyEpoch < local.keyEpoch) throw new Error("vault_stale_key_epoch");
     if (local && local.datasetId === remote.datasetId && local.keyEpoch === remote.keyEpoch && fs.existsSync(this.localKeyFile)) {
       let candidate = null;
       try {
@@ -205,6 +206,18 @@ export class LocalVaultStore {
    * business data changes. If the local DEK is unavailable, throw a stable error so SyncEngine
    * preserves the previous remote asset instead of publishing a manifest that drops it.
    */
+  // 中文：仅同步业务层读取已解锁数据；DEK 不返回、不进入日志或渲染器。
+  // English: Read authenticated payload for sync only; never expose the DEK to logs/renderers.
+  readSecrets(datasetId) {
+    const envelope = this.readEnvelope();
+    if (!envelope) throw new Error("vault_not_initialized");
+    validateVaultEnvelope(envelope, datasetId);
+    const dek = this.#readDek();
+    if (!dek) throw new Error("vault_unlock_required");
+    try { return openVaultWithDek(envelope, dek); }
+    finally { dek.fill(0); }
+  }
+
   async getEnvelope(secrets, datasetId) {
     const envelope = this.readEnvelope();
     if (!envelope) return null;

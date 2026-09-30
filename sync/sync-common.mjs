@@ -17,7 +17,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 export const SYNC_FORMAT = "cherry-ai-connect-sync";
 export const SYNC_SCHEMA_VERSION = 1;
-export const SYNC_PRODUCT_VERSION = "1.1";
+export const SYNC_PRODUCT_VERSION = "1.2";
 export const MAX_COMPRESSED_ASSET_BYTES = 24 * 1024 * 1024;
 export const MAX_DECOMPRESSED_ASSET_BYTES = 128 * 1024 * 1024;
 

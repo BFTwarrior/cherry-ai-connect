@@ -2,7 +2,7 @@
  * 中文：React 渲染层负责页面状态、双语界面、线路/模型/客户端 Key 管理。
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
@@ -141,6 +141,10 @@ export default function App() {
   const [settingsVisit, setSettingsVisit] = useState(0);
   const [providers, setProviders] = useState<Provider[]>(DEMO_MODE ? DEMO_PROVIDERS : []);
   const [keys, setKeys] = useState<ClientKey[]>(DEMO_MODE ? DEMO_KEYS : []);
+  const [draggingKeyId, setDraggingKeyId] = useState<string | null>(null);
+  const keyDragRef = useRef<{ id: string; x: number; y: number; currentY: number; moved: boolean; from: number; target: number; scrollTop: number; scroller: HTMLElement; cards: { id: string; element: HTMLElement; top: number; height: number }[] } | null>(null);
+  const keyDragFrameRef = useRef<number | null>(null);
+  const [keyOrderSaving, setKeyOrderSaving] = useState(false);
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "unchanged", defaultProvider: "" });
   const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
   const [gatewayPort, setGatewayPort] = useState(DEMO_MODE ? 27891 : 20000);
@@ -645,6 +649,100 @@ export default function App() {
     }
   };
 
+  // 中文：只保存排列顺序，不重新生成密钥；过期列表由后端拒绝并刷新。
+  // English: Reordering never rotates secrets; the backend rejects a stale list for a refresh.
+  const moveClientKey = async (id: string, target: number, animateDrop = false) => {
+    const from = keys.findIndex((item) => item.id === id);
+    if (keyOrderSaving || from < 0 || target < 0 || target >= keys.length || from === target) return;
+    const next = [...keys];
+    const [moved] = next.splice(from, 1);
+    next.splice(target, 0, moved);
+    setKeyOrderSaving(true);
+    const settled = animateDrop && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? new Promise<void>((resolve) => window.setTimeout(resolve, 220)) : Promise.resolve();
+    try {
+      if (!DEMO_MODE) await request("/admin/api/client-keys/order", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: next.map((item) => item.id) }) });
+      await settled;
+      if (DEMO_MODE) setKeys(next); else await load(true);
+      showToast(tr("Key 顺序已保存，将自动同步", "Key order saved; it will sync automatically"), "success");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : String(error), "error");
+      if (!DEMO_MODE) await load(true);
+    } finally { setKeyOrderSaving(false); setDraggingKeyId(null); resetKeySortPreview(); }
+  };
+
+  const resetKeySortPreview = () => {
+    if (keyDragFrameRef.current !== null) cancelAnimationFrame(keyDragFrameRef.current);
+    keyDragFrameRef.current = null;
+    keyDragRef.current = null;
+    document.querySelectorAll<HTMLElement>("[data-client-key-id]").forEach((card) => card.style.removeProperty("--key-sort-offset"));
+    document.querySelector(".key-list")?.classList.remove("is-reordering");
+  };
+  // 中文：让位仅为界面预览；松手后只提交一次顺序，不在移动过程中写配置。
+  // English: Sibling movement is only a preview; commit order once on release, never per pointer move.
+  const previewKeyDrag = () => {
+    const drag = keyDragRef.current;
+    if (!drag?.moved) return;
+    const delta = drag.currentY - drag.y + drag.scroller.scrollTop - drag.scrollTop;
+    const lifted = drag.cards[drag.from];
+    const center = lifted.top + lifted.height / 2 + delta;
+    let target = drag.from;
+    drag.cards.forEach((card, index) => {
+      if (index < drag.from && center < card.top + card.height / 2) target = Math.min(target, index);
+      if (index > drag.from && center > card.top + card.height / 2) target = index;
+    });
+    drag.target = target;
+    const gap = drag.cards.length > 1 ? Math.max(0, drag.cards[1].top - drag.cards[0].top - drag.cards[0].height) : 0;
+    document.querySelector(".key-list")?.classList.add("is-reordering");
+    drag.cards.forEach((card, index) => {
+      const offset = index === drag.from ? delta : target > drag.from && index > drag.from && index <= target ? -(lifted.height + gap) : target < drag.from && index >= target && index < drag.from ? lifted.height + gap : 0;
+      card.element.style.setProperty("--key-sort-offset", `${offset}px`);
+    });
+  };
+  const scrollKeyDrag = () => {
+    const drag = keyDragRef.current;
+    if (!drag?.moved) return;
+    const bounds = drag.scroller.getBoundingClientRect();
+    const speed = drag.currentY < bounds.top + 64 ? -12 : drag.currentY > bounds.bottom - 64 ? 12 : 0;
+    if (speed) { drag.scroller.scrollTop += speed; previewKeyDrag(); }
+    keyDragFrameRef.current = requestAnimationFrame(scrollKeyDrag);
+  };
+  // 中文：配置加载/视图切换中止旧手势；新顺序渲染前清除偏移，避免落位闪跳。
+  // English: Reload/navigation cancels stale gestures; remove offsets before painting the final order.
+  useLayoutEffect(() => { resetKeySortPreview(); setDraggingKeyId(null); }, [keys, view]);
+  useEffect(() => () => { if (keyDragFrameRef.current !== null) cancelAnimationFrame(keyDragFrameRef.current); }, []);
+
+  const startKeyDrag = (event: PointerEvent<HTMLButtonElement>, id: string) => {
+    if (keyOrderSaving || event.button !== 0) return;
+    const scroller = event.currentTarget.closest<HTMLElement>(".main-scroll");
+    if (!scroller) return;
+    const cards = [...document.querySelectorAll<HTMLElement>("[data-client-key-id]")].map((element) => { const rect = element.getBoundingClientRect(); return { id: element.dataset.clientKeyId!, element, top: rect.top, height: rect.height }; });
+    const from = cards.findIndex((card) => card.id === id);
+    if (from < 0) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    keyDragRef.current = { id, x: event.clientX, y: event.clientY, currentY: event.clientY, moved: false, from, target: from, scroller, scrollTop: scroller.scrollTop, cards };
+  };
+  const moveKeyDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = keyDragRef.current;
+    if (!drag || (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 5)) return;
+    drag.currentY = event.clientY;
+    if (!drag.moved) { drag.moved = true; setDraggingKeyId(drag.id); keyDragFrameRef.current = requestAnimationFrame(scrollKeyDrag); }
+    previewKeyDrag();
+  };
+  const finishKeyDrag = (event: PointerEvent<HTMLButtonElement>) => {
+    const drag = keyDragRef.current;
+    if (keyDragFrameRef.current !== null) cancelAnimationFrame(keyDragFrameRef.current);
+    keyDragFrameRef.current = null;
+    if (drag?.moved) { drag.currentY = event.clientY; previewKeyDrag(); }
+    keyDragRef.current = null;
+    setDraggingKeyId(null);
+    if (!drag?.moved || drag.from === drag.target) { resetKeySortPreview(); return; }
+    const destination = drag.cards[drag.target];
+    const offset = destination.top - drag.cards[drag.from].top + (drag.target > drag.from ? destination.height - drag.cards[drag.from].height : 0);
+    drag.cards[drag.from].element.style.setProperty("--key-sort-offset", `${offset}px`);
+    void moveClientKey(drag.id, drag.target, true);
+  };
+
   const copyClientKey = async (key: ClientKey) => {
     if (!key.hasSecret) return;
     setCopyingKeyId(key.id);
@@ -936,8 +1034,8 @@ export default function App() {
        <PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this local connection service.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} />
        <div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div>
        <div className="key-toolbar"><div className="key-toolbar-title"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div><div className="client-import-all-actions" aria-label={tr("批量导入客户端", "Bulk import to clients")}>{batchButton("cherry-studio")}{batchButton("ccswitch")}</div></div>
-       {keys.length ? <div className="key-list">{keys.map((key) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"}`} key={key.id}>
-         <div className="key-card-head"><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div>
+       {keys.length ? <div className="key-list">{keys.map((key, index) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"} ${draggingKeyId === key.id ? "is-dragging" : ""}`} key={key.id} data-client-key-id={key.id}>
+         <div className="key-card-head"><button type="button" className="key-drag-handle" onPointerDown={(event) => startKeyDrag(event, key.id)} onPointerMove={moveKeyDrag} onPointerUp={finishKeyDrag} onPointerCancel={() => { resetKeySortPreview(); setDraggingKeyId(null); }} onKeyDown={(event) => { if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) { event.preventDefault(); void moveClientKey(key.id, index + (event.key === "ArrowUp" ? -1 : 1)); } }} disabled={keyOrderSaving} title={tr("拖动调整顺序（键盘：Alt + ↑ / ↓）", "Drag to reorder (keyboard: Alt + ↑ / ↓)")} aria-label={tr("拖动调整顺序", "Drag to reorder")}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">{[4, 8, 12].flatMap((y) => [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1" />))}</svg></button><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div>
          <div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div>
          <div className="key-card-actions"><div className="client-import-key-actions">{importButton(key, "cherry-studio")}{importButton(key, "ccswitch")}</div><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div>
        </article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}
@@ -979,7 +1077,7 @@ export default function App() {
 
   function CloudSyncView() {
     return <section className="page-view cloud-sync-workspace">
-      <PageIntro kicker={tr("云同步", "CLOUD SYNC")} description={tr("独立管理 GitHub 连接、同步状态、数据保护和版本记录。用量可独立同步，中转站 API 仅在主动开启后加密同步。", "Manage the GitHub connection, sync status, data protection, and version history in one workspace. Usage syncs independently; upstream APIs are encrypted only when enabled.")} action={undefined} />
+      <PageIntro kicker={tr("云同步", "CLOUD SYNC")} description={tr("用量、客户端条目和顺序使用 GitHub Token 自动同步；中转站密钥需要保险库凭证，加密合并最新版本。", "Usage, client entries and order sync automatically with a GitHub token; upstream keys require vault authentication to merge the latest encrypted version.")} action={undefined} />
       <CloudSyncCard language={language} requestConfirmation={requestConfirmation} demo={DEMO_MODE} demoConflict={DEMO_SYNC_CONFLICT} />
     </section>;
   }

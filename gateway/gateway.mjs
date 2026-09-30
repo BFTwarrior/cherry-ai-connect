@@ -10,6 +10,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { UsageLedger } from "./usage-ledger.mjs";
+import { clientMetadata, compareRevision, deletedIds, mergeOrder, mergeRecords, revision } from "../sync/config-merge.mjs";
+import { stableJson } from "../sync/sync-common.mjs";
 import { CODEX_OFFICIAL_SOURCE, CodexUsageClient, combineUsageSnapshots, emptySnapshot } from "./codex-usage-client.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -232,9 +234,27 @@ function providerModelsError(message, modelListStatus = "error", statusCode = 0,
   return error;
 }
 
+// 中文：只给实际变更的条目提升修订号；本机密钥轮换不更改云端元数据。
+// English: Stamp changed records only; rotating a local secret does not rewrite cloud metadata.
+function stampConfigChanges() {
+  const next = { counter: Math.max(Date.now(), Number(config.syncClock || 0) + 1), deviceId: usageLedger.identity.deviceId };
+  const comparable = (item) => Object.fromEntries(Object.entries(item).filter(([key]) => !["syncRevision", "hash", "keyEnc", "syncPending"].includes(key)));
+  for (const field of ["providers", "clientKeys"]) {
+    const previous = new Map((lastPersistedConfig?.[field] || []).map((item) => [item.id, item]));
+    for (const item of config[field]) {
+      const old = previous.get(item.id);
+      if (!old || stableJson(comparable(item)) !== stableJson(comparable(old))) item.syncRevision = { ...next };
+    }
+  }
+  if (config.forcedLevel !== lastPersistedConfig?.forcedLevel || config.defaultProvider !== lastPersistedConfig?.defaultProvider) config.settingsRevision = { ...next };
+  if (stableJson(config.clientKeyOrder?.ids || []) !== stableJson(lastPersistedConfig?.clientKeyOrder?.ids || [])) config.clientKeyOrder = { ids: config.clientKeyOrder.ids, revision: { ...next } };
+  config.syncClock = next.counter;
+}
+
 function saveConfig({ bumpRevision = true } = {}) {
   const previousPersisted = lastPersistedConfig ? JSON.parse(JSON.stringify(lastPersistedConfig)) : null;
   if (bumpRevision) {
+    stampConfigChanges();
     const previous = config.configRevision && typeof config.configRevision === "object" ? config.configRevision : {};
     config.configRevision = {
       counter: Math.max(0, Number(previous.counter) || 0) + 1,
@@ -300,7 +320,18 @@ function migrateConfig() {
     item.createdAt = String(item.createdAt || new Date().toLocaleString("zh-CN"));
     item.enabled = item.enabled !== false;
   }
+  config.syncClock = Math.max(0, Number(config.syncClock || 0));
+  config.settingsRevision = revision(config.settingsRevision, config.configRevision);
+  for (const item of [...config.providers, ...config.clientKeys]) item.syncRevision = revision(item.syncRevision, config.configRevision);
+  config.clientKeyOrder = mergeOrder(config.clientKeyOrder || { ids: config.clientKeys.map((item) => item.id), revision: config.configRevision }, null, config.clientKeys);
+  config.syncClock = Math.max(config.syncClock, config.settingsRevision.counter, config.clientKeyOrder.revision.counter, ...[...config.providers, ...config.clientKeys].map((item) => item.syncRevision.counter));
+  config.clientKeys.sort((a, b) => config.clientKeyOrder.ids.indexOf(a.id) - config.clientKeyOrder.ids.indexOf(b.id));
+  config.deletionTombstones = Array.isArray(config.deletionTombstones) ? config.deletionTombstones : [];
   if (JSON.stringify(config) !== before) saveConfig({ bumpRevision: false });
+  // 中文：配置中的删除意图先于 SQLite 提交持久化；进程中断后重放尚未入账的意图。
+  // English: Durable config deletion intents precede SQLite commits; replay missing intents after a crash.
+  const known = new Set(usageLedger.tombstones().map((item) => `${item.object_type}:${item.object_id}`));
+  for (const item of config.deletionTombstones) if (!known.has(`${item.object_type}:${item.object_id}`)) usageLedger.addTombstone(item.object_type, item.object_id, item.deleted_revision);
 }
 
 migrateConfig();
@@ -768,6 +799,17 @@ async function admin(req, res, url) {
   if (url.pathname === "/admin/api/client-keys" && req.method === "GET") {
     return json(res, 200, { keys: config.clientKeys.map((item) => ({ id: item.id, name: item.name, nameCustomized: item.nameCustomized === true, providerId: item.providerId, providerName: config.providers.find((provider) => provider.id === item.providerId)?.name || "未绑定", reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : config.forcedLevel || "unchanged", createdAt: item.createdAt, enabled: item.enabled !== false, hasSecret: Boolean(item.keyEnc && decrypt(item.keyEnc)) })) });
   }
+  if (url.pathname === "/admin/api/client-keys/order" && req.method === "POST") {
+    const data = bodyJson(await readBody(req)) || {};
+    const ids = data.ids;
+    const existing = new Set(config.clientKeys.map((item) => item.id));
+    if (!Array.isArray(ids) || ids.length !== existing.size || new Set(ids).size !== ids.length || ids.some((id) => !existing.has(id))) return json(res, 400, { error: "Key 列表已变化，请刷新后重新排序" });
+    config.clientKeyOrder = { ids, revision: config.clientKeyOrder.revision };
+    config.clientKeys.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    saveConfig();
+    notifySyncChange("client-order-change");
+    return json(res, 200, { ok: true });
+  }
   if (url.pathname === "/admin/api/client-keys" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
     const providerId = String(data.providerId || "");
@@ -778,6 +820,7 @@ async function admin(req, res, url) {
     const nameCustomized = data.nameCustomized === true;
     const item = { id: crypto.randomUUID(), name: nameCustomized ? String(data.name || provider.name).trim() : provider.name, nameCustomized, providerId, reasoningLevel, hash: hashKey(key), keyEnc: encrypt(key), createdAt: new Date().toLocaleString("zh-CN"), enabled: true };
     config.clientKeys.push(item);
+    config.clientKeyOrder.ids.push(item.id);
     saveConfig();
     notifySyncChange("client-metadata-change");
     return json(res, 200, { ok: true, key, id: item.id });
@@ -861,8 +904,11 @@ async function admin(req, res, url) {
     const before = config.clientKeys.length;
     config.clientKeys = config.clientKeys.filter((item) => item.id !== keyRoute[1]);
     if (config.clientKeys.length === before) return json(res, 404, { error: "客户端 Key 不存在" });
-    usageLedger.addTombstone("client-key", deleted.id, String(Date.now()));
+    const at = new Date().toISOString();
+    config.deletionTombstones.push({ object_type: "client-key", object_id: deleted.id, deleted_revision: String(Date.now()), deleted_by_device: usageLedger.identity.deviceId, deleted_at_utc: at });
+    config.clientKeyOrder.ids = config.clientKeyOrder.ids.filter((id) => id !== deleted.id);
     saveConfig();
+    usageLedger.addTombstone("client-key", deleted.id, String(Date.now()));
     notifySyncChange("client-delete");
     return json(res, 200, { ok: true, deleted: true });
   }
@@ -873,9 +919,10 @@ async function admin(req, res, url) {
     const before = config.providers.length;
     config.providers = config.providers.filter((item) => item.id !== providerId);
     if (config.providers.length === before) return json(res, 404, { error: "线路不存在" });
-    usageLedger.addTombstone("provider", providerId, String(Date.now()));
+    config.deletionTombstones.push({ object_type: "provider", object_id: providerId, deleted_revision: String(Date.now()), deleted_by_device: usageLedger.identity.deviceId, deleted_at_utc: new Date().toISOString() });
     if (config.defaultProvider === providerId) config.defaultProvider = config.providers.find((item) => item.enabled !== false)?.id || "";
     saveConfig();
+    usageLedger.addTombstone("provider", providerId, String(Date.now()));
     notifySyncChange("secure-route-delete");
     return json(res, 200, { ok: true, deleted: true });
   }
@@ -986,8 +1033,11 @@ export function getSyncSnapshot() {
     configRevision: { ...config.configRevision },
     forcedLevel: config.forcedLevel,
     defaultProvider: config.defaultProvider,
+    settingsRevision: { ...config.settingsRevision },
+    clientKeyOrder: { ids: [...config.clientKeyOrder.ids], revision: { ...config.clientKeyOrder.revision } },
     providers: config.providers.map((provider) => ({
       id: provider.id,
+      syncRevision: { ...provider.syncRevision },
       name: provider.name,
       enabled: provider.enabled !== false,
       models: uniqueModels(provider.models),
@@ -1001,6 +1051,7 @@ export function getSyncSnapshot() {
     // English: Only non-secret client metadata syncs. Full keys, hashes, and local ciphertext never do.
     clientKeyMetadata: config.clientKeys.map((item) => ({
       id: item.id,
+      syncRevision: { ...item.syncRevision },
       name: item.name,
       nameCustomized: item.nameCustomized === true,
       providerId: item.providerId,
@@ -1013,7 +1064,7 @@ export function getSyncSnapshot() {
   const secureConfig = {
     schemaVersion: 1,
     datasetId: usageLedger.identity.datasetId,
-    providers: config.providers.map((provider) => ({
+    providers: config.providers.filter((provider) => !provider.syncPending).map((provider) => ({
       id: provider.id,
       baseUrl: String(provider.baseUrl || ""),
       apiKey: decrypt(provider.apiKeyEnc),
@@ -1029,7 +1080,7 @@ export function getSyncSnapshot() {
     secureConfig,
     events: usageLedger.pendingUsage(50000),
     counters: usageLedger.counters(),
-    tombstones: usageLedger.tombstones(),
+    tombstones: [...new Map([...usageLedger.tombstones(), ...config.deletionTombstones].map((item) => [`${item.object_type}:${item.object_id}`, item])).values()],
     ledger: usageLedger.status(),
   };
 }
@@ -1056,6 +1107,7 @@ function syncProviderFromRemote(publicProvider, secureProvider) {
   const previous = config.providers.find((item) => item.id === id);
   return {
     id,
+    syncRevision: revision(publicProvider.syncRevision),
     name: String(publicProvider.name || id).trim().slice(0, 200),
     enabled: publicProvider.enabled !== false,
     models: uniqueModels(publicProvider.models),
@@ -1088,12 +1140,14 @@ function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
     if (!id || secureById.has(id)) throw new Error("sync_invalid_secure_config");
     secureById.set(id, item);
   }
-  const providers = publicConfig.providers.map((item) => syncProviderFromRemote(item, secureById.get(String(item?.id || ""))));
+  const deletedProviders = deletedIds(options.tombstones, "provider");
+  const providers = publicConfig.providers.filter((item) => !deletedProviders.has(item.id)).map((item) => syncProviderFromRemote(item, secureById.get(String(item?.id || ""))));
   const providerIds = new Set(providers.map((item) => item.id));
   if (providerIds.size !== providers.length) throw new Error("sync_invalid_config");
   const previousKeys = new Map(config.clientKeys.map((item) => [item.id, item]));
   const remoteKeyIds = new Set();
-  const clientKeys = (Array.isArray(publicConfig.clientKeyMetadata) ? publicConfig.clientKeyMetadata : []).map((item) => {
+  const explicitlyDeleted = syncTombstoneIds(options.tombstones);
+  const clientKeys = (Array.isArray(publicConfig.clientKeyMetadata) ? publicConfig.clientKeyMetadata : []).filter((item) => !explicitlyDeleted.has(item.id) && !deletedProviders.has(item.providerId)).map((item) => {
     const id = String(item.id || "");
     const providerId = String(item.providerId || "");
     if (!id || !providerIds.has(providerId)) throw new Error("sync_invalid_client_metadata");
@@ -1104,10 +1158,11 @@ function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
     // English: Updates and normal syncs never rotate a same-device client key. Generation is allowed only
     // when the sync engine explicitly identifies a pristine device performing its first restore.
     const previousSecret = decrypt(previous?.keyEnc || "");
-    if (!previousSecret && options.allowGenerateClientSecrets !== true) throw new Error("sync_client_key_secret_missing");
+    if (!previousSecret && (previous || options.allowGenerateClientSecrets !== true)) throw new Error("sync_client_key_secret_missing");
     const localSecret = previousSecret || makeClientKey();
     return {
       id,
+      syncRevision: revision(item.syncRevision, publicConfig.configRevision),
       name: String(item.name || providers.find((provider) => provider.id === providerId)?.name || "客户端").slice(0, 200),
       nameCustomized: item.nameCustomized === true,
       providerId,
@@ -1118,13 +1173,12 @@ function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
       keyEnc: previousSecret ? String(previous.keyEnc) : encrypt(localSecret),
     };
   });
-  const explicitlyDeleted = syncTombstoneIds(options.tombstones);
   // 中文：远端 config 是某次设备的观察结果，不是本机 Key 的全量删除清单。远端缺少
   // 本机独有 Key 时保留原条目；只有明确的 client-key tombstone 才表示云端删除。
   // English: A remote config is one device's observation, not an implicit delete-all list for
   // this device's keys. Preserve local-only keys; only an explicit client-key tombstone deletes.
   for (const localKey of config.clientKeys) {
-    if (!remoteKeyIds.has(localKey.id) && !explicitlyDeleted.has(localKey.id)) clientKeys.push(localKey);
+    if (!remoteKeyIds.has(localKey.id) && !explicitlyDeleted.has(localKey.id) && !deletedProviders.has(localKey.providerId)) clientKeys.push(localKey);
   }
   return {
     ...config,
@@ -1136,6 +1190,8 @@ function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
     },
     forcedLevel: validReasoningLevel(publicConfig.forcedLevel) ? publicConfig.forcedLevel : "unchanged",
     defaultProvider: providerIds.has(String(publicConfig.defaultProvider || "")) ? String(publicConfig.defaultProvider) : (providers.find((item) => item.enabled)?.id || ""),
+    settingsRevision: revision(publicConfig.settingsRevision, publicConfig.configRevision),
+    clientKeyOrder: mergeOrder(config.clientKeyOrder, publicConfig.clientKeyOrder, clientKeys),
     providers,
     clientKeys,
   };
@@ -1155,6 +1211,7 @@ export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) 
   const nextConfig = prepareConfigFromSync(publicConfig, secureConfig, options);
   writeJson(configFile, nextConfig);
   config = nextConfig;
+  lastPersistedConfig = JSON.parse(JSON.stringify(config));
   return getSyncSnapshot().publicConfig;
 }
 
@@ -1172,4 +1229,79 @@ export { server };
 
 if (process.env.GATEWAY_EMBEDDED !== "1") {
   startGateway().catch((error) => { console.error("网关启动失败", error); process.exitCode = 1; });
+}
+
+
+/** 中文：自动合并最新条目；本机独有记录不因远端缺省删除。English: Automatic record merge; omission never deletes. */
+function prepareAutomaticMerge(remote, secure, { metadataOnly = false, tombstones = [] } = {}) {
+  if (!remote || Number(remote.schemaVersion) !== 1 || !Array.isArray(remote.providers) || !Array.isArray(remote.clientKeyMetadata)) throw new Error("sync_invalid_config");
+  if (remote.datasetId && remote.datasetId !== usageLedger.identity.datasetId) throw new Error("sync_dataset_conflict");
+  const local = getSyncSnapshot();
+  const allTombstones = [...local.tombstones, ...tombstones];
+  const deletedProviders = deletedIds(allTombstones, "provider");
+  const refs = new Map(remote.providers.map((item) => [item.id, item]));
+  if (refs.size !== remote.providers.length) throw new Error("sync_invalid_provider");
+  let providers;
+  if (metadataOnly) {
+    providers = config.providers.filter((item) => !deletedProviders.has(item.id)).map((item) => ({ ...item }));
+    const ids = new Set(providers.map((item) => item.id));
+    for (const ref of refs.values()) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(String(ref.id || ""))) throw new Error("sync_invalid_provider");
+      if (!ids.has(ref.id) && !deletedProviders.has(ref.id)) providers.push({ id: ref.id, name: String(ref.name || ref.id).slice(0, 200), enabled: true, models: [], baseUrl: "", apiKeyEnc: "", syncPending: true, syncRevision: { counter: 0, deviceId: "" } });
+    }
+  } else {
+    if (!secure || Number(secure.schemaVersion) !== 1 || secure.datasetId !== usageLedger.identity.datasetId || !Array.isArray(secure.providers)) throw new Error("sync_invalid_secure_config");
+    const secrets = new Map(secure.providers.map((item) => [item.id, item]));
+    if (secrets.size !== secure.providers.length) throw new Error("sync_invalid_secure_config");
+    const localPublic = local.publicConfig.providers.filter((item) => !config.providers.find((entry) => entry.id === item.id)?.syncPending);
+    const merged = mergeRecords(localPublic, remote.providers, { localRevision: local.publicConfig.configRevision, remoteRevision: remote.configRevision, tombstones: allTombstones, type: "provider" });
+    providers = merged.map((item) => {
+      const existing = config.providers.find((entry) => entry.id === item.id && !entry.syncPending);
+      const localRef = localPublic.find((entry) => entry.id === item.id);
+      if (existing && localRef && stableJson({ ...localRef, syncRevision: revision(localRef.syncRevision, local.publicConfig.configRevision) }) === stableJson(item)) return { ...existing };
+      return syncProviderFromRemote(item, secrets.get(item.id));
+    });
+    // 中文：另一台设备可能只上传了公开引用；保留未解锁线路，不能让它阻挡已有密文合并。
+    // English: Metadata-only devices may publish references before a vault; retain pending routes
+    // so these references do not block authenticated merging of already available routes.
+    const mergedIds = new Set(providers.map((item) => item.id));
+    providers.push(...config.providers.filter((item) => item.syncPending && !mergedIds.has(item.id) && !deletedProviders.has(item.id)).map((item) => ({ ...item })));
+  }
+  const providerIds = new Set(providers.map((item) => item.id));
+  const mergedKeys = mergeRecords(local.publicConfig.clientKeyMetadata, remote.clientKeyMetadata, { localRevision: local.publicConfig.configRevision, remoteRevision: remote.configRevision, tombstones: allTombstones, type: "client-key" });
+  const clientKeys = mergedKeys.filter((item) => !deletedProviders.has(item.providerId)).map((item) => {
+    if (!providerIds.has(String(item.providerId || ""))) throw new Error("sync_invalid_client_metadata");
+    const previous = config.clientKeys.find((entry) => entry.id === item.id);
+    const secret = previous ? decrypt(previous.keyEnc) : makeClientKey();
+    if (!secret) throw new Error("sync_client_key_secret_missing");
+    return { id: item.id, syncRevision: item.syncRevision, name: String(item.name || "客户端").slice(0, 200), nameCustomized: item.nameCustomized === true, providerId: item.providerId, reasoningLevel: validReasoningLevel(item.reasoningLevel) ? item.reasoningLevel : "unchanged", createdAt: String(item.createdAt || ""), enabled: item.enabled !== false, keyEnc: previous ? previous.keyEnc : encrypt(secret), hash: previous?.hash || hashKey(secret) };
+  });
+  const order = mergeOrder(config.clientKeyOrder, remote.clientKeyOrder || { ids: remote.clientKeyMetadata.map((item) => item.id), revision: remote.configRevision }, clientKeys);
+  clientKeys.sort((a, b) => order.ids.indexOf(a.id) - order.ids.indexOf(b.id));
+  const settingsNewer = !metadataOnly && compareRevision(revision(remote.settingsRevision, remote.configRevision), revision(config.settingsRevision, config.configRevision)) > 0;
+  const observed = [config.configRevision, remote.configRevision, config.settingsRevision, remote.settingsRevision, order.revision, ...providers.map((item) => item.syncRevision), ...clientKeys.map((item) => item.syncRevision)];
+  return { ...config, providers, clientKeys, clientKeyOrder: order, defaultProvider: providerIds.has(config.defaultProvider) ? config.defaultProvider : (providers.find((item) => !item.syncPending && item.enabled)?.id || ""),
+    configRevision: compareRevision(config.configRevision, remote.configRevision) >= 0 ? config.configRevision : revision(remote.configRevision),
+    syncClock: Math.max(Number(config.syncClock || 0), ...observed.map((item) => Number(item?.counter || 0))),
+    ...(settingsNewer ? { forcedLevel: validReasoningLevel(remote.forcedLevel) ? remote.forcedLevel : "unchanged", defaultProvider: providerIds.has(remote.defaultProvider) ? remote.defaultProvider : "", settingsRevision: revision(remote.settingsRevision, remote.configRevision) } : {}),
+  };
+}
+
+export function mergeConfigFromSync(remote, secure, options = {}) {
+  const next = prepareAutomaticMerge(remote, secure, options);
+  if (options.validateOnly) return true;
+  if (stableJson(next) !== stableJson(config)) {
+    writeJson(configFile, next);
+    config = next;
+    lastPersistedConfig = JSON.parse(JSON.stringify(config));
+  }
+  return getSyncSnapshot().publicConfig;
+}
+
+export function mergeClientMetadataFromSync(remote, options = {}) {
+  return mergeConfigFromSync(remote, null, { ...options, metadataOnly: true });
+}
+
+export function getClientMetadataSnapshot() {
+  return clientMetadata(getSyncSnapshot().publicConfig, usageLedger.identity.datasetId);
 }

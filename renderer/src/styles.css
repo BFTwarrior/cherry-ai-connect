@@ -7566,3 +7566,16 @@ select:focus-visible { outline-color: var(--gold); }
   .usage-source-tabs { width: 100%; }
   .usage-source-tabs button { flex: 1 1 0; }
 }
+
+/* 中文：单一拖动手柄、抬起/让位/落位动画；减少动态效果时保留位置反馈。
+   English: One grip with lift, sibling movement and settling; respect reduced-motion preferences. */
+.key-drag-handle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px; width: 28px; height: 28px; margin-left: -6px; margin-right: -3px; padding: 6px; border: 0; border-radius: 8px; color: #9b86b8; background: transparent; cursor: grab; touch-action: none; user-select: none; transition: color 160ms ease, background 160ms ease; }
+.key-drag-handle:hover, .key-drag-handle:focus-visible { color: #e0c4ff; background: #a981da18; }
+.key-drag-handle:focus-visible { outline: 2px solid #b590df; outline-offset: 2px; }
+.key-drag-handle:disabled { opacity: .35; cursor: wait; }
+.key-list.is-reordering .client-key-card { position: relative; translate: 0 var(--key-sort-offset, 0px); scale: 1; will-change: translate; transition: translate 220ms cubic-bezier(.2,.8,.2,1), scale 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+.key-list.is-reordering .client-key-card.is-dragging { z-index: 3; opacity: .96; border-color: #c5a4ef; box-shadow: 0 16px 36px #0007, 0 0 0 1px #c5a4ef33; scale: 1.012; transition: box-shadow 180ms ease, scale 180ms ease; }
+.client-key-card.is-dragging .key-drag-handle { color: #f2e9fc; cursor: grabbing; }
+@media (prefers-reduced-motion: reduce) {
+  .key-drag-handle, .key-list.is-reordering .client-key-card, .key-list.is-reordering .client-key-card.is-dragging { transition: none; scale: 1; }
+}

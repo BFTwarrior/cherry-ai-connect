@@ -212,6 +212,8 @@ function syncSource() {
     adoptSyncDataset: (datasetId) => gatewayModule.adoptSyncDataset(datasetId),
     replaceConfigFromSync: (publicConfig, secureConfig, options) => gatewayModule.replaceConfigFromSync(publicConfig, secureConfig, options),
     bumpConfigRevisionForSync: () => gatewayModule.bumpConfigRevisionForSync(),
+    mergeConfigFromSync: (publicConfig, secureConfig, options) => gatewayModule.mergeConfigFromSync(publicConfig, secureConfig, options),
+    mergeClientMetadataFromSync: (metadata, options) => gatewayModule.mergeClientMetadataFromSync(metadata, options),
   };
 }
 

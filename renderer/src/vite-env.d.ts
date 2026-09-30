@@ -96,7 +96,7 @@ interface Window {
     connectGitHub: (value: { token: string; repository: string; password: string; syncUpstream?: boolean }) => Promise<GitHubConnectResult>;
     syncNow: () => Promise<CloudSyncStatus>;
     setSyncEnabled: (enabled: boolean) => Promise<CloudSyncStatus>;
-    unlockSyncVault: (value: { password?: string; recoveryCode?: string }) => Promise<{ ok: boolean; status: CloudSyncStatus }>;
+    unlockSyncVault: (value: { password?: string; recoveryCode?: string }) => Promise<{ ok: boolean; recoveryCode?: string; status: CloudSyncStatus }>;
     resolveSyncConflict: (value: { choice: "local" | "remote"; password?: string; recoveryCode?: string }) => Promise<SyncConflictResult>;
     disconnectGitHub: () => Promise<CloudSyncStatus>;
     onSyncStatus: (listener: (status: CloudSyncStatus) => void) => () => void;

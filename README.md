@@ -207,7 +207,7 @@ The screenshot is a sanitized reference. Confirm that exactly one private sync r
 
 公开源码仓库和你自己的私有同步仓库不是一回事。细粒度令牌只需要指定私有同步仓库，`Contents` 设置为 `Read and write`，`Metadata` 保持 `Read-only`。不要添加 Actions、Administration、Issues、Pull requests、Secrets 或账号级权限。
 
-令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。同步冲突时，可先选择保留本机或使用云端，只有实际解密时才输入保险库凭证。
+令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。当前未发布源码改为自动合并最新记录，不再选择保留本机或使用云端。客户端 Key 条目与顺序使用 GitHub Token 同步，实际 Key 在各设备本地生成；中转站 Key/地址须经保险库密码或恢复码认证后加密同步。本机修改去重触发同步，其他设备每分钟检查一次。
 
 <p align="center">
   <a href="https://github.com/settings/personal-access-tokens/new">🇨🇳 创建 GitHub API 令牌</a>
