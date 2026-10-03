@@ -417,3 +417,28 @@ test("release metadata keeps the installer verifiable when GitHub API digest is 
     sha256: hash,
   });
 });
+
+test("offline update backup includes pending ledger, vault and sync state byte for byte", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-offline-update-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const gateway = path.join(runtimeDataRoot, "gateway-data");
+  const values = { "usage.db": "pending-outbox-and-history", "usage.db-wal": "pending-wal", "vault.enc": "encrypted-vault-fixture", "sync-state.json": JSON.stringify({ enabled: true, account: { id: "1" }, retryAt: "2026-10-04T01:00:00Z" }), ".github-token": "protected-token-fixture" };
+  try {
+    for (const [name, value] of Object.entries(values)) fs.writeFileSync(path.join(gateway, name), value);
+    const backup = createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: path.join(root, "pointer"), targetVersion: "1.40.12" });
+    for (const [name, value] of Object.entries(values)) assert.equal(fs.readFileSync(path.join(backup.backupRoot, "gateway-data", name), "utf8"), value);
+    assert.equal(fs.readFileSync(path.join(gateway, "usage.db"), "utf8"), values["usage.db"]);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("a corrupt copy prevents publishing the recovery pointer", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-backup-verify-"));
+  const runtimeDataRoot = seedRuntime(root);
+  const cpSync = fs.cpSync;
+  try {
+    fs.cpSync = (from, to, options) => { cpSync(from, to, options); fs.writeFileSync(path.join(to, "usage.db"), "corrupted-backup"); };
+    assert.throws(() => createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot: path.join(root, "recovery"), legacyUserDataRoot: path.join(root, "pointer"), targetVersion: "1.40.12" }), /update_backup_verification_failed/);
+    assert.equal(fs.existsSync(path.join(root, "pointer", "cherry-ai-connect-update-recovery.json")), false);
+    assert.equal(fs.readFileSync(path.join(runtimeDataRoot, "gateway-data", "usage.db"), "utf8"), "test-ledger");
+  } finally { fs.cpSync = cpSync; fs.rmSync(root, { recursive: true, force: true }); }
+});

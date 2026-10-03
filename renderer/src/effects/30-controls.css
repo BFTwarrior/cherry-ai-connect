@@ -276,15 +276,10 @@
 }
 
 /* A paused sync stops its progress spinner but keeps the product's glossy purple
- * tab and button surfaces. The status chip gets one restrained sweep on entry. */
+ * tab and button surfaces. The paused label has no highlight sweep. */
 @keyframes cherry-sync-pause-settle {
   from { opacity: .4; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
-}
-@keyframes cherry-sync-chip-sweep {
-  from { transform: translateX(-120%); opacity: 0; }
-  12% { opacity: .9; }
-  to { transform: translateX(120%); opacity: 0; }
 }
 @keyframes cherry-sync-working { to { transform: rotate(360deg); } }
 .cloud-sync-card .sync-state-chip.state-paused-update {
@@ -297,14 +292,12 @@
   box-shadow: inset 0 1px rgb(255 255 255 / 12%), 0 0 9px rgb(160 99 219 / 20%);
 }
 .cloud-sync-card .sync-state-chip.state-paused-update::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  inset: -25% -55%;
-  border: 0;
-  background: linear-gradient(108deg, transparent 42%, rgb(255 255 255 / 6%) 47%, rgb(255 245 255 / 42%) 51%, rgb(203 159 255 / 19%) 55%, transparent 61%);
-  pointer-events: none;
-  animation: cherry-sync-chip-sweep 1.05s cubic-bezier(.2, .72, .25, 1) both;
+  content: none;
+}
+/* Remove only the moving reflection from this paused action. Keep its animated
+ * surface, label brightness, icon and the other buttons' effects unchanged. */
+.cloud-sync-card .sync-actions .sync-paused::before {
+  content: none !important;
 }
 .cloud-sync-card .sync-state-chip.state-paused-update > svg,
 .cloud-sync-card .sync-state-chip.state-paused-update > span {

@@ -346,6 +346,17 @@ function restoreMissingSyncCredential(backupRoot, destination) {
   return true;
 }
 
+function verifyBackupCopy(source, destination) {
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) verifyBackupCopy(from, to);
+    else if (!entry.isFile() || !fs.statSync(to).isFile() || sha256File(from) !== sha256File(to)) {
+      throw new Error("update_backup_verification_failed");
+    }
+  }
+}
+
 function createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDataRoot, targetVersion }) {
   const version = safeVersion(targetVersion);
   const sourceRoot = absolutePath(runtimeDataRoot);
@@ -360,8 +371,15 @@ function createUpdateBackup({ runtimeDataRoot, updateRecoveryRoot, legacyUserDat
   if (fs.existsSync(backupRoot)) throw new Error("update_backup_already_exists");
   fs.mkdirSync(backupRoot, { recursive: true });
   fs.cpSync(path.join(sourceRoot, "gateway-data"), path.join(backupRoot, "gateway-data"), { recursive: true, errorOnExist: true });
+  // This includes the durable usage outbox, sync state and vault; installation must
+  // not depend on the cloud being reachable to preserve pending changes.
+  verifyBackupCopy(path.join(sourceRoot, "gateway-data"), path.join(backupRoot, "gateway-data"));
   const settingsSource = path.join(sourceRoot, "desktop-settings.json");
-  if (fs.existsSync(settingsSource)) fs.copyFileSync(settingsSource, path.join(backupRoot, "desktop-settings.json"));
+  if (fs.existsSync(settingsSource)) {
+    const settingsBackup = path.join(backupRoot, "desktop-settings.json");
+    fs.copyFileSync(settingsSource, settingsBackup);
+    if (sha256File(settingsSource) !== sha256File(settingsBackup)) throw new Error("update_backup_verification_failed");
+  }
   const manifest = {
     schemaVersion: 1,
     createdAt: new Date().toISOString(),
@@ -508,7 +526,12 @@ function normalizeSha256(value) {
 
 function sha256File(file) {
   const hash = crypto.createHash("sha256");
-  hash.update(fs.readFileSync(file));
+  const fd = fs.openSync(file, "r");
+  try {
+    const buffer = Buffer.alloc(1024 * 1024);
+    let count;
+    while ((count = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, count));
+  } finally { fs.closeSync(fd); }
   return hash.digest("hex");
 }
 

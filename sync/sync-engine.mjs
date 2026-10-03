@@ -100,8 +100,9 @@ async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog
   const candidates = [];
   let datasetConflict = false;
   for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
+    // Transport failures do not mean a damaged manifest or an empty remote dataset.
+    const bytes = await provider.downloadAsset(asset);
     try {
-      const bytes = await provider.downloadAsset(asset);
       const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
       if (expectedDatasetId && manifest.datasetId !== expectedDatasetId) { datasetConflict = true; continue; }
       candidates.push({ manifest, bytes: Buffer.from(bytes), asset });
@@ -526,7 +527,11 @@ export class SyncEngine {
         const finishedAtUtc = this.now().toISOString();
         this.source.recordSyncRun?.({ syncId, state: "IDLE", generation, startedAtUtc, finishedAtUtc, summary: `${reason}: ${eventIds.length} event(s)` });
         this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : ""), errorCode: upstreamError, error: upstreamError });
-        await this.collectGarbage().catch(() => {});
+        await this.collectGarbage().catch((error) => {
+          // Preserve a completed commit, but surface transport limits to the manager's
+          // retry gate. Unreadable manifests already stopped GC before any deletion.
+          if (String(error?.code || "").startsWith("github_")) throw error;
+        });
         return this.status();
       }
       throw new Error("sync_attempts_exhausted");
@@ -543,15 +548,11 @@ export class SyncEngine {
     const assets = await this.provider.listAssets();
     const manifests = [];
     for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
-      try {
-        const bytes = await this.provider.downloadAsset(asset);
-        const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
-        manifests.push({ asset, manifest });
-      } catch {
-        // 中文：无效候选不能进入保留集合，后续按孤儿资产规则处理。
-        // English: Invalid candidates are excluded from the retained set and handled as orphans
-        // by the cleanup pass below.
-      }
+      // Fail closed before any deletion if a manifest cannot be read or understood.
+      // Its references may protect assets that would otherwise look like old orphans.
+      const bytes = await this.provider.downloadAsset(asset);
+      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
+      manifests.push({ asset, manifest });
     }
     manifests.sort((left, right) => right.manifest.generation - left.manifest.generation);
     const retained = manifests.slice(0, KEEP_GENERATIONS);

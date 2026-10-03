@@ -5,8 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { UsageLedger } from "../gateway/usage-ledger.mjs";
-import { runWithUpdateSyncPaused } from "../electron/update-sync-lifecycle.js";
+import { runWithUpdateSyncPaused, syncWithLocalBackupFallback, isTransientSyncFailure } from "../electron/update-sync-lifecycle.js";
 import { SyncManager } from "../sync/sync-manager.mjs";
+import { GitHubProviderError } from "../sync/github-provider.mjs";
 
 const datasetId = "ds_11995f2c-7f5a-7b21-a8d2-6dfc50f4a901";
 const protect = (value) => Buffer.from(`protected:${value}`, "utf8");
@@ -531,4 +532,91 @@ test("successful installer handoff keeps sync paused until application shutdown"
     manager.resumeAfterUpdate();
     closeFixture(fixture);
   }
+});
+
+test("rate-limit cooldown blocks every trigger and survives restart without losing completion time", async () => {
+  const fixture = await connectedFixture();
+  const { manager, provider, ledger, root } = fixture;
+  let calls = 0;
+  const ensureReady = provider.ensureReady.bind(provider);
+  const completed = manager.status().lastSyncAt;
+  const reset = Math.ceil(Date.now() / 1000) + 600;
+  provider.ensureReady = async () => {
+    calls++;
+    throw new GitHubProviderError("github_permission_or_rate_limit", "API rate limit exceeded", { status: 403, rateRemaining: "0", rateReset: String(reset) });
+  };
+  let restarted;
+  try {
+    append(ledger, "pending-through-rate-limit", 19);
+    await assert.rejects(manager.syncNow("manual"), /rate limit/);
+    const status = manager.status();
+    assert.ok(Date.parse(status.retryAt) >= reset * 1000);
+    assert.equal(status.lastSyncAt, completed);
+    assert.ok(Date.parse(status.nextSyncAt) >= Date.parse(status.retryAt));
+    for (const reason of ["manual", "scheduled", "config-change", "before-update", "shutdown"]) {
+      await assert.rejects(manager.syncNow(reason), (error) => error.code === "github_sync_backoff");
+    }
+    assert.equal(calls, 1);
+    assert.equal(ledger.pendingUsage().length, 1);
+    restarted = new SyncManager({ dataDir: path.join(root, "manager"), source: manager.source, protect, unprotect, providerFactory: () => provider });
+    await restarted.startup();
+    assert.equal(calls, 1, "restart must honor persisted rate reset");
+    assert.equal(restarted.status().lastSyncAt, completed);
+    provider.ensureReady = ensureReady;
+    restarted.state.retryAt = new Date(Date.now() - 1000).toISOString();
+    await restarted.syncNow("after-reset");
+    assert.equal(restarted.status().retryAt, "");
+    assert.equal(ledger.pendingUsage().length, 0);
+  } finally {
+    if (restarted?.timer) clearTimeout(restarted.timer);
+    closeFixture(fixture);
+  }
+});
+
+test("updater tolerates an in-flight rate error, keeps pause, and retains pending local data", async () => {
+  const fixture = await connectedFixture();
+  const { manager, provider, ledger } = fixture;
+  try {
+    append(ledger, "offline-update-outbox", 23);
+    provider.blockNextEnsureReady();
+    const ready = provider.ensureReady.bind(provider);
+    const failure = new GitHubProviderError("github_rate_limit", "rate limit", { status: 429, retryAfter: "120" });
+    provider.ensureReady = async () => { await ready(); throw failure; };
+    const active = manager.syncNow("before-download");
+    const rejected = assert.rejects(active, (error) => error === failure);
+    await provider.waitUntilEnsureReady();
+    let started = false;
+    const update = runWithUpdateSyncPaused({ manager, run: async () => {
+      started = true;
+      assert.equal(manager.status().pausedForUpdate, true);
+      const deferred = await syncWithLocalBackupFallback({ manager, run: () => manager.syncBeforeUpdate({ retainPauseOnFailure: true }) });
+      assert.equal(deferred, true);
+      assert.equal(manager.status().pausedForUpdate, true);
+      assert.equal(manager.timer, null);
+      assert.equal(ledger.pendingUsage().length, 1);
+    } });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(started, false, "wait for active sync to settle before backup");
+    provider.releaseEnsureReady();
+    await rejected;
+    await update;
+    assert.equal(started, true);
+    assert.equal(manager.status().pausedForUpdate, false);
+    assert.equal(ledger.pendingUsage().length, 1);
+  } finally {
+    provider.releaseEnsureReady();
+    closeFixture(fixture);
+  }
+});
+
+test("offline update fallback never tolerates permission, vault, integrity, or cancellation failures", async () => {
+  for (const error of [new GitHubProviderError("github_permission_or_rate_limit", "Forbidden", { status: 403 }), new Error("vault_tamper"), new Error("sync_asset_hash_mismatch"), new Error("update_source_data_incomplete")]) {
+    assert.equal(isTransientSyncFailure(error), false);
+    let pauseCalls = 0;
+    await assert.rejects(syncWithLocalBackupFallback({ manager: { pauseForUpdate: async () => { pauseCalls++; } }, run: async () => { throw error; } }), (value) => value === error);
+    assert.equal(pauseCalls, 0);
+  }
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(syncWithLocalBackupFallback({ manager: { pauseForUpdate: async () => assert.fail("must not continue after cancellation") }, signal: controller.signal, run: async () => { throw new GitHubProviderError("github_timeout", "timeout"); } }), { name: "AbortError" });
 });

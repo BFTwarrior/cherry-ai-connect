@@ -2,18 +2,103 @@
  * 中文：GitHub 私有仓库 + 固定 Release 的云端适配器。Token 只用于请求头，不写日志和对象。
  * English: Private-repository and fixed-Release GitHub adapter. Tokens never enter logs or cloud payloads.
  */
+import crypto from "node:crypto";
 const API_ROOT = "https://api.github.com";
 const UPLOAD_ROOT = "https://uploads.github.com";
 const RELEASE_TAG = "cherry-sync";
+const MAX_RAW_CACHE_BYTES = 32 * 1024 * 1024;
+const READ_CACHE_STATE = new WeakMap();
+
+/**
+ * 中文：创建可由同一凭证/仓库作用域内多个 Provider 共享的只读响应缓存。
+ * English: Create a read-response cache shareable by providers scoped to one credential/repository.
+ */
+export function createGitHubReadCache() {
+  const cache = Object.freeze({});
+  READ_CACHE_STATE.set(cache, { json: new Map(), raw: new Map(), rawBytes: 0, assets: new Map() });
+  return cache;
+}
+
+function cacheState(cache) {
+  const state = READ_CACHE_STATE.get(cache);
+  if (!state) throw new Error("github_read_cache_invalid");
+  return state;
+}
+
+function cloneJson(value) {
+  return value === null ? null : JSON.parse(JSON.stringify(value));
+}
+
+function rawAssetKey(asset) {
+  return JSON.stringify([String(asset.id), String(asset.name || ""), Number(asset.size || 0), String(asset.updatedAt || "")]);
+}
+
+function evictRaw(state, key) {
+  const entry = state.raw.get(key);
+  if (!entry) return;
+  state.raw.delete(key);
+  state.rawBytes -= entry.bytes.length;
+}
+
+function cacheRawAsset(state, key, id, bytes) {
+  if (bytes.length > MAX_RAW_CACHE_BYTES) return;
+  evictRaw(state, key);
+  state.raw.set(key, { id: String(id), bytes: Buffer.from(bytes) });
+  state.rawBytes += bytes.length;
+  while (state.rawBytes > MAX_RAW_CACHE_BYTES && state.raw.size) {
+    const oldestKey = state.raw.keys().next().value;
+    evictRaw(state, oldestKey);
+  }
+}
+
+function refreshRawAssetMetadata(state, assets) {
+  const next = new Map(assets.map((asset) => [String(asset.id), rawAssetKey(asset)]));
+  for (const [id, oldKey] of state.assets) {
+    if (next.get(id) !== oldKey) evictRaw(state, oldKey);
+  }
+  state.assets = next;
+}
+
+function parseRetryAfter(value, now) {
+  const text = String(value || "").trim();
+  if (!text) return 0;
+  const seconds = Number(text);
+  if (Number.isFinite(seconds)) return now + Math.max(0, seconds) * 1000;
+  const date = Date.parse(text);
+  return Number.isFinite(date) ? Math.max(now, date) : 0;
+}
+
+/** Return the next retry time in epoch milliseconds, or 0 when this error is not retryable. */
+export function githubRetryAt(error, now = Date.now(), failureCount = 1) {
+  const nowMs = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+  const status = Number(error?.status || 0);
+  const remaining = String(error?.rateRemaining ?? "").trim();
+  const message = String(error?.message || "");
+  const secondaryLimit = /secondary\s+rate\s+limit|abuse\s+detection|abuse\s+rate\s+limit/i.test(message);
+  const rateLimited = status === 429 || remaining === "0" || secondaryLimit || /API rate limit exceeded/i.test(message);
+  const networkOrServer = status >= 500 || /^(github_network_error|github_timeout|github_server_error)$/.test(String(error?.code || ""));
+  if (!rateLimited && !networkOrServer) return 0;
+
+  const attempt = Math.max(1, Math.floor(Number(failureCount) || 1));
+  const backoffMs = Math.min(15 * 60 * 1000, 60 * 1000 * (2 ** Math.min(attempt - 1, 20)));
+  const minimumRetryAt = nowMs + backoffMs;
+  if (!rateLimited) return minimumRetryAt;
+
+  const retryAfterAt = parseRetryAfter(error?.retryAfter, nowMs);
+  const resetSeconds = Number(error?.rateReset);
+  const resetAt = Number.isFinite(resetSeconds) && resetSeconds > 0 ? resetSeconds * 1000 : 0;
+  return Math.max(minimumRetryAt, retryAfterAt, resetAt);
+}
 
 export class GitHubProviderError extends Error {
-  constructor(code, message, { status = 0, retryAfter = "", rateRemaining = "" } = {}) {
+  constructor(code, message, { status = 0, retryAfter = "", rateRemaining = "", rateReset = "" } = {}) {
     super(message);
     this.name = "GitHubProviderError";
     this.code = code;
     this.status = status;
     this.retryAfter = retryAfter;
     this.rateRemaining = rateRemaining;
+    this.rateReset = rateReset;
   }
 }
 
@@ -41,12 +126,17 @@ function redactCredential(value, credential) {
 }
 
 export class GitHubReleaseProvider {
-  constructor({ token, owner = "", repository = "cherry-ai-connect-sync", fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+  constructor({ token, owner = "", repository = "cherry-ai-connect-sync", fetchImpl = globalThis.fetch, timeoutMs = 15000, readCache = createGitHubReadCache() } = {}) {
     if (!token) throw new Error("github_token_required");
     if (typeof fetchImpl !== "function") throw new Error("github_fetch_required");
     this.token = String(token);
     this.owner = String(owner || "");
     this.repository = safeRepositoryName(repository);
+    this.readCache = readCache;
+    const state = cacheState(this.readCache);
+    const scope = crypto.createHash("sha256").update(JSON.stringify([this.token, this.owner, this.repository])).digest("hex");
+    if (state.scope && state.scope !== scope) throw new Error("github_read_cache_scope_mismatch");
+    state.scope = scope;
     this.fetch = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.account = null;
@@ -56,16 +146,21 @@ export class GitHubReleaseProvider {
     this.assetCache = null;
   }
 
-  async #request(pathname, { method = "GET", body, raw = false, upload = false, contentType = "application/vnd.github+json" } = {}) {
+  async #request(pathname, { method = "GET", body, raw = false, upload = false, contentType = "application/vnd.github+json", skipEtag = false } = {}) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const root = upload ? UPLOAD_ROOT : API_ROOT;
+    const state = cacheState(this.readCache);
+    const cacheableJsonGet = method === "GET" && !raw;
+    const jsonCacheKey = `${root}${pathname}`;
+    const cachedJson = cacheableJsonGet ? state.json.get(jsonCacheKey) : null;
     const headers = {
       accept: raw ? "application/octet-stream" : "application/vnd.github+json",
       authorization: `Bearer ${this.token}`,
       "user-agent": "Cherry-AI-Connect",
       "x-github-api-version": "2022-11-28",
     };
+    if (cacheableJsonGet && !skipEtag && cachedJson?.etag) headers["if-none-match"] = cachedJson.etag;
     let payload;
     if (body !== undefined) {
       if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
@@ -79,6 +174,13 @@ export class GitHubReleaseProvider {
     try {
       const response = await this.fetch(`${root}${pathname}`, { method, headers, body: payload, signal: controller.signal, redirect: "follow" });
       const bytes = Buffer.from(await response.arrayBuffer());
+      if (response.status === 304 && cacheableJsonGet) {
+        if (cachedJson && !skipEtag) return cloneJson(cachedJson.value);
+        if (skipEtag) throw new GitHubProviderError("github_invalid_response", "GitHub returned 304 without a cached representation", { status: 304 });
+        // 中文：缓存已被清除但服务端仍返回 304 时，去掉条件头重试一次。
+        // English: If the local representation disappeared, retry once without the condition.
+        return this.#request(pathname, { method, body, raw, upload, contentType, skipEtag: true });
+      }
       if (!response.ok) {
         let detail = "";
         try { detail = String(JSON.parse(bytes.toString("utf8"))?.message || ""); }
@@ -91,12 +193,30 @@ export class GitHubReleaseProvider {
           status: response.status,
           retryAfter: response.headers.get("retry-after") || "",
           rateRemaining: response.headers.get("x-ratelimit-remaining") || "",
+          rateReset: response.headers.get("x-ratelimit-reset") || "",
         });
       }
       if (raw) return bytes;
-      if (!bytes.length) return null;
-      try { return JSON.parse(bytes.toString("utf8")); }
-      catch { throw new GitHubProviderError("github_invalid_response", "GitHub returned invalid JSON", { status: response.status }); }
+      if (!bytes.length) {
+        if (cacheableJsonGet) {
+          const etag = response.headers.get("etag") || "";
+          if (etag) state.json.set(jsonCacheKey, { etag, value: null });
+          else state.json.delete(jsonCacheKey);
+        }
+        return null;
+      }
+      try {
+        const value = JSON.parse(bytes.toString("utf8"));
+        if (cacheableJsonGet) {
+          const etag = response.headers.get("etag") || "";
+          if (etag) state.json.set(jsonCacheKey, { etag, value: cloneJson(value) });
+          else state.json.delete(jsonCacheKey);
+        }
+        return value;
+      } catch (error) {
+        if (cacheableJsonGet) state.json.delete(jsonCacheKey);
+        throw new GitHubProviderError("github_invalid_response", "GitHub returned invalid JSON", { status: response.status });
+      }
     } catch (error) {
       if (error instanceof GitHubProviderError) throw error;
       if (error?.name === "AbortError") throw new GitHubProviderError("github_timeout", "GitHub request timed out");
@@ -188,13 +308,25 @@ export class GitHubReleaseProvider {
       for (const item of items || []) assets.push({ id: item.id, name: String(item.name), size: Number(item.size || 0), createdAt: String(item.created_at || ""), updatedAt: String(item.updated_at || "") });
       if (!Array.isArray(items) || items.length < 100) break;
     }
+    refreshRawAssetMetadata(cacheState(this.readCache), assets);
     this.assetCache = assets;
     return assets.map((item) => ({ ...item }));
   }
 
   async downloadAsset(asset) {
     if (!Number.isSafeInteger(Number(asset?.id))) throw new Error("github_invalid_asset");
-    return this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`, { raw: true });
+    const key = rawAssetKey(asset);
+    const state = cacheState(this.readCache);
+    const cached = state.raw.get(key);
+    if (cached) {
+      state.raw.delete(key);
+      state.raw.set(key, cached);
+      return Buffer.from(cached.bytes);
+    }
+    const bytes = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`, { raw: true });
+    cacheRawAsset(state, key, asset.id, bytes);
+    state.assets.set(String(asset.id), key);
+    return Buffer.from(bytes);
   }
 
   async uploadAsset(name, bytes) {
@@ -209,6 +341,9 @@ export class GitHubReleaseProvider {
       contentType: "application/octet-stream",
     });
     const uploaded = { id: result.id, name: String(result.name), size: Number(result.size || 0), createdAt: String(result.created_at || "") };
+    // 中文：上传资产首次仍由同步引擎下载验证；这里只维护目录，不预填原始字节缓存。
+    // English: The engine must perform the first post-upload download verification; never prefill raw bytes.
+    cacheState(this.readCache).assets.set(String(uploaded.id), rawAssetKey(uploaded));
     this.assetCache = [...(this.assetCache || []), uploaded];
     return { ...uploaded };
   }
@@ -217,6 +352,10 @@ export class GitHubReleaseProvider {
     if (!Number.isSafeInteger(Number(asset?.id))) throw new Error("github_invalid_asset");
     await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`, { method: "DELETE" });
     if (this.assetCache) this.assetCache = this.assetCache.filter((item) => Number(item.id) !== Number(asset.id));
+    const state = cacheState(this.readCache);
+    const oldKey = state.assets.get(String(asset.id));
+    if (oldKey) evictRaw(state, oldKey);
+    state.assets.delete(String(asset.id));
   }
 }
 

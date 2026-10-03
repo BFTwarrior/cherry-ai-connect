@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.11** — Preserves the last completed cloud-sync time and backup generation during the next round, after failure and across restart. This patch leaves the existing UI and updater behavior intact.
+> **Current release · v1.40.12** — Reduces repeated cloud reads and respects GitHub retry limits. Temporary cloud failures no longer block an update after a complete verified local backup. Preserves pending records and all existing effects except the paused-status highlight sweep.
 
 ## Product tour
 
@@ -138,13 +138,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.11.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.11/Cherry-AI-Connect-Setup-1.40.11.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.12.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Setup-1.40.12.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.11) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.11/Cherry-AI-Connect-Setup-1.40.11.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.11/Cherry-AI-Connect-Web-Demo-1.40.11.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.12) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Setup-1.40.12.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Web-Demo-1.40.12.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -230,6 +230,7 @@ npm run dist
 
 Verification scope:
 
+- v1.40.12: Full isolated regression 132/132 passed. Coverage includes cache isolation, ETag refresh, rate-limit cooldown and restart, manifest/GC read failures, offline update pause, pending data backup and corrupt-copy rejection. Installed-device update acceptance remains pending.
 - v1.40.11: TypeScript, renderer and Windows installer builds passed; full isolated regression 118/118 passed, including completion-time preservation, persisted state, failure, restart, retry and no-op rounds. Real-device built-in update acceptance is pending user testing.
 
 - Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
@@ -283,6 +284,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.11 · Windows x64
+Cherry AI Connect · v1.40.12 · Windows x64
 
 </div>

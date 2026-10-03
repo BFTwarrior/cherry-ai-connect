@@ -9,6 +9,7 @@ import { SyncEngine, readLatestManifest } from "../sync/sync-engine.mjs";
 import { isManifestAssetName, manifestName, syncTimestamp } from "../sync/sync-common.mjs";
 import { LocalVaultStore } from "../sync/local-vault-store.mjs";
 import { SyncManager } from "../sync/sync-manager.mjs";
+import { GitHubProviderError } from "../sync/github-provider.mjs";
 
 const datasetId = "ds_01995f2c-7f5a-7b21-a8d2-6dfc50f4a901";
 
@@ -372,4 +373,38 @@ test("sync manager protects a legacy local copy before offering keep-local confl
     if (manager?.timer) clearTimeout(manager.timer);
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("manifest transport errors propagate instead of becoming an empty dataset", async () => {
+  const asset = { id: 1, name: manifestName("sync_00000000-0000-0000-0000-000000000000", new Date()), size: 3 };
+  for (const code of ["github_rate_limit", "github_network_error", "github_auth_required"]) {
+    const failure = new GitHubProviderError(code, code, { status: code === "github_rate_limit" ? 429 : 401 });
+    const provider = { listAssets: async () => [asset], downloadAsset: async () => { throw failure; } };
+    await assert.rejects(readLatestManifest(provider, datasetId), (error) => error === failure);
+  }
+  assert.equal(await readLatestManifest({ listAssets: async () => [asset], downloadAsset: async () => Buffer.from("bad json") }, datasetId), null, "a successfully downloaded malformed candidate remains skippable");
+});
+
+test("GC performs no deletion when any manifest is unreadable, including an old malformed candidate", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "cherry-sync-gc-safe-"));
+  const ledger = ledgerAt(root, "aaaa");
+  const provider = new FakeProvider();
+  try {
+    append(ledger, "gc-seed", 7);
+    const engine = new SyncEngine({ provider, source: sourceFor(ledger) });
+    await engine.sync();
+    const before = [...provider.assets.keys()];
+    for (const asset of provider.assets.values()) asset.createdAt = "2020-01-01T00:00:00Z";
+    provider.operations = [];
+    const download = provider.downloadAsset.bind(provider);
+    provider.downloadAsset = async (asset) => { if (isManifestAssetName(asset.name)) throw new GitHubProviderError("github_rate_limit", "API rate limit exceeded", { status: 429 }); return download(asset); };
+    await assert.rejects(engine.collectGarbage(), /rate limit/);
+    assert.deepEqual([...provider.assets.keys()], before);
+    assert.equal(provider.operations.some((op) => op.startsWith("delete:")), false);
+    provider.downloadAsset = download;
+    const manifest = [...provider.assets.values()].find((asset) => isManifestAssetName(asset.name));
+    manifest.bytes = Buffer.from("broken json");
+    await assert.rejects(engine.collectGarbage(), SyntaxError);
+    assert.equal(provider.operations.some((op) => op.startsWith("delete:")), false);
+  } finally { ledger.close(); fs.rmSync(root, { recursive: true, force: true }); }
 });

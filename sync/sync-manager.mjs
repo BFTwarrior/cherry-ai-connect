@@ -17,7 +17,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { GitHubReleaseProvider } from "./github-provider.mjs";
+import { GitHubReleaseProvider, GitHubProviderError, createGitHubReadCache, githubRetryAt } from "./github-provider.mjs";
 import { LocalVaultStore } from "./local-vault-store.mjs";
 import { SyncEngine } from "./sync-engine.mjs";
 
@@ -82,6 +82,8 @@ export class SyncManager {
   #updatePaused = false;
   #updateAbortSignal = null;
   #updateAbortListener = null;
+  #readCache = null;
+  #readCacheKey = "";
 
   constructor({ dataDir, source, protect, unprotect, notify = () => {}, providerFactory } = {}) {
     if (!dataDir || !source || typeof protect !== "function" || typeof unprotect !== "function") throw new Error("sync_manager_dependencies_required");
@@ -115,6 +117,8 @@ export class SyncManager {
       errorCode: "",
       error: "",
       warning: "",
+      retryAt: "",
+      retryFailures: 0,
       ...readJson(this.stateFile, {}),
     };
     this.#publish();
@@ -146,7 +150,12 @@ export class SyncManager {
 
   #provider(token = this.#readToken()) {
     if (!token) throw new Error("github_auth_required");
-    return this.providerFactory({ token, owner: this.state.owner, repository: this.state.repository });
+    const key = crypto.createHash("sha256").update(JSON.stringify([token, this.state.owner, this.state.repository])).digest("hex");
+    if (key !== this.#readCacheKey) {
+      this.#readCacheKey = key;
+      this.#readCache = createGitHubReadCache();
+    }
+    return this.providerFactory({ token, owner: this.state.owner, repository: this.state.repository, readCache: this.#readCache });
   }
 
   #makeEngine(provider) {
@@ -161,7 +170,7 @@ export class SyncManager {
       lastSyncAt: this.state.lastSyncAt,
       generation: this.state.generation,
       onState: (status) => {
-        this.#publish({ ...status, enabled: this.state.enabled, nextSyncAt: this.state.enabled ? new Date(Date.now() + INTERVAL_MS).toISOString() : "" });
+        this.#publish({ ...status, enabled: this.state.enabled, nextSyncAt: this.state.enabled ? new Date(Math.max(Date.now() + INTERVAL_MS, Date.parse(this.state.retryAt) || 0)).toISOString() : "" });
       },
     });
   }
@@ -173,11 +182,12 @@ export class SyncManager {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (!this.state.enabled || this.#updatePaused) return;
-    const nextSyncAt = new Date(Date.now() + INTERVAL_MS).toISOString();
+    const delay = Math.max(INTERVAL_MS, (Date.parse(this.state.retryAt) || 0) - Date.now());
+    const nextSyncAt = new Date(Date.now() + delay).toISOString();
     this.#publish({ nextSyncAt });
     this.timer = setTimeout(() => {
       void this.syncNow("scheduled").catch(() => {}).finally(() => this.#schedule());
-    }, INTERVAL_MS);
+    }, Math.min(delay, 2147483647));
     this.timer.unref?.();
   }
 
@@ -251,6 +261,8 @@ export class SyncManager {
       state: "DIRTY",
       error: "",
       errorCode: "",
+      retryAt: "",
+      retryFailures: 0,
     });
     let result;
     try {
@@ -310,11 +322,17 @@ export class SyncManager {
       const provider = this.#provider();
       this.engine = this.#makeEngine(provider);
       const result = await this.engine.sync(reason, { syncUpstream: Boolean(this.state.account && this.state.syncUpstream !== false), ...options });
-      this.#publish({ ...result, enabled: this.state.enabled });
+      this.#publish({ ...result, enabled: this.state.enabled, retryAt: "", retryFailures: 0 });
       return this.status();
     } catch (error) {
       const engineStatus = this.engine?.status() || {};
-      this.#publish({ state: engineStatus.state || "ERROR_RECOVERABLE", errorCode: engineStatus.errorCode || String(error?.message || error), error: String(error?.message || error), lastAttemptAt: new Date().toISOString() });
+      const failures = Number(this.state.retryFailures || 0) + 1;
+      const retryAt = githubRetryAt(error, Date.now(), failures);
+      const detail = retryAt
+        ? `GitHub 暂时不可用，已暂停重试；将在 ${new Date(retryAt).toLocaleString("zh-CN", { timeZone: "Asia/Hong_Kong", hour12: false })}（UTC+8）后重试。本机待同步数据已保留。`
+        : String(error?.message || error);
+      this.#publish({ state: engineStatus.state || "ERROR_RECOVERABLE", errorCode: engineStatus.errorCode || String(error?.message || error), error: detail, lastAttemptAt: new Date().toISOString(), retryAt: retryAt ? new Date(retryAt).toISOString() : "", retryFailures: retryAt ? failures : 0 });
+      if (retryAt) this.#schedule();
       throw error;
     }
   }
@@ -328,6 +346,9 @@ export class SyncManager {
     if (this.#updatePaused && !allowDuringUpdate) return Promise.reject(new Error("sync_paused_for_update"));
     if (this.#syncInFlight) return this.#syncInFlight;
     if (!this.state.account) return Promise.reject(new Error("github_auth_required"));
+    if ((Date.parse(this.state.retryAt) || 0) > Date.now()) {
+      return Promise.reject(new GitHubProviderError("github_sync_backoff", this.state.error || "GitHub sync is waiting before retrying", { rateReset: String(Math.ceil(Date.parse(this.state.retryAt) / 1000)) }));
+    }
 
     const round = this.#runSync(reason, options);
     const coordinated = round.finally(() => {
@@ -344,7 +365,7 @@ export class SyncManager {
     return this.#startSync(reason, options);
   }
 
-  async pauseForUpdate({ signal } = {}) {
+  async pauseForUpdate({ signal, tolerateSyncError = () => false } = {}) {
     // 中文：先封锁新触发并撤销定时器，再等待已有轮次完成，避免更新和同步并行读写。
     // English: Block new triggers and clear the timer before waiting for the active round, so an
     // update cannot overlap synchronization reads or writes.
@@ -354,7 +375,14 @@ export class SyncManager {
     try {
       this.notify(this.status());
       if (this.#controlInFlight) await withAbort(this.#controlInFlight, signal);
-      if (this.#syncInFlight) await withAbort(this.#syncInFlight, signal);
+      if (this.#syncInFlight) {
+        try { await withAbort(this.#syncInFlight, signal); }
+        catch (error) {
+          // The round has settled. Only an updater-owned, transient network failure may
+          // proceed to local backup; cancellation and data-integrity failures still stop it.
+          if (signal?.aborted || !tolerateSyncError(error)) throw error;
+        }
+      }
       if (signal?.aborted) throw abortError(signal);
       return this.status();
     } catch (error) {
@@ -363,7 +391,7 @@ export class SyncManager {
     }
   }
 
-  async syncBeforeUpdate({ signal } = {}) {
+  async syncBeforeUpdate({ signal, retainPauseOnFailure = false } = {}) {
     // 中文：更新专用最后一轮可在暂停态运行；失败或取消会自动恢复定时同步，成功则保持暂停，
     // 由更新流程结束/取消时调用 resumeAfterUpdate。
     // English: Run the update-only final round while paused. Failure or cancellation restores
@@ -384,7 +412,7 @@ export class SyncManager {
       }
       return status;
     } catch (error) {
-      this.resumeAfterUpdate();
+      if (!retainPauseOnFailure || signal?.aborted) this.resumeAfterUpdate();
       throw error;
     }
   }

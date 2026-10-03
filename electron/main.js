@@ -23,7 +23,7 @@ const {
   restoreUpdateBackupWithConsent,
 } = require("./update-manager");
 const { expandedReleaseAsset, releaseBodySha256, releasePageMetadata } = require("./release-metadata");
-const { runWithUpdateSyncPaused } = require("./update-sync-lifecycle");
+const { runWithUpdateSyncPaused, syncWithLocalBackupFallback } = require("./update-sync-lifecycle");
 const { buildClientImportDeepLink } = require("./client-import-links.cjs");
 const {
   CODEX_USAGE_BINARY,
@@ -251,12 +251,12 @@ function hasPendingUpdateSync() {
 }
 
 // 中文：同步期间若配置再次变化，保留 dirty 标记供下载后最后检查；同步完成仍有 outbox 时拒绝继续安装。
-// English: Preserve changes made during sync for a post-download check, and do not install while
-// the ledger still reports uncommitted outbox entries.
+// English: Preserve changes made during sync for a post-download check. A transient network
+// failure leaves uncommitted entries in the full, verified local update backup.
 async function syncPendingUpdateChanges(signal) {
   const changeVersionAtStart = updateSyncChangeVersion;
   updateSyncDirty = false;
-  await syncManager.syncBeforeUpdate({ signal });
+  await syncManager.syncBeforeUpdate({ signal, retainPauseOnFailure: true });
   const pendingUsage = Number(gatewayModule?.getSyncSnapshot?.().ledger?.pendingCount || 0);
   updateSyncDirty = updateSyncChangeVersion !== changeVersionAtStart || pendingUsage > 0;
   if (pendingUsage > 0) throw new Error("update_sync_pending_data");
@@ -270,7 +270,9 @@ async function syncForUpdateIfNeeded(signal) {
   const status = syncManager?.status();
   if (!status?.enabled) return;
   if (!status.connected) throw new Error("sync_github_auth_required");
-  await syncPendingUpdateChanges(signal);
+  const deferred = await syncWithLocalBackupFallback({ manager: syncManager, signal, run: () => syncPendingUpdateChanges(signal) });
+  if (deferred) updateSyncDirty = true;
+  return deferred;
 }
 
 async function initializeSyncManager() {
@@ -515,6 +517,7 @@ async function downloadAndInstallLatestUpdate() {
   updateSyncDirty = Boolean(majorSyncTimer);
   clearMajorSyncTimer();
   let installerHandedOff = false;
+  let syncDeferred = false;
   updateAbortController = new AbortController();
   updateCanCancel = true;
   const signal = updateAbortController.signal;
@@ -549,7 +552,7 @@ async function downloadAndInstallLatestUpdate() {
     if (!release.asset?.url || !release.asset?.name) throw new Error("update_installer_missing");
     if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
       emitUpdateProgress({ stage: "syncing", percent: 0 });
-      await syncForUpdateIfNeeded(signal);
+      syncDeferred = await syncForUpdateIfNeeded(signal);
     }
     const installerDir = path.join(updateRecoveryRoot, "installers");
     const installerPath = path.join(installerDir, `${Date.now()}-${release.asset.name}`);
@@ -563,9 +566,9 @@ async function downloadAndInstallLatestUpdate() {
     // 中文：下载期间更新可能产生新的待同步变更；只在检测到变化时执行最后一轮同步。
     // English: New local changes may arrive while downloading; run a final sync only when the
     // change marker or durable usage outbox indicates that there is something new to commit.
-    if (hasPendingUpdateSync() && syncManager?.status()?.enabled) {
+    if (!syncDeferred && hasPendingUpdateSync() && syncManager?.status()?.enabled) {
       emitUpdateProgress({ stage: "syncing", percent: 100 });
-      await syncForUpdateIfNeeded(signal);
+      syncDeferred = await syncForUpdateIfNeeded(signal);
     }
     signal.throwIfAborted();
     // Once shutdown/backup begins, cancellation cannot interrupt the installer handoff.
