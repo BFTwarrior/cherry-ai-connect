@@ -23,7 +23,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40.8";
+const gatewayVersion = "1.40.10";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -357,7 +357,7 @@ function makeClientKey() { return `cg_${crypto.randomBytes(24).toString("base64u
 
 function json(res, status, value) {
   if (status === 204) {
-    res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-gateway-key", "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS" });
+    res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta", "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS" });
     return res.end();
   }
   const body = Buffer.from(JSON.stringify(value));
@@ -366,7 +366,7 @@ function json(res, status, value) {
     "content-length": body.length,
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type, authorization, x-gateway-key",
+    "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   });
   res.end(body);
@@ -398,7 +398,9 @@ function getClientKey(req) {
   const header = String(req.headers["x-gateway-key"] || "").trim();
   if (header) return header;
   const auth = String(req.headers.authorization || "");
-  return /^Bearer\s+/i.test(auth) ? auth.replace(/^Bearer\s+/i, "").trim() : "";
+  if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "").trim();
+  const pathname = new URL(req.url || "/", "http://gateway.local").pathname;
+  return isAnthropicMessagesPath(pathname) ? String(req.headers["x-api-key"] || "").trim() : "";
 }
 
 function getAuthorizedClient(req) {
@@ -462,12 +464,22 @@ function forceReasoning(payload, pathname, levelOverride = "") {
   }
 }
 
+function canonicalProviderPath(pathname) {
+  // 中文：Claude 客户端可能在已带 /v1 的网关地址后再追加 /v1/messages；只修正 Messages 路径。
+  // English: Normalize duplicated version prefixes only for the Anthropic Messages API family.
+  return String(pathname || "/").replace(/^(?:\/v1){2,}(?=\/messages(?:\/|$))/, "/v1");
+}
+
+function isAnthropicMessagesPath(pathname) {
+  return /^\/v1\/messages(?:\/|$)/.test(canonicalProviderPath(pathname));
+}
+
 function targetUrl(baseUrl, incomingPath) {
   const base = new URL(baseUrl);
   const incoming = new URL(incomingPath, "http://gateway.local");
   const basePath = base.pathname.replace(/\/+$/, "");
-  let pathPart = incoming.pathname || "/";
-  if (basePath.endsWith("/v1") && pathPart.startsWith("/v1")) pathPart = pathPart.slice(3) || "/";
+  let pathPart = canonicalProviderPath(incoming.pathname || "/");
+  if (basePath.endsWith("/v1") && /^\/v1(?:\/|$)/.test(pathPart)) pathPart = pathPart.slice(3) || "/";
   base.pathname = `${basePath}${pathPart}`.replace(/\/\/+/g, "/");
   base.search = incoming.search;
   return base;
@@ -493,6 +505,7 @@ async function proxyRequest(req, res, rawBody) {
   const pathname = new URL(req.url || "/", "http://gateway.local").pathname;
   forceReasoning(payload, pathname, client.reasoningLevel);
   const body = Buffer.from(JSON.stringify(payload));
+  const anthropicMessages = isAnthropicMessagesPath(pathname);
   const target = targetUrl(selected.provider.baseUrl, req.url || "/");
   const headers = { ...req.headers, host: target.host, "content-length": body.length };
   delete headers.authorization;
@@ -502,7 +515,14 @@ async function proxyRequest(req, res, rawBody) {
   const apiKey = decrypt(selected.provider.apiKeyEnc);
   if (!apiKey) return json(res, 503, { error: "provider_key_missing", provider: selected.provider.id });
   updateClientRequestStatus("pending", payload.model);
+  delete headers["x-api-key"];
   headers.authorization = `Bearer ${apiKey}`;
+  if (anthropicMessages) {
+    // 中文：保留中转站的 Bearer 鉴权兼容，同时支持原生 Anthropic；两个头均使用上游密钥。
+    // English: Retain relay Bearer compatibility and native Anthropic auth without leaking the local key.
+    headers["x-api-key"] = apiKey;
+    if (!headers["anthropic-version"]) headers["anthropic-version"] = "2023-06-01";
+  }
   const startedAt = Date.now();
   let firstByteAt = 0;
   let finalized = false;
@@ -538,6 +558,8 @@ async function proxyRequest(req, res, rawBody) {
       const responsePayload = bodyJson(Buffer.concat(responseChunks));
       if (responsePayload) capturedUsage = mergeUsage(capturedUsage, usageFromPayload(responsePayload));
     }
+    // 中文：Claude 的 message_start/message_delta 分开携带输入与输出用量，结束时合并总数。
+    capturedUsage.totalTokens = Math.max(capturedUsage.totalTokens, capturedUsage.inputTokens + capturedUsage.outputTokens);
     const finishedAt = Date.now();
     appendUsageRecord({
       id: crypto.randomUUID(),
@@ -560,7 +582,7 @@ async function proxyRequest(req, res, rawBody) {
     res.writeHead(upstreamRes.statusCode || 502, {
       ...upstreamRes.headers,
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type, authorization, x-gateway-key",
+      "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta",
     });
     upstreamRes.on("data", (chunk) => {
       if (!firstByteAt) firstByteAt = Date.now();

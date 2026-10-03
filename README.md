@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.9** — Refines copy-action text sizing and contrast for consistency with neighboring controls, while preserving the existing button effects. Also includes v1.40.8's restored cloud-sync pause visuals and v1.40.7's sync recovery and interrupted-download cleanup.
+> **Current release · v1.40.10** — Fixes Claude Messages forwarding with duplicate version-prefix normalization, native client authentication and upstream credential compatibility. Also corrects streamed token totals; existing UI and effects are preserved.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.9.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.9/Cherry-AI-Connect-Setup-1.40.9.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.10.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.10/Cherry-AI-Connect-Setup-1.40.10.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.9) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.9/Cherry-AI-Connect-Setup-1.40.9.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.9/Cherry-AI-Connect-Web-Demo-1.40.9.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.10) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.10/Cherry-AI-Connect-Setup-1.40.10.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.10/Cherry-AI-Connect-Web-Demo-1.40.10.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  6C8E025710163F1980920D146C4424FEC9229B9BE648358604A526EFF8012CD2
+SHA-256  5A971C094D15BFFD76DED4D2A23BB54390F837428776B61F9A2225AB6EC241EA
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -230,6 +230,8 @@ npm run dist
 
 Verification scope:
 
+- v1.40.10: TypeScript, renderer and Windows installer builds passed; full isolated regression 116/116 and packaged Claude gateway checks 9/9 passed. The user confirmed the trial version works before authorizing publication.
+
 - Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
 - v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The v1.40.2 fixes and verification scope are recorded in [the v1.40.2 critical-fixes report](产品文档/文档/24-v1.40.2关键修复.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
 - Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
@@ -281,6 +283,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.9 · Windows x64
+Cherry AI Connect · v1.40.10 · Windows x64
 
 </div>
