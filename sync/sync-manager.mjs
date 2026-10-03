@@ -157,6 +157,9 @@ export class SyncManager {
       provider,
       source: this.source,
       vault: this.vault,
+      // Carry the last completed round into a fresh engine; starting or failing must not erase it.
+      lastSyncAt: this.state.lastSyncAt,
+      generation: this.state.generation,
       onState: (status) => {
         this.#publish({ ...status, enabled: this.state.enabled, nextSyncAt: this.state.enabled ? new Date(Date.now() + INTERVAL_MS).toISOString() : "" });
       },

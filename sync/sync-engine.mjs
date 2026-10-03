@@ -161,7 +161,7 @@ function revisionOrder(local, remote) {
 }
 
 export class SyncEngine {
-  constructor({ provider, source, vault, onState = () => {}, now = () => new Date() }) {
+  constructor({ provider, source, vault, onState = () => {}, now = () => new Date(), lastSyncAt = "", generation = 0 }) {
     if (!provider || !source) throw new Error("sync_provider_and_source_required");
     this.provider = provider;
     this.source = source;
@@ -169,7 +169,7 @@ export class SyncEngine {
     this.onState = onState;
     this.now = now;
     this.running = null;
-    this.state = { state: "IDLE", lastSyncAt: "", nextSyncAt: "", generation: 0, pendingCount: 0, warning: "", errorCode: "", error: "" };
+    this.state = { state: "IDLE", lastSyncAt, nextSyncAt: "", generation, pendingCount: 0, warning: "", errorCode: "", error: "" };
   }
 
   emit(patch) {

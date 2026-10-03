@@ -214,6 +214,65 @@ test("coalesces manual, scheduled, config-change, and before-update calls into o
   }
 });
 
+test("preserves completed time and generation while syncing, after failure, and after restart", async () => {
+  const fixture = await connectedFixture();
+  const { manager, provider, ledger } = fixture;
+  let restarted;
+  try {
+    const completed = manager.status();
+    assert.ok(completed.lastSyncAt);
+    append(ledger, "event-preserve-completed-status", 13);
+    provider.blockNextUpload();
+    provider.failManifestOnce = true;
+    const round = manager.syncNow("scheduled");
+    await provider.waitUntilBlocked();
+    const assertCompleted = (status) => {
+      assert.equal(status.lastSyncAt, completed.lastSyncAt);
+      assert.equal(status.generation, completed.generation);
+    };
+    assert.equal(manager.status().state, "SYNCING");
+    assertCompleted(manager.status());
+    assertCompleted(JSON.parse(fs.readFileSync(manager.stateFile, "utf8")));
+    provider.releaseUpload();
+    await assert.rejects(round, /simulated_manifest_failure/);
+    assertCompleted(manager.status());
+    assertCompleted(JSON.parse(fs.readFileSync(manager.stateFile, "utf8")));
+    if (manager.timer) clearTimeout(manager.timer);
+    restarted = new SyncManager({ dataDir: manager.dataDir, source: manager.source, protect, unprotect, providerFactory: () => provider });
+    assertCompleted(restarted.status());
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const retry = await restarted.syncNow("manual-retry");
+    assert.ok(Date.parse(retry.lastSyncAt) > Date.parse(completed.lastSyncAt));
+    assert.equal(retry.generation, completed.generation + 1);
+    assert.equal(ledger.pendingUsage().length, 0);
+  } finally {
+    provider.releaseUpload();
+    if (restarted?.timer) clearTimeout(restarted.timer);
+    closeFixture(fixture);
+  }
+});
+
+test("a no-op round retains completed status while starting and refreshes it on completion", async () => {
+  const fixture = await connectedFixture();
+  const { manager, provider } = fixture;
+  try {
+    const completed = manager.status();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    provider.blockNextEnsureReady();
+    const round = manager.syncNow("scheduled-no-op");
+    await provider.waitUntilEnsureReady();
+    assert.equal(manager.status().lastSyncAt, completed.lastSyncAt);
+    assert.equal(manager.status().generation, completed.generation);
+    provider.releaseEnsureReady();
+    const result = await round;
+    assert.equal(result.generation, completed.generation);
+    assert.ok(Date.parse(result.lastSyncAt) > Date.parse(completed.lastSyncAt));
+  } finally {
+    provider.releaseEnsureReady();
+    closeFixture(fixture);
+  }
+});
+
 test("releases the manager slot after a failed round so a retry can write", async () => {
   const fixture = await connectedFixture();
   const { ledger, manager, provider } = fixture;
