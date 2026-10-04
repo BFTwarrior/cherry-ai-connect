@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.12** — Reduces repeated cloud reads and respects GitHub retry limits. Temporary cloud failures no longer block an update after a complete verified local backup. Preserves pending records and all existing effects except the paused-status highlight sweep.
+> **Current release · v1.40.13** — Consistent disabled and actionable button text, simplified update progress, and an interactive browser-only update demo with cloud-sync pause, cancellation, and completion.
 
 ## Product tour
 
@@ -138,13 +138,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.12.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Setup-1.40.12.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.13.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.13/Cherry-AI-Connect-Setup-1.40.13.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.12) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Setup-1.40.12.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.12/Cherry-AI-Connect-Web-Demo-1.40.12.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.13) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.13/Cherry-AI-Connect-Setup-1.40.13.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.13/Cherry-AI-Connect-Web-Demo-1.40.13.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -284,6 +284,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.12 · Windows x64
+Cherry AI Connect · v1.40.13 · Windows x64
 
 </div>

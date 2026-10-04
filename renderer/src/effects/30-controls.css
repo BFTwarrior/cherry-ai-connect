@@ -274,6 +274,12 @@
 .button-text-emphasis > .button-action-label {
   color: #fff !important;
 }
+/* Updating is a disabled status; cancellation remains the available action.
+ * Change label brightness only, keeping the shared animated surfaces intact. */
+.update-card .update-install-button.is-running:disabled > .button-action-label {
+  color: #d0c8d8 !important;
+  opacity: .56;
+}
 
 /* A paused sync stops its progress spinner but keeps the product's glossy purple
  * tab and button surfaces. The paused label has no highlight sweep. */
@@ -326,6 +332,11 @@
   cursor: not-allowed;
 }
 .cloud-sync-card .sync-actions .sync-paused:disabled > svg { animation: none !important; transform: none !important; }
+/* Match adjacent disabled text without dimming the animated surface or icon. */
+.cloud-sync-card .sync-actions .sync-paused:disabled > .button-action-label {
+  color: #d0c8d8 !important;
+  opacity: .56;
+}
 .cloud-sync-card .sync-working > svg { animation: cherry-sync-working 1.4s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
   .cloud-sync-card .sync-state-chip.state-paused-update,

@@ -3,6 +3,7 @@
  * English: GitHub private-Release sync card. The vault password is never stored or uploaded.
  */
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useDemoUpdate } from "./demo-review";
 
 type Language = "zh" | "en";
 type ConfirmRequest = (options: { title: string; message: string; confirmLabel: string; cancelLabel: string; tone?: "primary" | "warning" | "danger"; icon?: string }) => Promise<boolean>;
@@ -64,6 +65,7 @@ function readableSyncError(value: string, language: Language) {
 }
 
 export function CloudSyncCard({ language, requestConfirmation, demo = false, demoConflict = false, demoPausedForUpdate = false }: { language: Language; requestConfirmation: ConfirmRequest; demo?: boolean; demoConflict?: boolean; demoPausedForUpdate?: boolean }) {
+  const demoUpdate = useDemoUpdate();
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [status, setStatus] = useState<CloudSyncStatus>(emptyStatus);
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,13 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false, dem
     const remove = window.desktop?.onSyncStatus?.(applyStatus);
     return () => { active = false; remove?.(); };
   }, [demo, demoConflict, demoPausedForUpdate]);
+
+  useEffect(() => {
+    if (!demo) return;
+    const paused = demoPausedForUpdate || demoUpdate.active;
+    setStatus((current) => ({ ...current, pausedForUpdate: paused,
+      nextSyncAt: paused ? "" : demoStatus.nextSyncAt }));
+  }, [demo, demoPausedForUpdate, demoUpdate.active]);
 
   const stateLabel = useMemo(() => status.pausedForUpdate ? tr("更新期间暂停", "Paused for update") : ({
     DISABLED: tr("自动同步已关闭", "Automatic sync off"), IDLE: tr("云端与本机已同步", "Cloud and local are synced"), DIRTY: tr("有数据等待同步", "Changes waiting to sync"),

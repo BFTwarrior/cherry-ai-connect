@@ -5,10 +5,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "./ui/Icon";
+import { cancelDemoUpdate, resetDemoUpdate, startDemoUpdate, useDemoUpdate } from "./demo-review";
 
 type Language = "zh" | "en";
-const DEMO_UPDATE_BUTTONS = new URLSearchParams(window.location.search).get("demo") === "1"
-  && new URLSearchParams(window.location.search).get("updateButtons") === "all";
+const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 
 function megabytes(value: number) {
   return value ? `${(value / 1024 / 1024).toFixed(1)} MB` : "—";
@@ -42,10 +42,13 @@ function readableUpdateError(reason: unknown, language: Language) {
 export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { language: Language; currentVersion: string; checkTrigger?: number }) {
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [checking, setChecking] = useState(false);
-  const [installing, setInstalling] = useState(false);
+  const demoUpdate = useDemoUpdate();
+  const [desktopInstalling, setInstalling] = useState(false);
+  const installing = DEMO_MODE ? demoUpdate.active : desktopInstalling;
   const [cancelling, setCancelling] = useState(false);
   const [result, setResult] = useState<UpdateCheckResult | null>(null);
-  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+  const [desktopProgress, setProgress] = useState<UpdateProgress | null>(null);
+  const progress = DEMO_MODE ? demoUpdate.progress : desktopProgress;
   const [error, setError] = useState("");
   const latestProgressSequence = useRef(0);
   const updateActiveRef = useRef(false);
@@ -70,6 +73,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   // 中文：更新任务属于主进程，页面切换只会卸载卡片，不应丢失任务状态。
   // English: The update belongs to the main process; changing pages must not lose its state.
   const check = useCallback(async () => {
+    if (DEMO_MODE) { resetDemoUpdate(); return; }
     // 中文：后台更新期间禁止设置页的自动检查抢占更新卡片状态。
     // English: A settings-page availability check must never compete with an active update.
     if (updateActiveRef.current) return;
@@ -82,6 +86,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   }, [language, tr]);
 
   useEffect(() => {
+    if (DEMO_MODE) return;
     let mounted = true;
     const unsubscribe = window.desktop?.onUpdateProgress?.(applyProgress);
     const progressPromise = window.desktop?.getUpdateProgress?.();
@@ -114,6 +119,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   }, [applyProgress, check, checkTrigger]);
 
   const install = async () => {
+    if (DEMO_MODE) { startDemoUpdate(); return; }
     if (!window.desktop?.downloadAndInstallUpdate || installing) return;
     setInstalling(true);
     setError("");
@@ -131,6 +137,7 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
   };
 
   const cancel = async () => {
+    if (DEMO_MODE) { cancelDemoUpdate(); return; }
     if (!window.desktop?.cancelUpdate || cancelling) return;
     setCancelling(true);
     try {
@@ -152,35 +159,35 @@ export function UpdateCard({ language, currentVersion, checkTrigger = 0 }: { lan
     error: tr("更新未完成", "Update did not finish"),
   }[progress?.stage || "checking"]), [language, progress]);
 
-  const state = DEMO_UPDATE_BUTTONS ? "available" : installing ? "installing" : checking ? "checking" : error ? "error" : result?.updateAvailable ? "available" : result ? "current" : "idle";
+  const state = installing ? "installing" : DEMO_MODE ? demoUpdate.completed ? "current" : "available" : checking ? "checking" : error ? "error" : result?.updateAvailable ? "available" : result ? "current" : "idle";
   const stateText = {
     installing: stageText,
     checking: tr("正在连接 GitHub…", "Contacting GitHub…"),
     error: tr("需要处理", "Needs attention"),
     available: tr("发现新版本", "Update available"),
-    current: tr("已是最新版", "Up to date"),
+    current: DEMO_MODE ? tr("模拟更新已完成", "Simulated update completed") : tr("已是最新版", "Up to date"),
     idle: tr("尚未检查", "Not checked"),
   }[state];
-  const canInstall = Boolean(result?.updateAvailable && result.asset?.url && result.asset?.sha256);
+  const canInstall = DEMO_MODE ? !demoUpdate.completed : Boolean(result?.updateAvailable && result.asset?.url && result.asset?.sha256);
 
-  return <article className={`settings-card update-card${DEMO_UPDATE_BUTTONS ? " demo-all-update-buttons" : ""}`}>
+  return <article className={`settings-card update-card${DEMO_MODE ? " demo-all-update-buttons" : ""}`}>
     <div className="update-card-header">
       <div className="settings-heading"><span className="settings-icon update-icon"><Icon name="shield" size={17} /></span><div><h3>{tr("安全更新", "Safe updates")}</h3><p>{tr("一键下载、校验、同步并备份数据，再安装新版本；不要求填写上游 API Key。", "Download, verify, sync, back up, and install in one flow; an upstream API key is not required.")}</p></div></div>
       <span className={`update-state ${state}`}><i />{stateText}</span>
     </div>
     <div className="update-version-grid">
       <div><small>{tr("当前版本", "Current")}</small><strong>v{currentVersion}</strong></div>
-      <div><small>{tr("最新版本", "Latest")}</small><strong className={DEMO_UPDATE_BUTTONS || result?.updateAvailable ? "has-update" : result ? "is-current" : ""}>{DEMO_UPDATE_BUTTONS ? "v1.40.9" : result ? `v${result.latestVersion || currentVersion}` : "—"}</strong></div>
-      <div><small>{tr("安装包", "Installer")}</small><strong>{DEMO_UPDATE_BUTTONS ? "95.3 MB" : result?.asset ? megabytes(result.asset.size) : "—"}</strong></div>
+      <div><small>{tr("最新版本", "Latest")}</small><strong className={DEMO_MODE || result?.updateAvailable ? "has-update" : result ? "is-current" : ""}>{DEMO_MODE ? `v${currentVersion.replace(/\d+$/, (patch) => String(Number(patch) + 1))} (${tr("演示", "Demo")})` : result ? `v${result.latestVersion || currentVersion}` : "—"}</strong></div>
+      <div><small>{tr("安装包", "Installer")}</small><strong>{DEMO_MODE ? "95.3 MB" : result?.asset ? megabytes(result.asset.size) : "—"}</strong></div>
       <div><small>{tr("数据保护", "Data protection")}</small><strong className="update-protected">{tr("同步 + 本地备份", "Sync + local backup")}</strong></div>
     </div>
-    {installing && <div className="update-progress" role="status"><div><strong>{stageText}</strong><span>{progress?.stage === "downloading" ? `${megabytes(progress.received || 0)} / ${megabytes(progress.total || result?.asset?.size || 0)}` : tr("请不要关闭软件", "Keep the app open")}</span></div><div className="update-progress-track"><span style={{ width: `${progress?.stage === "downloading" ? progress.percent : progress?.stage === "checking" ? 8 : 100}%` }} /></div></div>}
-    {!DEMO_UPDATE_BUTTONS && error && <div className="update-error"><strong>{tr("更新已安全停止", "Update stopped safely")}</strong><span>{error}</span><small>{tr("当前版本和本地数据未被覆盖，可以修复网络或同步问题后重试。", "The current version and local data remain untouched; fix the network and retry.")}</small><button type="button" className="update-site-link" onClick={() => void window.desktop?.openExternal("https://github.com/BFTwarrior/cherry-ai-connect/releases/latest")}>{tr("前往 GitHub 官方发布页手动下载", "Open the official GitHub releases page")}</button></div>}
-    {!DEMO_UPDATE_BUTTONS && result?.updateAvailable && !canInstall && <div className="update-error"><strong>{tr("安装包缺少可信校验值", "Installer checksum unavailable")}</strong><span>{tr("为了保护本地数据，软件不会自动运行未经校验的安装包。", "For safety, the app will not run an unverified installer.")}</span><button type="button" className="update-site-link" onClick={() => void window.desktop?.openExternal("https://github.com/BFTwarrior/cherry-ai-connect/releases/latest")}>{tr("前往 GitHub 官方发布页手动下载", "Open the official GitHub releases page")}</button></div>}
+    {installing && <div className="update-progress" role="status"><div><strong>{tr("正在更新", "Updating")}</strong><span>{progress?.stage === "downloading" ? `${megabytes(progress.received || 0)} / ${megabytes(progress.total || result?.asset?.size || 0)}` : tr("请不要关闭软件", "Keep the app open")}</span></div><div className="update-progress-track"><span style={{ width: `${progress?.stage === "downloading" ? progress.percent : progress?.stage === "checking" ? 8 : 100}%` }} /></div></div>}
+    {!DEMO_MODE && error && <div className="update-error"><strong>{tr("更新已安全停止", "Update stopped safely")}</strong><span>{error}</span><small>{tr("当前版本和本地数据未被覆盖，可以修复网络或同步问题后重试。", "The current version and local data remain untouched; fix the network and retry.")}</small><button type="button" className="update-site-link" onClick={() => void window.desktop?.openExternal("https://github.com/BFTwarrior/cherry-ai-connect/releases/latest")}>{tr("前往 GitHub 官方发布页手动下载", "Open the official GitHub releases page")}</button></div>}
+    {!DEMO_MODE && result?.updateAvailable && !canInstall && <div className="update-error"><strong>{tr("安装包缺少可信校验值", "Installer checksum unavailable")}</strong><span>{tr("为了保护本地数据，软件不会自动运行未经校验的安装包。", "For safety, the app will not run an unverified installer.")}</span><button type="button" className="update-site-link" onClick={() => void window.desktop?.openExternal("https://github.com/BFTwarrior/cherry-ai-connect/releases/latest")}>{tr("前往 GitHub 官方发布页手动下载", "Open the official GitHub releases page")}</button></div>}
     <div className="update-actions">
-      <button type="button" className="button button-secondary" onClick={() => { if (!DEMO_UPDATE_BUTTONS) void check(); }} disabled={!DEMO_UPDATE_BUTTONS && (checking || installing)}>{checking ? tr("检查中…", "Checking…") : result || DEMO_UPDATE_BUTTONS ? tr("重新检查", "Check again") : tr("检查更新", "Check now")}</button>
-      {(result?.updateAvailable || DEMO_UPDATE_BUTTONS) && <button type="button" className={`button button-secondary button-text-emphasis update-install-button${installing ? " is-running" : ""}`} onClick={() => { if (!DEMO_UPDATE_BUTTONS) void install(); }} disabled={!DEMO_UPDATE_BUTTONS && (!canInstall || installing)} aria-busy={installing && !DEMO_UPDATE_BUTTONS}>{installing && <span className="update-install-spinner" aria-hidden="true" />}<span className="button-action-label">{installing ? stageText : tr("下载并更新", "Download and update")}</span></button>}
-      {(installing && progress?.canCancel || DEMO_UPDATE_BUTTONS) && <button type="button" className="button button-secondary" onClick={() => { if (!DEMO_UPDATE_BUTTONS) void cancel(); }} disabled={!DEMO_UPDATE_BUTTONS && cancelling}>{cancelling ? tr("正在取消…", "Cancelling…") : tr("取消更新", "Cancel update")}</button>}
+      {!installing && <button type="button" className="button button-secondary" onClick={() => void check()} disabled={checking}>{checking ? tr("检查中…", "Checking…") : result || DEMO_MODE ? tr("重新检查", "Check again") : tr("检查更新", "Check now")}</button>}
+      {(installing || result?.updateAvailable || (DEMO_MODE && !demoUpdate.completed)) && <button type="button" className={`button button-secondary button-text-emphasis update-install-button${installing ? " is-running" : ""}`} onClick={() => void install()} disabled={!canInstall || installing} aria-busy={installing}>{installing && <span className="update-install-spinner" aria-hidden="true" />}<span className="button-action-label">{installing ? tr("正在更新", "Updating") : tr("下载并更新", "Download and update")}</span></button>}
+      {(installing && progress?.canCancel) && <button type="button" className="button button-secondary button-text-emphasis" onClick={() => void cancel()} disabled={cancelling}><span className="button-action-label">{cancelling ? tr("正在取消…", "Cancelling…") : tr("取消更新", "Cancel update")}</span></button>}
     </div>
     <div className="update-footnote">{tr("更新不会刷新同一设备上的客户端 API Key；只有新设备首次同步才会生成新 Key。", "Updates never rotate client API keys on this device; only a new device creates keys on first sync.")}</div>
     <div className="update-footnote update-local-mode-note">{tr("上游 API Key 可以留空；本地配置、界面和安全更新不依赖它。只有调用上游线路时才需要填写。", "An upstream API key may remain empty; local configuration, the interface, and safe updates do not depend on it. It is only needed when calling an upstream route.")}</div>
