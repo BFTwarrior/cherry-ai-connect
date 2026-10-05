@@ -33,6 +33,18 @@ function rawAssetKey(asset) {
   return JSON.stringify([String(asset.id), String(asset.name || ""), Number(asset.size || 0), String(asset.updatedAt || "")]);
 }
 
+function assetMetadata(item) {
+  return {
+    id: item.id, name: String(item.name), size: Number(item.size || 0),
+    state: String(item.state || ""),
+    createdAt: String(item.created_at || ""), updatedAt: String(item.updated_at || ""),
+  };
+}
+
+function incompleteAssetError() {
+  return new GitHubProviderError("github_asset_upload_incomplete", "GitHub 同步附件尚未完成上传");
+}
+
 function evictRaw(state, key) {
   const entry = state.raw.get(key);
   if (!entry) return;
@@ -198,7 +210,7 @@ export class GitHubReleaseProvider {
       }
       if (raw) return bytes;
       if (!bytes.length) {
-        if (cacheableJsonGet) {
+        if (cacheableJsonGet && !skipEtag) {
           const etag = response.headers.get("etag") || "";
           if (etag) state.json.set(jsonCacheKey, { etag, value: null });
           else state.json.delete(jsonCacheKey);
@@ -207,7 +219,7 @@ export class GitHubReleaseProvider {
       }
       try {
         const value = JSON.parse(bytes.toString("utf8"));
-        if (cacheableJsonGet) {
+        if (cacheableJsonGet && !skipEtag) {
           const etag = response.headers.get("etag") || "";
           if (etag) state.json.set(jsonCacheKey, { etag, value: cloneJson(value) });
           else state.json.delete(jsonCacheKey);
@@ -305,7 +317,7 @@ export class GitHubReleaseProvider {
     const assets = [];
     for (let page = 1; page <= 100; page += 1) {
       const items = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/${release.id}/assets?per_page=100&page=${page}`);
-      for (const item of items || []) assets.push({ id: item.id, name: String(item.name), size: Number(item.size || 0), createdAt: String(item.created_at || ""), updatedAt: String(item.updated_at || "") });
+      for (const item of items || []) assets.push(assetMetadata(item));
       if (!Array.isArray(items) || items.length < 100) break;
       // Never hand GC an incomplete catalog: unknown manifests may protect files.
       if (page === 100) throw new GitHubProviderError("github_asset_listing_limit", "Sync asset catalog is too large to inspect safely");
@@ -317,7 +329,8 @@ export class GitHubReleaseProvider {
 
   async downloadAsset(asset) {
     if (!Number.isSafeInteger(Number(asset?.id))) throw new Error("github_invalid_asset");
-    const key = rawAssetKey(asset);
+    if (asset.state === "starter") throw incompleteAssetError();
+    let key = rawAssetKey(asset);
     const state = cacheState(this.readCache);
     const cached = state.raw.get(key);
     if (cached) {
@@ -325,7 +338,27 @@ export class GitHubReleaseProvider {
       state.raw.set(key, cached);
       return Buffer.from(cached.bytes);
     }
-    const bytes = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`, { raw: true });
+    const path = `/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/assets/${Number(asset.id)}`;
+    let bytes;
+    try {
+      bytes = await this.#request(path, { raw: true });
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      // 中文：下载 404 不能直接视为空备份；绕过缓存核查附件状态。
+      // English: A download 404 is not an empty backup. Recheck uncached metadata.
+      const fresh = await this.#request(`${path}?cherry_refresh=${crypto.randomUUID()}`, { skipEtag: true });
+      if (Number(fresh?.id) !== Number(asset.id)) throw error;
+      if (fresh.state === "starter") throw incompleteAssetError();
+      if (fresh.state !== "uploaded") throw error;
+      key = rawAssetKey(assetMetadata(fresh));
+      // An uploaded attachment may have a stale download redirect. Retry only once.
+      try {
+        bytes = await this.#request(`${path}?cherry_refresh=${crypto.randomUUID()}`, { raw: true });
+      } catch (retryError) {
+        if (retryError.status !== 404) throw retryError;
+        throw new GitHubProviderError("github_asset_download_unavailable", "GitHub 已上传的同步附件暂时无法下载（404），本轮同步已停止", { status: 404 });
+      }
+    }
     cacheRawAsset(state, key, asset.id, bytes);
     state.assets.set(String(asset.id), key);
     return Buffer.from(bytes);
@@ -342,7 +375,8 @@ export class GitHubReleaseProvider {
       upload: true,
       contentType: "application/octet-stream",
     });
-    const uploaded = { id: result.id, name: String(result.name), size: Number(result.size || 0), createdAt: String(result.created_at || "") };
+    if (result.state && result.state !== "uploaded") throw incompleteAssetError();
+    const uploaded = assetMetadata(result);
     // 中文：上传资产首次仍由同步引擎下载验证；这里只维护目录，不预填原始字节缓存。
     // English: The engine must perform the first post-upload download verification; never prefill raw bytes.
     cacheState(this.readCache).assets.set(String(uploaded.id), rawAssetKey(uploaded));

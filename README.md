@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.17** — Restore compact two-line lifetime metric cards with aligned labels and values. Full input/cache details are available on hover; the six period summary cards retain their two-row layout. Existing stored usage remains intact.
+> **Current release · v1.40.18** — Recover private sync from unfinished GitHub uploads. Uncommitted starter manifests no longer block complete backups; download 404s recheck asset state and retry uploaded files once. Integrity checks and local usage data remain protected.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.17.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.17/Cherry-AI-Connect-Setup-1.40.17.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.18.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.18/Cherry-AI-Connect-Setup-1.40.18.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.17) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.17/Cherry-AI-Connect-Setup-1.40.17.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.17/Cherry-AI-Connect-Web-Demo-1.40.17.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.18) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.18/Cherry-AI-Connect-Setup-1.40.18.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.18/Cherry-AI-Connect-Web-Demo-1.40.18.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  AB3FEE43ADCD8450D0B640C72376DE72CFE1238E20B87F7E90DB5FA0B8459B4B
+SHA-256  8AC65E2CF7DD5B08232F0FB390B0651D6DAE8CDAFB62667440E53A34EAB4FB3A
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -230,6 +230,8 @@ npm run dist
 
 Verification scope:
 
+- v1.40.18: TypeScript, renderer and Windows installer builds passed. Unfinished GitHub manifest uploads are excluded from committed-backup reads; 404 downloads recheck metadata and retry uploaded assets once. Normal transport and integrity failures remain protective stops. No automated tests were added or run for this patch; real-device sync recovery and concurrent-device acceptance remain pending.
+
 - v1.40.12: Full isolated regression 132/132 passed. Coverage includes cache isolation, ETag refresh, rate-limit cooldown and restart, manifest/GC read failures, offline update pause, pending data backup and corrupt-copy rejection. Installed-device update acceptance remains pending.
 - v1.40.11: TypeScript, renderer and Windows installer builds passed; full isolated regression 118/118 passed, including completion-time preservation, persisted state, failure, restart, retry and no-op rounds. Real-device built-in update acceptance is pending user testing.
 
@@ -284,6 +286,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.17 · Windows x64
+Cherry AI Connect · v1.40.18 · Windows x64
 
 </div>

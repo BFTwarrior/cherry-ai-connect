@@ -93,6 +93,18 @@ function usageAssets(events, assetTag) {
   return assets;
 }
 
+async function downloadManifestCandidate(provider, asset) {
+  // 中文：starter 是未提交的上传占位，不能让它阻断已有完整备份。
+  // English: A starter is an uncommitted upload placeholder, not a readable backup.
+  if (asset.state === "starter") return null;
+  try { return await provider.downloadAsset(asset); }
+  catch (error) {
+    if (error.code === "github_asset_upload_incomplete") return null;
+    // All other transport failures remain fatal to this round, including ordinary 404s.
+    throw error;
+  }
+}
+
 async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog = null) {
   // 中文：候选 manifest 必须逐个下载、解析、验证，损坏的最新候选不能遮蔽更早的完整代。
   // English: Download, parse, and validate every candidate. A damaged newest candidate must not
@@ -102,7 +114,8 @@ async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog
   let datasetConflict = false;
   for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
     // Transport failures do not mean a damaged manifest or an empty remote dataset.
-    const bytes = await provider.downloadAsset(asset);
+    const bytes = await downloadManifestCandidate(provider, asset);
+    if (bytes === null) continue;
     try {
       const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
       if (expectedDatasetId && manifest.datasetId !== expectedDatasetId) { datasetConflict = true; continue; }
@@ -600,12 +613,13 @@ export class SyncEngine {
     for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
       // Fail closed before any deletion if a manifest cannot be read or understood.
       // Its references may protect assets that would otherwise look like old orphans.
-      const bytes = await this.provider.downloadAsset(asset);
+      const bytes = await downloadManifestCandidate(this.provider, asset);
+      if (bytes === null) continue;
       const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
       manifests.push({ asset, manifest, bytes });
     }
     const plan = retentionPlan(manifests, this.now().valueOf(), { pressure, keep: KEEP_GENERATIONS });
-    const fingerprint = (catalog) => stableJson(catalog.filter((item) => isManifestAssetName(item.name)).map((item) => [item.id, item.name, item.size, item.updatedAt || ""]).sort());
+    const fingerprint = (catalog) => stableJson(catalog.filter((item) => isManifestAssetName(item.name)).map((item) => [item.id, item.name, item.size, item.updatedAt || "", item.state || ""]).sort());
     if (fingerprint(await this.provider.listAssets({ refresh: true })) !== fingerprint(assets)) throw new Error("sync_parent_changed");
     let deleted = 0;
     // Remove superseded manifests before their now-unreferenced payloads. Every
