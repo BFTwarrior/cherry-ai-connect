@@ -14,16 +14,10 @@
 .usage-view .lifetime-card { grid-template-columns: auto minmax(240px, 1fr) minmax(520px, 1.6fr); gap: 16px; }
 .usage-view .lifetime-details { min-width: 0; }
 .usage-view .lifetime-breakdown { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.usage-view .lifetime-breakdown > div { padding: 13px 9px; }
-.usage-view .lifetime-breakdown strong { white-space: nowrap; }
-.usage-view .lifetime-caption {
-  display: block;
-  margin-top: 6px;
-  color: #898290;
-  font-size: 9px;
-  font-style: normal;
-  line-height: 1.4;
-}
+/* Lifetime cards share the original compact title/value layout; details live in tooltips. */
+.usage-view .lifetime-breakdown > div { display: flex; flex-direction: column; justify-content: center; min-height: 66px; padding: 13px 9px; }
+.usage-view .lifetime-breakdown small { white-space: nowrap; line-height: 1.3; }
+.usage-view .lifetime-breakdown strong { white-space: nowrap; line-height: 1.2; }
 .usage-view .usage-summary-grid { grid-template-columns: 1.12fr repeat(5, minmax(0, 1fr)); }
 
 @media (max-width: 1440px) {
