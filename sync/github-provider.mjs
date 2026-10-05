@@ -303,10 +303,12 @@ export class GitHubReleaseProvider {
     if (!refresh && this.assetCache) return this.assetCache.map((item) => ({ ...item }));
     const release = await this.#readyRelease();
     const assets = [];
-    for (let page = 1; page <= 10; page += 1) {
+    for (let page = 1; page <= 100; page += 1) {
       const items = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/${release.id}/assets?per_page=100&page=${page}`);
       for (const item of items || []) assets.push({ id: item.id, name: String(item.name), size: Number(item.size || 0), createdAt: String(item.created_at || ""), updatedAt: String(item.updated_at || "") });
       if (!Array.isArray(items) || items.length < 100) break;
+      // Never hand GC an incomplete catalog: unknown manifests may protect files.
+      if (page === 100) throw new GitHubProviderError("github_asset_listing_limit", "Sync asset catalog is too large to inspect safely");
     }
     refreshRawAssetMetadata(cacheState(this.readCache), assets);
     this.assetCache = assets;

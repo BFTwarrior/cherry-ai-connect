@@ -36,11 +36,12 @@ import {
   verifyAsset,
 } from "./sync-common.mjs";
 import { clientMetadata } from "./config-merge.mjs";
+import { compactUsage, isSyncPayload, retiredAssets, retentionPlan } from "./asset-maintenance.mjs";
 
 const MAX_SYNC_ATTEMPTS = 3;
-const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
 const WARN_ASSET_COUNT = 800;
 const STOP_ASSET_COUNT = 900;
+const MAINTENANCE_ASSET_COUNT = 980;
 const KEEP_GENERATIONS = 4;
 
 function publicErrorCode(error) {
@@ -170,6 +171,7 @@ export class SyncEngine {
     this.onState = onState;
     this.now = now;
     this.running = null;
+    this.lastGarbageAt = 0;
     this.state = { state: "IDLE", lastSyncAt, nextSyncAt: "", generation, pendingCount: 0, warning: "", errorCode: "", error: "" };
   }
 
@@ -196,12 +198,14 @@ export class SyncEngine {
     if (!latest) return { remoteConfig: null, remoteVault: null, remoteMetadata: null, tombstones: [], branches: [], importedEvents: 0 };
     const summaryDescriptor = latest.manifest.files.find((item) => item.type === "summary");
     let counters = [];
+    let remoteSummary = null;
     let tombstones = latest.manifest.tombstones || [];
     if (summaryDescriptor) {
       const summary = parseCompressedJson(await downloadAndVerify(this.provider, summaryDescriptor, assetCatalog));
       if (summary.datasetId !== datasetId) throw new Error("sync_dataset_conflict");
       counters = Array.isArray(summary.counters) ? summary.counters : [];
       tombstones = Array.isArray(summary.tombstones) ? summary.tombstones : tombstones;
+      remoteSummary = summary;
     }
     const events = [];
     let totalCompressed = 0;
@@ -223,6 +227,7 @@ export class SyncEngine {
     }
     const metadataDescriptor = latest.manifest.files.find((item) => item.type === "client-metadata");
     return {
+      remoteSummary,
       remoteMetadata: metadataDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, metadataDescriptor, assetCatalog)) : null,
       remoteConfig: configDescriptor ? parseCompressedJson(await downloadAndVerify(this.provider, configDescriptor, assetCatalog)) : null,
       remoteVault: vaultDescriptor ? await downloadAndVerify(this.provider, vaultDescriptor, assetCatalog) : null,
@@ -278,7 +283,11 @@ export class SyncEngine {
         // make the next manifest use a stale snapshot.
         let initial = this.source.getSyncSnapshot();
         let datasetId = initial.identity.datasetId;
-        const initialAssetCatalog = await this.provider.listAssets();
+        let initialAssetCatalog = await this.provider.listAssets();
+        if (initialAssetCatalog.length >= WARN_ASSET_COUNT) {
+          await this.collectGarbage({ pressure: true });
+          initialAssetCatalog = await this.provider.listAssets({ refresh: true });
+        }
         let latest = await readLatestManifest(this.provider, "", initialAssetCatalog);
         const initialHeads = stableJson(latest?.headHashes || []);
         if (latest && latest.manifest.datasetId !== datasetId) {
@@ -368,10 +377,6 @@ export class SyncEngine {
           }
         }
         const assetsBefore = await this.provider.listAssets();
-        if (assetsBefore.length >= STOP_ASSET_COUNT) {
-          await this.collectGarbage();
-          if ((await this.provider.listAssets({ refresh: true })).length >= STOP_ASSET_COUNT) throw new Error("sync_asset_count_limit");
-        }
         const parent = latest?.manifest || null;
         let currentVault = null;
         let vaultWarning = upstreamError ? "sync_vault_unavailable_usage_only" : "";
@@ -402,33 +407,50 @@ export class SyncEngine {
         const metadataChanged = automatic && stableJson(metadata) !== stableJson(remote.remoteMetadata);
         const tombstonesChanged = parent && stableJson(snapshot.tombstones) !== stableJson(remote.tombstones);
         const publicChanged = automatic && !keepRemoteConfig && stableJson(publishPublicConfig) !== stableJson(remote.remoteConfig && Object.fromEntries(Object.entries(remote.remoteConfig).filter(([key]) => !["format", "datasetId"].includes(key))));
-        const noLocalChanges = !metadataChanged && !tombstonesChanged && !publicChanged && !(latest?.siblings?.length)
+        const parentUsageCount = parent?.files.filter((item) => item.type === "usage-segment").length || 0;
+        const needsCompaction = parentUsageCount >= 64 || (assetsBefore.length >= WARN_ASSET_COUNT && parentUsageCount >= 2);
+        const retiredNames = new Set((parent?.retention?.retiredAssets || []).filter((item) => Number.isFinite(Date.parse(item?.unreferencedAtUtc))).map((item) => item.assetName));
+        const parentNames = new Set((parent?.files || []).map((item) => item.assetName));
+        const needsRetirement = assetsBefore.some((asset) => isSyncPayload(asset.name) && !parentNames.has(asset.name) && !retiredNames.has(asset.name));
+        const noBusinessChanges = !metadataChanged && !tombstonesChanged && !publicChanged && !(latest?.siblings?.length)
           && snapshot.events.length === 0
           && parent
           && sameRevision(parent.configRevision, effectivePublicConfig.configRevision)
           && (keepRemoteConfig || Number(parent.vaultRevision || 0) === Number(currentVault?.vaultRevision || 0));
-        if (noLocalChanges) {
+        const finishNoop = async () => {
+          const retirementDue = (parent.retention?.retiredAssets || []).some((item) => assetsBefore.some((asset) => asset.name === item.assetName)
+            && Date.parse(item?.unreferencedAtUtc) <= this.now().valueOf() - 24 * 60 * 60 * 1000);
+          if (retirementDue && this.now().valueOf() - this.lastGarbageAt >= 60 * 60 * 1000) await this.collectGarbage().catch((error) => {
+            this.source.recordSyncRun?.({ syncId, state: "ERROR_RECOVERABLE", generation: parent.generation, startedAtUtc,
+              finishedAtUtc: this.now().toISOString(), summary: "gc", errorCode: String(error?.message || error) });
+          });
           const finishedAtUtc = this.now().toISOString();
           this.source.recordSyncRun?.({ syncId, state: "IDLE", generation: parent.generation, startedAtUtc, finishedAtUtc, summary: `no-op:${reason}` });
           return this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", errorCode: upstreamError, error: upstreamError, generation: parent.generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : "") });
-        }
+        };
+        if (noBusinessChanges && !needsCompaction && !needsRetirement) return await finishNoop();
 
         const generation = Number(parent?.generation || 0) + 1;
         const generatedAt = this.now();
         const generatedAtUtc = generatedAt.toISOString();
         const candidateSyncId = attempt === 1 ? syncId : randomId("sync");
         const assetTag = syncAssetTag(candidateSyncId, generatedAt);
-        const summaryBytes = gzipJson({
+        const summaryPayload = {
           format: SYNC_FORMAT,
           schemaVersion: SYNC_SCHEMA_VERSION,
           datasetId,
           generatedAtUtc,
           counters: snapshot.counters,
           tombstones: snapshot.tombstones,
-        });
+        };
+        // The summary's timestamp is informational. Reuse the verified old summary
+        // when counters and tombstones are unchanged; manifest time remains current.
+        if (remote.remoteSummary && stableJson({ ...remote.remoteSummary, generatedAtUtc: "" }) === stableJson({ ...summaryPayload, generatedAtUtc: "" })) {
+          summaryPayload.generatedAtUtc = remote.remoteSummary.generatedAtUtc;
+        }
+        const summaryBytes = gzipJson(summaryPayload);
         const candidates = [
           { descriptor: assetDescriptor("summary", `summary-${assetTag}.json.gz`, summaryBytes), bytes: summaryBytes, eventIds: [] },
-          ...usageAssets(snapshot.events, assetTag),
         ];
         if (automatic) {
           const bytes = gzipJson(metadata);
@@ -446,7 +468,7 @@ export class SyncEngine {
           candidates.push({ descriptor: assetDescriptor("vault", `vault-${assetTag}.enc`, bytes), bytes, eventIds: [] });
         }
         const allParentFiles = [parent, ...(latest?.siblings || []).map((item) => item.manifest)].filter(Boolean).flatMap((item) => item.files);
-        const inherited = [...new Map(allParentFiles.filter((item) => item.type === "usage-segment"
+        let inherited = [...new Map(allParentFiles.filter((item) => item.type === "usage-segment"
           || (keepRemoteConfig && (item.type === "config" || item.type === "vault"))).map((item) => [item.assetName, item])).values()];
 
         // 中文：提交前必须强制刷新远端清单，继续保留并发写入检测；普通读取则复用本轮缓存。
@@ -461,7 +483,32 @@ export class SyncEngine {
           throw new Error("sync_parent_changed");
         }
 
+        const usage = await compactUsage({ inherited, pending: snapshot.events, catalog: commitAssetCatalog,
+          provider: this.provider, makeAssets: usageAssets, assetTag, force: commitAssetCatalog.length >= WARN_ASSET_COUNT });
+        // A bounded compaction that cannot reduce file count must not manufacture
+        // empty generations on every scheduled no-op.
+        if (noBusinessChanges && !usage.compacted && !needsRetirement) return await finishNoop();
+        inherited = usage.inherited;
+        candidates.push(...usage.candidates);
+        const uploads = [];
+        const reusable = [];
+        // All parent files were verified during the pull. Identical immutable
+        // metadata/config/vault files can be referenced instead of uploaded again.
         for (const candidate of candidates) {
+          const same = allParentFiles.find((item) => item.type === candidate.descriptor.type
+            && item.size === candidate.descriptor.size && item.sha256 === candidate.descriptor.sha256
+            && commitAssetCatalog.some((asset) => asset.name === item.assetName));
+          if (same) reusable.push(same);
+          else uploads.push(candidate);
+        }
+        const limit = usage.compacted || needsRetirement ? MAINTENANCE_ASSET_COUNT : STOP_ASSET_COUNT;
+        if (commitAssetCatalog.length + uploads.length + 1 > limit) {
+          const error = new Error("sync_asset_count_limit");
+          error.retryAt = this.now().valueOf() + 10 * 60 * 1000;
+          throw error;
+        }
+
+        for (const candidate of uploads) {
           // 中文：Provider 工作保持串行，避免同步轮次与更新/冲突协调发生竞态；上传响应
           // 已直接用于校验，省去一次资产清单查询。
           // English: Keep provider work serialized to preserve update/conflict coordination;
@@ -488,6 +535,7 @@ export class SyncEngine {
             throw new Error("sync_parent_changed");
           }
         }
+        const committedFiles = [...new Map([...inherited, ...reusable, ...uploads.map((item) => item.descriptor)].map((item) => [item.assetName, item])).values()];
         const manifest = {
           format: SYNC_FORMAT,
           schemaVersion: SYNC_SCHEMA_VERSION,
@@ -507,9 +555,10 @@ export class SyncEngine {
           configRevision: effectivePublicConfig.configRevision,
           keyEpoch: Number(currentVault?.keyEpoch || parent?.keyEpoch || 0),
           vaultRevision: Number(currentVault?.vaultRevision || parent?.vaultRevision || 0),
-          files: [...inherited, ...candidates.map((item) => item.descriptor)],
+          files: committedFiles,
           tombstones: snapshot.tombstones,
-          retention: { localDetailCacheBytes: 50 * 1024 ** 2, localDetailTargetBytes: 45 * 1024 ** 2, prunedBeforeUtc: null },
+          retention: { localDetailCacheBytes: 50 * 1024 ** 2, localDetailTargetBytes: 45 * 1024 ** 2, prunedBeforeUtc: null,
+            retiredAssets: retiredAssets([parent, ...(latest?.siblings || []).map((item) => item.manifest)], commitAssetCatalog, committedFiles, generatedAtUtc) },
         };
         const manifestBytes = jsonBuffer(manifest);
         const name = manifestName(candidateSyncId, generatedAt);
@@ -527,7 +576,7 @@ export class SyncEngine {
         const finishedAtUtc = this.now().toISOString();
         this.source.recordSyncRun?.({ syncId, state: "IDLE", generation, startedAtUtc, finishedAtUtc, summary: `${reason}: ${eventIds.length} event(s)` });
         this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : ""), errorCode: upstreamError, error: upstreamError });
-        await this.collectGarbage().catch((error) => {
+        await this.collectGarbage({ pressure: commitAssetCatalog.length + uploads.length + 1 >= WARN_ASSET_COUNT }).catch((error) => {
           // Preserve a completed commit, but surface transport limits to the manager's
           // retry gate. Unreadable manifests already stopped GC before any deletion.
           if (String(error?.code || "").startsWith("github_")) throw error;
@@ -544,29 +593,38 @@ export class SyncEngine {
     }
   }
 
-  async collectGarbage() {
-    const assets = await this.provider.listAssets();
+  async collectGarbage({ pressure = false } = {}) {
+    this.lastGarbageAt = this.now().valueOf();
+    const assets = await this.provider.listAssets({ refresh: true });
     const manifests = [];
     for (const asset of assets.filter((item) => isManifestAssetName(item.name))) {
       // Fail closed before any deletion if a manifest cannot be read or understood.
       // Its references may protect assets that would otherwise look like old orphans.
       const bytes = await this.provider.downloadAsset(asset);
       const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
-      manifests.push({ asset, manifest });
+      manifests.push({ asset, manifest, bytes });
     }
-    manifests.sort((left, right) => right.manifest.generation - left.manifest.generation);
-    const retained = manifests.slice(0, KEEP_GENERATIONS);
-    const marked = new Set(retained.map((item) => item.asset.name));
-    for (const item of retained) for (const file of item.manifest.files) marked.add(file.assetName);
-    const threshold = this.now().valueOf() - ORPHAN_GRACE_MS;
+    const plan = retentionPlan(manifests, this.now().valueOf(), { pressure, keep: KEEP_GENERATIONS });
+    const fingerprint = (catalog) => stableJson(catalog.filter((item) => isManifestAssetName(item.name)).map((item) => [item.id, item.name, item.size, item.updatedAt || ""]).sort());
+    if (fingerprint(await this.provider.listAssets({ refresh: true })) !== fingerprint(assets)) throw new Error("sync_parent_changed");
     let deleted = 0;
+    // Remove superseded manifests before their now-unreferenced payloads. Every
+    // surviving manifest's references (including the grace period) stay marked.
+    for (const item of plan.removed) { await this.provider.deleteAsset(item.asset); deleted += 1; }
+    const survivingCatalog = assets.filter((asset) => !plan.removed.some((item) => item.asset.id === asset.id));
+    if (fingerprint(await this.provider.listAssets({ refresh: true })) !== fingerprint(survivingCatalog)) throw new Error("sync_parent_changed");
     for (const asset of assets) {
-      const created = new Date(asset.createdAt || 0).valueOf();
-      if (marked.has(asset.name) || !Number.isFinite(created) || created > threshold) continue;
+      if (isManifestAssetName(asset.name)) continue;
+      // Creation age does not prove an attachment is unused: immutable files
+      // can be reused by much newer manifests. Retirement must first have been
+      // recorded in a committed manifest, followed by a full grace period.
+      const retiredAt = plan.retired.get(asset.name);
+      if (!isSyncPayload(asset.name) || plan.marked.has(asset.name) || !Number.isFinite(retiredAt)
+        || retiredAt > this.now().valueOf() - plan.grace) continue;
       await this.provider.deleteAsset(asset);
       deleted += 1;
     }
-    return { deleted, retainedGenerations: retained.map((item) => item.manifest.generation) };
+    return { deleted, retainedGenerations: manifests.filter((item) => plan.marked.has(item.asset.name)).map((item) => item.manifest.generation) };
   }
 }
 

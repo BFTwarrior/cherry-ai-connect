@@ -152,7 +152,11 @@ The following rules are format invariants and require a migration plan before an
 - Local request details use a size-based cache: pruning starts only above 50 MiB and removes the oldest details until the database is near 45 MiB. There is no row-count or age-based deletion rule.
 - 本机请求明细只按容量清理：超过 50 MiB 后删除最早明细，回落到约 45 MiB；不再按 200 条、50,000 条或半年期限删除。
 - Lifetime G-Counters, request totals, and token totals have no time limit and are never reduced by detail-cache pruning.
-- At 800 Release assets the UI warns; at 900 assets new no-op generations stop until safe mark-and-sweep succeeds.
+- At 800 Release assets the engine attempts maintenance. Ordinary commits stop above a projected 900 assets; bounded compaction or a new retirement-marker commit may use maintenance headroom up to 980. Capacity failures retain the outbox and retry after 10 minutes.
+- Identical verified summary, metadata, config and vault attachments are reused. At 64 usage segments (or asset pressure), a bounded pass can repack up to 256 small segments, 24 MiB compressed and 64 MiB event content. Only byte-equivalent stable JSON events are deduplicated; differing representations of an event ID are preserved. JSONL and counter contracts stay unchanged.
+- Optional `retention.retiredAssets` entries contain `{assetName, unreferencedAtUtc}`. Newly unreferenced attachments are first recorded in a committed manifest; referenced-again attachments restart their retirement period. Old readers may ignore this additive field.
+- GC protects each dataset's latest four manifests, unmerged branches and every surviving manifest's file references. Covered obsolete manifests and committed retired payloads have a 24-hour grace period, or 10 minutes under pressure. Creation age alone never authorizes payload deletion; unknown filenames are preserved.
+- GC refreshes manifest catalog fingerprints before deletion and after obsolete-manifest deletion. Due retirement can also be collected on otherwise unchanged scheduled rounds, at most hourly below the pressure threshold. Directory changes stop cleanup. GitHub asset operations lack an atomic transaction across commits and deletes; these guards and grace periods do not establish cross-device atomic GC.
 
 ## 9. Sync state machine / 同步状态机
 

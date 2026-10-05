@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.15** — Show cache reads separately in lifetime totals, period summaries, trends and request history, with input labels explicitly excluding cache reads. Existing totals and stored usage remain intact.
+> **Current release · v1.40.16** — Align usage metrics and lifetime captions, improve local stream timing, and reduce private-sync attachment growth with reuse, bounded compaction, staged retention and retry backoff. Existing stored usage remains intact.
 
 ## Product tour
 
@@ -138,13 +138,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.15.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.15/Cherry-AI-Connect-Setup-1.40.15.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.16.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.16/Cherry-AI-Connect-Setup-1.40.16.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.15) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.15/Cherry-AI-Connect-Setup-1.40.15.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.15/Cherry-AI-Connect-Web-Demo-1.40.15.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.16) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.16/Cherry-AI-Connect-Setup-1.40.16.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.16/Cherry-AI-Connect-Web-Demo-1.40.16.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -284,6 +284,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.15 · Windows x64
+Cherry AI Connect · v1.40.16 · Windows x64
 
 </div>

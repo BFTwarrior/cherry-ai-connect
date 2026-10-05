@@ -359,13 +359,13 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     <article className="lifetime-card">
       <div className="lifetime-icon"><TinyIcon name="tokens" /></div>
       <div className="lifetime-main"><span>{tr("永久累计使用量", "LIFETIME USAGE")}</span><strong>{number(lifetime.totalTokens, language)}</strong><small>{tr("Token 总数 · 没有时间限制，不随明细保留策略而归零", "Total tokens · no time limit; never reset by detail-retention rules")}</small></div>
-      <div className="lifetime-breakdown">
+      <div className="lifetime-details"><div className="lifetime-breakdown">
         <div><small>{tr("累计请求", "Requests")}</small><strong>{number(lifetime.requests, language)}</strong></div>
-        <div title={tr("输入 Token，不含缓存读取", "Input tokens, excluding cache reads")}><small>{tr("累计输入", "Input")}</small><strong>{compactNumber(inputExcludingCacheReads(lifetime), language)}</strong><em>{tr("不含缓存读取", "Excludes cache reads")}</em></div>
-        <div><small>{tr("累计输出", "Output")}</small><strong>{compactNumber(lifetime.outputTokens, language)}</strong></div>
-        <div title={tr(`缓存读取 ${number(lifetime.cacheReadTokens, language)}；缓存写入 ${number(lifetime.cacheWriteTokens, language)}`, `Cache read ${number(lifetime.cacheReadTokens, language)}; cache write ${number(lifetime.cacheWriteTokens, language)}`)}><small>{tr("累计缓存读取", "Cache read")}</small><strong>{compactNumber(lifetime.cacheReadTokens, language)}</strong><em>{tr("写入", "Write")} +{compactNumber(lifetime.cacheWriteTokens, language)}</em></div>
+        <div title={tr(`累计输入（不含缓存读取）：${number(inputExcludingCacheReads(lifetime), language)}`, `Lifetime input (excluding cache reads): ${number(inputExcludingCacheReads(lifetime), language)}`)}><small>{tr("累计输入", "Input")}</small><strong>{compactNumber(inputExcludingCacheReads(lifetime), language)}</strong><em className="lifetime-caption">{tr("不含缓存读取", "Excludes cache reads")}</em></div>
+        <div title={number(lifetime.outputTokens, language)}><small>{tr("累计输出", "Output")}</small><strong>{compactNumber(lifetime.outputTokens, language)}</strong></div>
+        <div title={tr(`缓存读取 ${number(lifetime.cacheReadTokens, language)}${lifetime.cacheWriteTokens > 0 ? `；缓存写入 ${number(lifetime.cacheWriteTokens, language)}` : ""}`, `Cache read ${number(lifetime.cacheReadTokens, language)}${lifetime.cacheWriteTokens > 0 ? `; cache write ${number(lifetime.cacheWriteTokens, language)}` : ""}`)}><small>{tr("累计缓存读取", "Cache read")}</small><strong>{compactNumber(lifetime.cacheReadTokens, language)}</strong>{lifetime.cacheWriteTokens > 0 && <em className="lifetime-caption" title={number(lifetime.cacheWriteTokens, language)}>{tr("缓存写入：", "Cache write: ")}{compactNumber(lifetime.cacheWriteTokens, language)} Token</em>}</div>
         <div><small>{tr("缓存命中率", "Cache hit")}</small><strong>{lifetime.cacheHitRate.toFixed(1)}%</strong></div>
-      </div>
+      </div></div>
     </article>
 
     <div className="usage-toolbar">
@@ -383,7 +383,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
       <article><span className="summary-icon purple"><TinyIcon name="tokens" /></span><div><small>{selectedLabel} · {tr("Token", "Tokens")}</small><strong>{number(summary.totalTokens, language)}</strong><em>{tr("真实返回用量", "Reported usage")}</em></div></article>
       <article><span className="summary-icon blue"><TinyIcon name="input" /></span><div><small>{tr("输入", "Input")}</small><strong>{number(inputExcludingCacheReads(summary), language)}</strong><em>{tr("不含缓存读取", "Excludes cache reads")}</em></div></article>
       <article><span className="summary-icon gold"><TinyIcon name="output" /></span><div><small>{tr("输出", "Output")}</small><strong>{number(summary.outputTokens, language)}</strong><em>{tr("模型生成", "Model generated")}</em></div></article>
-      <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存读取", "Cache read")}</small><strong>{number(summary.cacheReadTokens, language)}</strong><em>{tr("写入", "Write")} +{number(summary.cacheWriteTokens, language)}</em></div></article>
+      <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存读取", "Cache read")}</small><strong>{number(summary.cacheReadTokens, language)}</strong><em>{summary.cacheWriteTokens > 0 ? `${tr("缓存写入：", "Cache write: ")}${number(summary.cacheWriteTokens, language)}` : tr("缓存读取 Token", "Cached input tokens")}</em></div></article>
       <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存命中率", "Cache hit rate")}</small><strong>{summary.cacheHitRate.toFixed(1)}%</strong><em>{tr("输入缓存命中率", "Input cache hit rate")}</em></div></article>
       <article><span className="summary-icon teal"><TinyIcon name="request" /></span><div><small>{tr("请求", "Requests")}</small><strong>{number(summary.requests, language)}</strong><em>{successRate === null ? tr("状态未知", "Status unknown") : `${successRate.toFixed(1)}% ${tr("成功", "successful")}`}</em></div></article>
     </div>

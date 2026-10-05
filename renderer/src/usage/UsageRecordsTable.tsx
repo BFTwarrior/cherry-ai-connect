@@ -95,10 +95,10 @@ export const UsageRecordsTable = memo(function UsageRecordsTable({ records, lang
         <div className="usage-record-metrics">
           <div className="token-input"><small title={tr("不含缓存读取", "Excludes cache reads")}>{tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(inputExcludingCacheReads(record))}</strong><em>{record.usageKind === "request" ? tr("单次请求 · 不含缓存读取", "Single request · excludes cache reads") : tr("不含缓存读取", "Excludes cache reads")}</em></div>
           <div className="token-output"><small>{tr("输出 Token", "Output tokens")}</small><strong>{formattedNumber(record.outputTokens)}</strong></div>
-          <div className="token-cache"><small>{tr("缓存读取", "Cache read")}</small><strong>{formattedNumber(record.cacheReadTokens)}</strong><em>{tr("写入", "Write")} +{formattedNumber(record.cacheWriteTokens)}</em></div>
+          <div className="token-cache"><small>{tr("缓存读取", "Cache read")}</small><strong>{formattedNumber(record.cacheReadTokens)}</strong>{record.cacheWriteTokens > 0 && <em>{tr("缓存写入：", "Cache write: ")}{formattedNumber(record.cacheWriteTokens)}</em>}</div>
           <div className="token-total"><small>{tr("总 Token", "Total tokens")}</small><strong>{formattedNumber(record.totalTokens)}</strong></div>
-          <div><small>{tr("首字时间", "First token")}</small><LatencyValue value={record.ttftMs} kind="firstToken" language={language} /></div>
-          <div><small>{tr("总耗时", "Total time")}</small><LatencyValue value={record.durationMs} kind="total" language={language} /></div>
+          <div><small title={tr("本地测量的首个输出等待时间；可能包含网络与中转等待", "Locally measured wait for first output; may include network and relay waiting")}>{tr("首字时间", "First token")}</small><LatencyValue value={record.ttftMs !== null && record.ttftMs > 0 ? record.ttftMs : null} kind="firstToken" language={language} /></div>
+          <div><small title={tr("本地测量的响应耗时", "Locally measured response duration")}>{tr("总耗时", "Total time")}</small><LatencyValue value={record.durationMs} kind="total" language={language} /></div>
         </div>
       </article>;
     })}

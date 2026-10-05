@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
+import { SseObserver, streamSignal } from "./stream-observation.mjs";
 import { UsageLedger } from "./usage-ledger.mjs";
 import { clientMetadata, compareRevision, deletedIds, mergeOrder, mergeRecords, revision } from "../sync/config-merge.mjs";
 import { stableJson } from "../sync/sync-common.mjs";
@@ -23,7 +24,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40.15";
+const gatewayVersion = "1.40.16";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -523,15 +524,26 @@ async function proxyRequest(req, res, rawBody) {
     headers["x-api-key"] = apiKey;
     if (!headers["anthropic-version"]) headers["anthropic-version"] = "2023-06-01";
   }
-  const startedAt = Date.now();
-  let firstByteAt = 0;
+  // Elapsed time must not jump when Windows adjusts its wall clock.
+  const startedAt = performance.now();
+  let requestSentAt = 0;
+  let firstOutputAt = 0;
+  let terminal = null;
+  let responseIsSse = false;
   let finalized = false;
   let capturedUsage = normalizedUsage({});
   const responseChunks = [];
   let responseBytes = 0;
   const maxResponseCapture = 16 * 1024 * 1024;
-  let sseRemainder = "";
   const decoder = new StringDecoder("utf8");
+  const sse = new SseObserver((event, value, raw) => {
+    if (terminal) return;
+    if (value) capturedUsage = mergeUsage(capturedUsage, usageFromPayload(value));
+    const signal = streamSignal(event, value, raw);
+    const at = performance.now();
+    if (signal.hasOutput && !firstOutputAt) firstOutputAt = at;
+    if (signal.terminal) terminal = { ...signal, at, completedAt: new Date().toISOString() };
+  });
   const baseRecord = {
     clientKeyId: client.id,
     clientKeyName: client.name,
@@ -543,38 +555,41 @@ async function proxyRequest(req, res, rawBody) {
     reasoningLevel: validReasoningLevel(client.reasoningLevel) ? client.reasoningLevel : (config.forcedLevel || "unchanged"),
     stream: Boolean(payload.stream),
   };
-  const consumeSseLine = (line) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("data:")) return;
-    const raw = trimmed.slice(5).trim();
-    if (!raw || raw === "[DONE]") return;
-    try { capturedUsage = mergeUsage(capturedUsage, usageFromPayload(JSON.parse(raw))); } catch { /* ordinary streamed text can be ignored */ }
-  };
   const finalizeUsage = (status, error = "") => {
     if (finalized) return;
+    // Salvage usage from an interrupted final frame, while keeping the
+    // caller's transport-error status rather than declaring it successful.
+    if (responseIsSse && !terminal) sse.end(decoder.end());
     finalized = true;
-    if (sseRemainder) consumeSseLine(sseRemainder);
     if (responseChunks.length) {
       const responsePayload = bodyJson(Buffer.concat(responseChunks));
       if (responsePayload) capturedUsage = mergeUsage(capturedUsage, usageFromPayload(responsePayload));
     }
     // 中文：Claude 的 message_start/message_delta 分开携带输入与输出用量，结束时合并总数。
     capturedUsage.totalTokens = Math.max(capturedUsage.totalTokens, capturedUsage.inputTokens + capturedUsage.outputTokens);
-    const finishedAt = Date.now();
+    const finishedAt = terminal?.at ?? performance.now();
+    // Match the response phase: connection and request upload are not model
+    // generation time. finish means handed to the OS, not server receipt.
+    // Some servers respond before the upload finishes (e.g. rejection).
+    // Keep that early response measurable instead of clamping it to zero.
+    const firstObservedAt = firstOutputAt || finishedAt;
+    const metricStart = requestSentAt && requestSentAt <= firstObservedAt ? requestSentAt : startedAt;
     appendUsageRecord({
       id: crypto.randomUUID(),
-      at: new Date(finishedAt).toISOString(),
+      at: terminal?.completedAt || new Date().toISOString(),
       ...baseRecord,
       status: Number(status || 0),
-      durationMs: Math.max(0, finishedAt - startedAt),
-      ttftMs: firstByteAt ? Math.max(0, firstByteAt - startedAt) : 0,
+      durationMs: Math.round(Math.max(0, finishedAt - metricStart)),
+      ttftMs: firstOutputAt ? Math.round(Math.max(0, firstOutputAt - metricStart)) : 0,
       ...capturedUsage,
       error: String(error || "").slice(0, 300),
     });
+    console.log(`[用量计时] ${selected.provider.id} send=${Math.round(Math.max(0, metricStart - startedAt))}ms first=${firstOutputAt ? Math.round(Math.max(0, firstOutputAt - metricStart)) : "unknown"}ms response=${Math.round(Math.max(0, finishedAt - metricStart))}ms end=${terminal ? "protocol" : "transport"}`);
   };
   const upstreamReq = requestUpstream(target, req.method, headers, (upstreamRes) => {
     const statusCode = upstreamRes.statusCode || 502;
     const isSse = String(upstreamRes.headers["content-type"] || "").toLowerCase().includes("text/event-stream");
+    responseIsSse = isSse;
     // 中文：网关不跟随上游重定向；只有完整收到 2xx 响应才算实际调用成功。
     // English: The gateway does not follow upstream redirects; only a completed 2xx response is
     // a successful model call.
@@ -585,29 +600,48 @@ async function proxyRequest(req, res, rawBody) {
       "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta",
     });
     upstreamRes.on("data", (chunk) => {
-      if (!firstByteAt) firstByteAt = Date.now();
       if (isSse) {
-        sseRemainder += decoder.write(chunk);
-        const lines = sseRemainder.split(/\r?\n/);
-        sseRemainder = lines.pop() || "";
-        for (const line of lines) consumeSseLine(line);
-      } else if (responseBytes + chunk.length <= maxResponseCapture) {
-        responseChunks.push(chunk);
-        responseBytes += chunk.length;
+        sse.feed(decoder.write(chunk));
+        if (terminal && !finalized) {
+          const finalStatus = terminal.failed && statusCode < 400 ? 502 : statusCode;
+          updateClientRequestStatus(finalStatus >= 200 && finalStatus < 300 ? "ok" : "error", payload.model);
+          finalizeUsage(finalStatus, terminal.error);
+          // pipe's data listener forwards the entire terminal chunk first.
+          // Close only after that listener runs, rather than waiting for a
+          // relay keepalive timeout or cutting off the final protocol frame.
+          queueMicrotask(() => {
+            upstreamRes.unpipe(res);
+            if (!res.destroyed && !res.writableEnded) res.end();
+            upstreamRes.destroy();
+            upstreamReq.destroy();
+          });
+        }
+      } else {
+        if (!firstOutputAt) firstOutputAt = performance.now();
+        if (responseBytes + chunk.length <= maxResponseCapture) {
+          responseChunks.push(chunk);
+          responseBytes += chunk.length;
+        }
       }
     });
     upstreamRes.once("end", () => {
-      if (isSse) sseRemainder += decoder.end();
-      updateClientRequestStatus(statusCode >= 200 && statusCode < 300 ? "ok" : "error", payload.model);
-      finalizeUsage(statusCode);
+      if (finalized) return;
+      if (isSse) sse.end(decoder.end());
+      const finalStatus = terminal?.failed && statusCode < 400 ? 502 : statusCode;
+      updateClientRequestStatus(finalStatus >= 200 && finalStatus < 300 ? "ok" : "error", payload.model);
+      finalizeUsage(finalStatus, terminal?.error || "");
     });
     upstreamRes.once("error", (error) => {
+      if (finalized) return;
       updateClientRequestStatus("error", payload.model);
-      finalizeUsage(statusCode, error.message);
+      finalizeUsage(statusCode < 400 ? 502 : statusCode, error.message);
+      if (!res.destroyed) res.destroy();
     });
     upstreamRes.pipe(res);
   });
+  upstreamReq.once("finish", () => { requestSentAt = performance.now(); });
   upstreamReq.on("error", (error) => {
+    if (finalized) return;
     updateClientRequestStatus("error", payload.model);
     console.error(`[上游错误] ${selected.provider.id} ${error.message}`);
     finalizeUsage(502, error.message);

@@ -327,9 +327,10 @@ export class SyncManager {
     } catch (error) {
       const engineStatus = this.engine?.status() || {};
       const failures = Number(this.state.retryFailures || 0) + 1;
-      const retryAt = githubRetryAt(error, Date.now(), failures);
+      const capacityRetry = String(error?.message || "") === "sync_asset_count_limit" ? Number(error.retryAt) : 0;
+      const retryAt = capacityRetry > Date.now() ? capacityRetry : githubRetryAt(error, Date.now(), failures);
       const detail = retryAt
-        ? `GitHub 暂时不可用，已暂停重试；将在 ${new Date(retryAt).toLocaleString("zh-CN", { timeZone: "Asia/Hong_Kong", hour12: false })}（UTC+8）后重试。本机待同步数据已保留。`
+        ? `${capacityRetry ? "云备份附件数量较多，等待保留期后整理" : "GitHub 暂时不可用，已暂停重试"}；将在 ${new Date(retryAt).toLocaleString("zh-CN", { timeZone: "Asia/Hong_Kong", hour12: false })}（UTC+8）后重试。本机待同步数据已保留。`
         : String(error?.message || error);
       this.#publish({ state: engineStatus.state || "ERROR_RECOVERABLE", errorCode: engineStatus.errorCode || String(error?.message || error), error: detail, lastAttemptAt: new Date().toISOString(), retryAt: retryAt ? new Date(retryAt).toISOString() : "", retryFailures: retryAt ? failures : 0 });
       if (retryAt) this.#schedule();
@@ -347,6 +348,11 @@ export class SyncManager {
     if (this.#syncInFlight) return this.#syncInFlight;
     if (!this.state.account) return Promise.reject(new Error("github_auth_required"));
     if ((Date.parse(this.state.retryAt) || 0) > Date.now()) {
+      if (this.state.errorCode === "sync_asset_count_limit") {
+        const error = new Error("sync_asset_count_limit");
+        error.retryAt = Date.parse(this.state.retryAt);
+        return Promise.reject(error);
+      }
       return Promise.reject(new GitHubProviderError("github_sync_backoff", this.state.error || "GitHub sync is waiting before retrying", { rateReset: String(Math.ceil(Date.parse(this.state.retryAt) / 1000)) }));
     }
 

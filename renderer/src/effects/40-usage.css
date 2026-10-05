@@ -7,11 +7,18 @@
 /* Usage analytics: content-first, restrained and static. */
 .usage-view { --usage-gold: #d9b968; --usage-purple: #9470b8; }
 
+/* Keep each metric label and value on shared rows when another metric has a note. */
+.usage-view .usage-record-metrics > div { align-self: start; }
+
 /* Separate cached input using the existing analytics cards and responsive rows. */
+.usage-view .lifetime-card { grid-template-columns: auto minmax(240px, 1fr) minmax(520px, 1.6fr); gap: 16px; }
+.usage-view .lifetime-details { min-width: 0; }
 .usage-view .lifetime-breakdown { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.usage-view .lifetime-breakdown em {
+.usage-view .lifetime-breakdown > div { padding: 13px 9px; }
+.usage-view .lifetime-breakdown strong { white-space: nowrap; }
+.usage-view .lifetime-caption {
   display: block;
-  margin-top: 4px;
+  margin-top: 6px;
   color: #898290;
   font-size: 9px;
   font-style: normal;
@@ -21,6 +28,10 @@
 
 @media (max-width: 1440px) {
   .usage-view .usage-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 1180px) {
+  .usage-view .lifetime-card { grid-template-columns: auto minmax(0, 1fr); }
+  .usage-view .lifetime-details { grid-column: 1 / -1; }
 }
 @media (max-width: 850px) {
   .usage-view .lifetime-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
