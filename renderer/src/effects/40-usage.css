@@ -7,6 +7,31 @@
 /* Usage analytics: content-first, restrained and static. */
 .usage-view { --usage-gold: #d9b968; --usage-purple: #9470b8; }
 
+/* Separate cached input using the existing analytics cards and responsive rows. */
+.usage-view .lifetime-breakdown { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.usage-view .lifetime-breakdown em {
+  display: block;
+  margin-top: 4px;
+  color: #898290;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1.4;
+}
+.usage-view .usage-summary-grid { grid-template-columns: 1.12fr repeat(5, minmax(0, 1fr)); }
+
+@media (max-width: 1440px) {
+  .usage-view .usage-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 850px) {
+  .usage-view .lifetime-breakdown { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .usage-view .usage-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .usage-view .usage-summary-grid { grid-template-columns: 1fr; }
+}
+
 .usage-view .lifetime-card {
   border-color: rgb(112 83 129 / 48%) !important;
   background: linear-gradient(116deg, #17151c 0%, #1b1721 48%, #141419 100%) !important;
@@ -128,4 +153,3 @@
 }
 
 /* Settings controls: keep the copy action rectangular and make safe update unmistakable. */
-

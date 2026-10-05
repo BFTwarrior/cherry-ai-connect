@@ -3,7 +3,7 @@
  * English: The usage page reads anonymous gateway metrics only; it never reads or stores prompts, responses, or secrets.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { UsageRecordsTable, type UsageRecord, type UsageRecordDensity } from "./usage/UsageRecordsTable";
+import { inputExcludingCacheReads, UsageRecordsTable, type UsageRecord, type UsageRecordDensity } from "./usage/UsageRecordsTable";
 
 type Language = "zh" | "en";
 type RangeKey = "24h" | "7d" | "30d" | "90d" | "180d";
@@ -203,7 +203,7 @@ function UsageChart({ points, language, range }: { points: UsagePoint[]; languag
   const max = Math.max(1, ...points.map((point) => point.totalTokens));
   const x = (index: number) => pad.left + (points.length <= 1 ? innerWidth / 2 : (index / (points.length - 1)) * innerWidth);
   const y = (value: number) => pad.top + innerHeight - (value / max) * innerHeight;
-  const line = (field: "inputTokens" | "outputTokens" | "cacheReadTokens" | "totalTokens") => points.map((point, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(point[field]).toFixed(1)}`).join(" ");
+  const line = (field: "inputTokens" | "outputTokens" | "cacheReadTokens" | "totalTokens") => points.map((point, index) => `${index ? "L" : "M"}${x(index).toFixed(1)},${y(field === "inputTokens" ? inputExcludingCacheReads(point) : point[field]).toFixed(1)}`).join(" ");
   const area = points.length ? `${line("totalTokens")} L${x(points.length - 1)},${pad.top + innerHeight} L${x(0)},${pad.top + innerHeight} Z` : "";
   const selected = active === null ? null : points[active];
   const selectedX = active === null ? 0 : x(active);
@@ -221,9 +221,9 @@ function UsageChart({ points, language, range }: { points: UsagePoint[]; languag
   return <div className="usage-chart-shell">
     <div className="usage-chart-legend">
       <span className="legend-total">● {language === "zh" ? "总 Token" : "Total"}</span>
-      <span className="legend-input">● {language === "zh" ? "输入" : "Input"}</span>
+      <span className="legend-input" title={language === "zh" ? "不含缓存读取" : "Excludes cache reads"}>● {language === "zh" ? "输入" : "Input"}</span>
       <span className="legend-output">● {language === "zh" ? "输出" : "Output"}</span>
-      <span className="legend-cache">● {language === "zh" ? "缓存命中" : "Cache read"}</span>
+      <span className="legend-cache">● {language === "zh" ? "缓存读取" : "Cache read"}</span>
     </div>
     <svg ref={svgRef} className="usage-chart" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" onMouseMove={(event) => handleMove(event.clientX)} onMouseLeave={() => setActive(null)}>
       <defs>
@@ -235,7 +235,7 @@ function UsageChart({ points, language, range }: { points: UsagePoint[]; languag
       {points.length > 0 && <><path className="usage-line usage-line-total" d={line("totalTokens")} /><path className="usage-line usage-line-input" d={line("inputTokens")} /><path className="usage-line usage-line-output" d={line("outputTokens")} /><path className="usage-line usage-line-cache" d={line("cacheReadTokens")} /></>}
       {selected && <><line className="usage-hover-line" x1={selectedX} x2={selectedX} y1={pad.top} y2={pad.top + innerHeight} /><circle className="usage-hover-dot" cx={selectedX} cy={y(selected.totalTokens)} r="5" /></>}
     </svg>
-    {selected && <div className={`usage-tooltip ${selectedX > width * .7 ? "align-left" : ""}`} style={{ left: `${(selectedX / width) * 100}%` }}><strong>{dateTime(selected.at, language)}</strong><span className="legend-total">{language === "zh" ? "总 Token" : "Total"}: {number(selected.totalTokens, language)}</span><span className="legend-input">{language === "zh" ? "输入" : "Input"}: {number(selected.inputTokens, language)}</span><span className="legend-output">{language === "zh" ? "输出" : "Output"}: {number(selected.outputTokens, language)}</span><span className="legend-cache">{language === "zh" ? "缓存命中" : "Cache read"}: {number(selected.cacheReadTokens, language)}</span><span>{language === "zh" ? "请求" : "Requests"}: {number(selected.requests, language)}</span></div>}
+    {selected && <div className={`usage-tooltip ${selectedX > width * .7 ? "align-left" : ""}`} style={{ left: `${(selectedX / width) * 100}%` }}><strong>{dateTime(selected.at, language)}</strong><span className="legend-total">{language === "zh" ? "总 Token" : "Total"}: {number(selected.totalTokens, language)}</span><span className="legend-input">{language === "zh" ? "输入（不含缓存读取）" : "Input (excluding cache reads)"}: {number(inputExcludingCacheReads(selected), language)}</span><span className="legend-output">{language === "zh" ? "输出" : "Output"}: {number(selected.outputTokens, language)}</span><span className="legend-cache">{language === "zh" ? "缓存读取" : "Cache read"}: {number(selected.cacheReadTokens, language)}</span><span className="legend-cache">{language === "zh" ? "缓存写入" : "Cache write"}: {number(selected.cacheWriteTokens, language)}</span><span>{language === "zh" ? "请求" : "Requests"}: {number(selected.requests, language)}</span></div>}
   </div>;
 }
 
@@ -359,7 +359,13 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     <article className="lifetime-card">
       <div className="lifetime-icon"><TinyIcon name="tokens" /></div>
       <div className="lifetime-main"><span>{tr("永久累计使用量", "LIFETIME USAGE")}</span><strong>{number(lifetime.totalTokens, language)}</strong><small>{tr("Token 总数 · 没有时间限制，不随明细保留策略而归零", "Total tokens · no time limit; never reset by detail-retention rules")}</small></div>
-      <div className="lifetime-breakdown"><div><small>{tr("累计请求", "Requests")}</small><strong>{number(lifetime.requests, language)}</strong></div><div><small>{tr("累计输入", "Input")}</small><strong>{compactNumber(lifetime.inputTokens, language)}</strong></div><div><small>{tr("累计输出", "Output")}</small><strong>{compactNumber(lifetime.outputTokens, language)}</strong></div><div><small>{tr("缓存命中率", "Cache hit")}</small><strong>{lifetime.cacheHitRate.toFixed(1)}%</strong></div></div>
+      <div className="lifetime-breakdown">
+        <div><small>{tr("累计请求", "Requests")}</small><strong>{number(lifetime.requests, language)}</strong></div>
+        <div title={tr("输入 Token，不含缓存读取", "Input tokens, excluding cache reads")}><small>{tr("累计输入", "Input")}</small><strong>{compactNumber(inputExcludingCacheReads(lifetime), language)}</strong><em>{tr("不含缓存读取", "Excludes cache reads")}</em></div>
+        <div><small>{tr("累计输出", "Output")}</small><strong>{compactNumber(lifetime.outputTokens, language)}</strong></div>
+        <div title={tr(`缓存读取 ${number(lifetime.cacheReadTokens, language)}；缓存写入 ${number(lifetime.cacheWriteTokens, language)}`, `Cache read ${number(lifetime.cacheReadTokens, language)}; cache write ${number(lifetime.cacheWriteTokens, language)}`)}><small>{tr("累计缓存读取", "Cache read")}</small><strong>{compactNumber(lifetime.cacheReadTokens, language)}</strong><em>{tr("写入", "Write")} +{compactNumber(lifetime.cacheWriteTokens, language)}</em></div>
+        <div><small>{tr("缓存命中率", "Cache hit")}</small><strong>{lifetime.cacheHitRate.toFixed(1)}%</strong></div>
+      </div>
     </article>
 
     <div className="usage-toolbar">
@@ -375,9 +381,10 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     {error && <div className="usage-error">{tr("统计读取失败：", "Failed to load analytics: ")}{error}</div>}
     <div className="usage-summary-grid">
       <article><span className="summary-icon purple"><TinyIcon name="tokens" /></span><div><small>{selectedLabel} · {tr("Token", "Tokens")}</small><strong>{number(summary.totalTokens, language)}</strong><em>{tr("真实返回用量", "Reported usage")}</em></div></article>
-      <article><span className="summary-icon blue"><TinyIcon name="input" /></span><div><small>{tr("输入", "Input")}</small><strong>{number(summary.inputTokens, language)}</strong><em>{tr("含缓存读取", "Includes cache reads")}</em></div></article>
+      <article><span className="summary-icon blue"><TinyIcon name="input" /></span><div><small>{tr("输入", "Input")}</small><strong>{number(inputExcludingCacheReads(summary), language)}</strong><em>{tr("不含缓存读取", "Excludes cache reads")}</em></div></article>
       <article><span className="summary-icon gold"><TinyIcon name="output" /></span><div><small>{tr("输出", "Output")}</small><strong>{number(summary.outputTokens, language)}</strong><em>{tr("模型生成", "Model generated")}</em></div></article>
-      <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存命中率", "Cache hit rate")}</small><strong>{summary.cacheHitRate.toFixed(1)}%</strong><em>{number(summary.cacheReadTokens, language)} {tr("命中 Token", "cached tokens")}</em></div></article>
+      <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存读取", "Cache read")}</small><strong>{number(summary.cacheReadTokens, language)}</strong><em>{tr("写入", "Write")} +{number(summary.cacheWriteTokens, language)}</em></div></article>
+      <article><span className="summary-icon amber"><TinyIcon name="cache" /></span><div><small>{tr("缓存命中率", "Cache hit rate")}</small><strong>{summary.cacheHitRate.toFixed(1)}%</strong><em>{tr("输入缓存命中率", "Input cache hit rate")}</em></div></article>
       <article><span className="summary-icon teal"><TinyIcon name="request" /></span><div><small>{tr("请求", "Requests")}</small><strong>{number(summary.requests, language)}</strong><em>{successRate === null ? tr("状态未知", "Status unknown") : `${successRate.toFixed(1)}% ${tr("成功", "successful")}`}</em></div></article>
     </div>
 
