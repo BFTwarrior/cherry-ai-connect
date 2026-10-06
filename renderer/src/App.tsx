@@ -3,6 +3,7 @@
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
+import { version as VERSION } from "../../package.json";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
@@ -14,7 +15,6 @@ import { MenuSelect } from "./ui/MenuSelect";
 const DEFAULT_GATEWAY_ORIGIN = "http://127.0.0.1:27891";
 const DEFAULT_GATEWAY_API_BASE = `${DEFAULT_GATEWAY_ORIGIN}/v1`;
 let activeGatewayOrigin = DEFAULT_GATEWAY_ORIGIN;
-const VERSION = "1.40.17";
 const DEMO_MODE = new URLSearchParams(window.location.search).get("demo") === "1";
 const DEMO_SYNC_CONFLICT = DEMO_MODE && new URLSearchParams(window.location.search).get("syncConflict") === "1";
 type ClientImportTarget = "ccswitch" | "cherry-studio";
