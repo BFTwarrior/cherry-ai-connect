@@ -209,6 +209,7 @@ function syncSource() {
     getSyncSnapshot: () => gatewayModule.getSyncSnapshot(),
     mergeRemoteUsage: (payload) => gatewayModule.mergeRemoteUsage(payload),
     markSyncEvents: (ids) => gatewayModule.markSyncEvents(ids),
+    markSyncTombstones: (entries, tombstones) => gatewayModule.markSyncTombstones(entries, tombstones),
     recordSyncRun: (payload) => gatewayModule.recordSyncRun(payload),
     canAdoptSyncDataset: () => gatewayModule.canAdoptSyncDataset(),
     adoptSyncDataset: (datasetId) => gatewayModule.adoptSyncDataset(datasetId),
@@ -250,16 +251,19 @@ function hasPendingUpdateSync() {
   return Boolean(updateSyncDirty || majorSyncTimer || pendingUsage > 0);
 }
 
-// 中文：同步期间若配置再次变化，保留 dirty 标记供下载后最后检查；同步完成仍有 outbox 时拒绝继续安装。
-// English: Preserve changes made during sync for a post-download check. A transient network
-// failure leaves uncommitted entries in the full, verified local update backup.
+// 中文：同步期间的新变更保持待同步；成功轮次后仍有数据时交由完整本地备份保留。
+// English: Preserve changes arriving during sync. After a successful round, remaining entries
+// may proceed only through the full, verified local update backup; they stay unsynchronized.
 async function syncPendingUpdateChanges(signal) {
   const changeVersionAtStart = updateSyncChangeVersion;
   updateSyncDirty = false;
-  await syncManager.syncBeforeUpdate({ signal, retainPauseOnFailure: true });
+  const status = await syncManager.syncBeforeUpdate({ signal, retainPauseOnFailure: true });
   const pendingUsage = Number(gatewayModule?.getSyncSnapshot?.().ledger?.pendingCount || 0);
   updateSyncDirty = updateSyncChangeVersion !== changeVersionAtStart || pendingUsage > 0;
-  if (pendingUsage > 0) throw new Error("update_sync_pending_data");
+  if (pendingUsage > 0 && (status.state !== "IDLE" || status.errorCode || !status.lastSyncAt)) {
+    throw new Error("update_sync_pending_data");
+  }
+  return pendingUsage > 0;
 }
 
 // 中文：自动同步已启用且本机有待提交变更时，必须先确认账号连接可用；避免明知无法同步仍下载大安装包。
@@ -270,7 +274,11 @@ async function syncForUpdateIfNeeded(signal) {
   const status = syncManager?.status();
   if (!status?.enabled) return;
   if (!status.connected) throw new Error("sync_github_auth_required");
-  const deferred = await syncWithLocalBackupFallback({ manager: syncManager, signal, run: () => syncPendingUpdateChanges(signal) });
+  let pendingAfterSync = false;
+  const networkDeferred = await syncWithLocalBackupFallback({ manager: syncManager, signal, run: async () => {
+    pendingAfterSync = await syncPendingUpdateChanges(signal);
+  } });
+  const deferred = networkDeferred || pendingAfterSync;
   if (deferred) updateSyncDirty = true;
   return deferred;
 }

@@ -1137,6 +1137,7 @@ export function getSyncSnapshot() {
     events: usageLedger.pendingUsage(50000),
     counters: usageLedger.counters(),
     tombstones: [...new Map([...usageLedger.tombstones(), ...config.deletionTombstones].map((item) => [`${item.object_type}:${item.object_id}`, item])).values()],
+    tombstoneOutbox: usageLedger.pendingTombstones(),
     ledger: usageLedger.status(),
   };
 }
@@ -1278,6 +1279,7 @@ export function bumpConfigRevisionForSync() {
 
 export function mergeRemoteUsage(payload) { return usageLedger.mergeRemote(payload); }
 export function markSyncEvents(eventIds) { return usageLedger.markEventsSynced(eventIds); }
+export function markSyncTombstones(entries, tombstones) { return usageLedger.markTombstonesSynced(entries, tombstones); }
 export function recordSyncRun(payload) { return usageLedger.recordSyncRun(payload); }
 export function setSyncChangeHandler(handler) { syncChangeHandler = typeof handler === "function" ? handler : null; }
 

@@ -499,6 +499,10 @@ export class UsageLedger {
 
   tombstones() { return this.db.prepare("SELECT * FROM tombstones ORDER BY deleted_at_utc").all(); }
 
+  pendingTombstones() {
+    return this.db.prepare("SELECT outbox_id AS outboxId, object_id AS objectId FROM outbox WHERE object_type='tombstone' AND state='pending' ORDER BY created_at_utc, outbox_id").all();
+  }
+
   mergeRemote({ datasetId, events = [], counters = [], tombstones = [] } = {}) {
     if (String(datasetId || "") !== this.identity.datasetId) throw new Error("sync_dataset_conflict");
     let insertedEvents = 0;
@@ -606,6 +610,20 @@ export class UsageLedger {
       this.db.exec("COMMIT");
     } catch (error) { this.db.exec("ROLLBACK"); throw error; }
     this.prune();
+  }
+
+  markTombstonesSynced(entries, committedTombstones = []) {
+    const confirmed = new Set(committedTombstones.map((item) => `${item.object_type}:${item.object_id}`));
+    const delivered = (entries || []).filter((item) => item.outboxId && confirmed.has(item.objectId));
+    if (!delivered.length) return;
+    // 中文：只确认该轮快照中的 outbox ID；上传期间新产生的删除记录保持 pending。
+    // English: Acknowledge only this snapshot's outbox IDs, preserving deletions created during upload.
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const statement = this.db.prepare("UPDATE outbox SET state='synced' WHERE outbox_id=? AND object_type='tombstone' AND object_id=? AND state='pending'");
+      for (const item of delivered) statement.run(item.outboxId, item.objectId);
+      this.db.exec("COMMIT");
+    } catch (error) { this.db.exec("ROLLBACK"); throw error; }
   }
 
   recordSyncRun({ syncId, provider = "github", state, generation = 0, startedAtUtc, finishedAtUtc = "", errorCode = "", summary = "" }) {

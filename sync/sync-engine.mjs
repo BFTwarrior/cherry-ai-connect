@@ -438,6 +438,8 @@ export class SyncEngine {
               finishedAtUtc: this.now().toISOString(), summary: "gc", errorCode: String(error?.message || error) });
           });
           const finishedAtUtc = this.now().toISOString();
+          // The validated parent already contains this exact tombstone set on a no-op round.
+          this.source.markSyncTombstones?.(snapshot.tombstoneOutbox, remote.tombstones);
           this.source.recordSyncRun?.({ syncId, state: "IDLE", generation: parent.generation, startedAtUtc, finishedAtUtc, summary: `no-op:${reason}` });
           return this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", errorCode: upstreamError, error: upstreamError, generation: parent.generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : "") });
         };
@@ -586,6 +588,7 @@ export class SyncEngine {
         // visible as committed to other devices.
         const eventIds = candidates.flatMap((item) => item.eventIds);
         this.source.markSyncEvents(eventIds);
+        this.source.markSyncTombstones?.(snapshot.tombstoneOutbox, manifest.tombstones);
         const finishedAtUtc = this.now().toISOString();
         this.source.recordSyncRun?.({ syncId, state: "IDLE", generation, startedAtUtc, finishedAtUtc, summary: `${reason}: ${eventIds.length} event(s)` });
         this.emit({ state: upstreamError ? "ERROR_RECOVERABLE" : "IDLE", generation, pendingCount: 0, lastSyncAt: finishedAtUtc, warning: vaultWarning || (assetsBefore.length >= WARN_ASSET_COUNT ? "sync_asset_count_warning" : ""), errorCode: upstreamError, error: upstreamError });

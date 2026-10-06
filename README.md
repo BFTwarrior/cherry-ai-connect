@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.19** — Use a single package version for the sidebar and update card, keeping displayed versions consistent with the updater across devices. Future builds inherit their version automatically; the v1.40.18 cloud-sync recovery remains included.
+> **Current release · v1.40.20** — Fix stale pending-deletion markers that blocked built-in updates. New usage arriving after a successful sync stays pending and is preserved by the complete verified local backup before installation. The shared package version remains consistent across the sidebar and update card.
 
 ## Product tour
 
@@ -138,18 +138,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.19.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.19/Cherry-AI-Connect-Setup-1.40.19.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.20.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Setup-1.40.20.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.19) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.19/Cherry-AI-Connect-Setup-1.40.19.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.19/Cherry-AI-Connect-Web-Demo-1.40.19.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.20) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Setup-1.40.20.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Web-Demo-1.40.20.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  B13A4D6B1048825BB60D378233ADC0787C69E9BF360B72EF0C902C7243D9E863
+SHA-256  0F1FB8AB1350FFCF6F42AD40C1D6A2E3BB58957667F72A406C333168FE9D36AA
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -230,6 +230,8 @@ npm run dist
 
 Verification scope:
 
+- v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
+
 - v1.40.19: TypeScript, renderer and Windows installer builds passed. The sidebar and update card take their version from package.json; the packaged renderer and application metadata both declare 1.40.19. No automated tests were added or run for this small display correction; installed-device update acceptance remains pending.
 
 - v1.40.18: TypeScript, renderer and Windows installer builds passed. Unfinished GitHub manifest uploads are excluded from committed-backup reads; 404 downloads recheck metadata and retry uploaded assets once. Normal transport and integrity failures remain protective stops. No automated tests were added or run for this patch; real-device sync recovery and concurrent-device acceptance remain pending.
@@ -288,6 +290,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.19 · Windows x64
+Cherry AI Connect · v1.40.20 · Windows x64
 
 </div>
