@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.21** — Keep relay and Codex client usage observations in separate totals so the same call is not counted twice. The usage page names the selected accounting source and preserves both observations in the All history view.
+> **Current release · v1.40.22** — Align the reasoning and status columns in usage history; center the reasoning badge for clearer comparison with adjacent metrics.
 
 ## Product tour
 
@@ -37,7 +37,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.40.21
+### What is included in v1.40.22
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
@@ -139,18 +139,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Setup-1.40.21.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.22.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.22/Cherry-AI-Connect-Setup-1.40.22.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.21) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Setup-1.40.21.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Web-Demo-1.40.21.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.22) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.22/Cherry-AI-Connect-Setup-1.40.22.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.22/Cherry-AI-Connect-Web-Demo-1.40.22.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  0F1FB8AB1350FFCF6F42AD40C1D6A2E3BB58957667F72A406C333168FE9D36AA
+SHA-256  436E9C53A26646442E9763F69A870CCCFE609A5587B8DB4E76A025310F8AA535
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -231,6 +231,7 @@ npm run dist
 
 Verification scope:
 
+- v1.40.22: Aligns compact usage-history reasoning and status columns; centers the reasoning-level badge. TypeScript, renderer, and Windows x64 NSIS builds passed. No automated tests were added or run for this UI alignment correction.
 - v1.40.21: Usage totals now use one selected source while All history preserves both observations. Fourteen source-merge regressions and one gateway usage test passed; TypeScript, renderer, and Windows x64 NSIS builds passed.
 - v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
 

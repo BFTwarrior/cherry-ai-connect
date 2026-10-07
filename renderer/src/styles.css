@@ -884,6 +884,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .usage-record-metrics > div:first-child { padding-left: 0; border-left: 0; }
 .usage-record-metrics strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
 .reasoning-tag { display: inline-flex; padding: 5px 8px; border: 1px solid #856138; border-radius: 6px; background: #3c2c1c; color: #e7bd75; font-size: 10px; font-weight: 800; letter-spacing: .25px; }
+.record-reasoning { text-align: center; }
+.record-reasoning .reasoning-tag { justify-content: center; }
 .token-input { color: #cf9ef0 !important; }
 .token-output { color: #e4bb73 !important; }
 .token-cache { color: #c6bacb !important; }
@@ -1153,7 +1155,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .usage-records-list::-webkit-scrollbar-corner, .usage-records-list::-webkit-scrollbar-track { background: #242126; }
 .usage-records-list::-webkit-scrollbar-thumb { border: 2px solid #242126; border-radius: 10px; background: linear-gradient(90deg, #6c4a91, #8a693e); }
 .usage-records-list.mode-compact { display: block; }
-.mode-compact .usage-record-card { display: grid; min-width: 1470px; grid-template-columns: minmax(620px, .95fr) minmax(820px, 1.25fr); align-items: stretch; }
+/* The identity pane needs 672px for its five columns, gaps, padding, and divider.
+ * Keeping that intrinsic width prevents the status column from sliding under the token pane. */
+.mode-compact .usage-record-card { display: grid; min-width: 1492px; grid-template-columns: minmax(672px, .95fr) minmax(820px, 1.25fr); align-items: stretch; }
 .mode-compact .usage-record-identity { grid-template-columns: 118px 150px minmax(175px, 1fr) 92px 64px; align-items: center; gap: 11px; padding: 11px 14px; border-right: 1px solid #302d34; border-bottom: 0; }
 .mode-compact .usage-record-metrics { grid-template-columns: repeat(4, minmax(105px, 1fr)) repeat(2, minmax(112px, 1fr)); align-items: center; padding: 9px 14px; }
 .mode-compact .usage-record-identity small, .mode-compact .usage-record-metrics small { margin-bottom: 5px; font-size: 11px; }
