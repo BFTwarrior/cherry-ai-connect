@@ -16,7 +16,7 @@ test("release version, installer name, and isolated build output agree", () => {
   assert.equal(lock.version, pkg.version);
   assert.equal(lock.packages[""].version, pkg.version);
   assert.ok(fs.readFileSync(path.join(projectRoot, "gateway", "gateway.mjs"), "utf8").includes(`const gatewayVersion = "${pkg.version}"`));
-  assert.ok(fs.readFileSync(path.join(projectRoot, "renderer", "src", "App.tsx"), "utf8").includes(`const VERSION = "${pkg.version}"`));
+  assert.match(fs.readFileSync(path.join(projectRoot, "renderer", "src", "App.tsx"), "utf8"), /import \{ version as VERSION \} from "\.\.\/\.\.\/package\.json"/);
   assert.equal(pkg.build.win.artifactName, "Cherry-AI-Connect-Setup-${version}.${ext}");
   assert.equal(pkg.build.directories.output, "dist/current-build");
 });

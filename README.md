@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.20** — Fix stale pending-deletion markers that blocked built-in updates. New usage arriving after a successful sync stays pending and is preserved by the complete verified local backup before installation. The shared package version remains consistent across the sidebar and update card.
+> **Current release · v1.40.21** — Keep relay and Codex client usage observations in separate totals so the same call is not counted twice. The usage page names the selected accounting source and preserves both observations in the All history view.
 
 ## Product tour
 
@@ -32,18 +32,18 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
 <table>
   <tr>
     <td width="33%" align="center"><img src="docs/images/brand/product-overview.svg" alt="Cherry AI Connect local control plane" width="100%"><br><strong>Local control plane</strong><br><sub>Routes, client keys, compatible clients, and a protected local gateway.</sub></td>
-    <td width="33%" align="center"><img src="docs/images/brand/usage-intelligence.svg" alt="Usage analytics with relay and Codex Official sources" width="100%"><br><strong>Usage intelligence</strong><br><sub>Lifetime totals, trends, cache reads, request history, and separated sources.</sub></td>
+    <td width="33%" align="center"><img src="docs/images/brand/usage-intelligence.svg" alt="Usage analytics with relay and Codex local record sources" width="100%"><br><strong>Usage intelligence</strong><br><sub>Lifetime totals, trends, cache reads, request history, and separated sources.</sub></td>
     <td width="33%" align="center"><img src="docs/images/brand/private-sync-boundary.svg" alt="Private GitHub sync boundary" width="100%"><br><strong>Private sync boundary</strong><br><sub>Encrypted configuration, least-privilege GitHub access, and conflict recovery.</sub></td>
   </tr>
 </table>
 
-### What is included in v1.40.2
+### What is included in v1.40.21
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
 | Local gateway | Routes OpenAI-compatible requests across multiple upstream providers. | The default listener stays on `127.0.0.1`. |
 | Client Keys | Creates one key per route and generates safe import flows for Cherry Studio and CC Switch. | Decrypted upstream keys do not return to the renderer or logs. |
-| Usage analytics | Shows relay traffic and `Codex Official` usage with source, route, model, status, and history filters. | Relay and official Codex usage use separate ledgers and separate cache budgets. |
+| Usage analytics | Shows relay traffic and `Codex Local Records` usage with source, route, model, status, and history filters. | Relay and Codex local observations use separate accounting sources and separate cache budgets. |
 | Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
 | Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
 
@@ -96,13 +96,14 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 - Inspect cache hit rate and live request records.
 - Keep request details under a 50 MB local limit while preserving lifetime totals.
 - Browse historical request pages independently from the chart time range.
-- Keep `Codex Official` fixed immediately after `All routes` in the route filter; relay routes remain below it.
+- Keep `Codex Local Records` fixed immediately after `All routes` in the route filter; relay routes remain below it.
+- In the All view, choose one totals source (relay by default). Lifetime totals, period metrics and trends never add client observations to gateway observations. All history retains both sources and counts observation rows, which may overlap.
 
 ### Private sync and recovery
 
 - Sync encrypted route configuration to the user’s own private GitHub Release.
 - Keep usage/request metadata in a separate sync path so a vault failure does not hide local usage.
-- Relay usage is the current cloud-synced usage ledger. Codex Official usage is read from a separate local loopback service and remains separately named and separately budgeted; it is not included in relay records or cloud sync.
+- Relay usage is the current cloud-synced usage ledger. Codex Local Records are read from a separate local loopback service and remain separately named and separately budgeted; they are not included in relay records or cloud sync.
 - Resolve sync conflicts by choosing **Keep Local** or **Use Cloud** before credentials are requested.
 - Protect update recovery and data migration with version binding, one-time consumption, and fail-closed startup checks.
 
@@ -114,9 +115,9 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 ### Current Codex usage boundary
 
-The v1.40.3 build keeps `Codex Official` as a separate source and reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. The detail table now uses the helper's JSON export, where each row is one model request; it no longer displays the session's cumulative input as if it were one request. The adapter keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
+The local Codex adapter keeps `Codex Local Records` as a separate source (internal compatibility ID: `codex-official`) and reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. The detail table now uses the helper's JSON export, where each row is one model request; it no longer displays the session's cumulative input as if it were one request. The adapter keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
 
-“Official” is a product source label, not a replacement for OpenAI account usage. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
+This local feed records Codex client activity, including custom-provider calls; it cannot establish that a request used OpenAI directly. It is not OpenAI account billing. Existing records are retained without guessing duplicate pairs from timestamps and token counts. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
 
 ## The workflow
 
@@ -138,13 +139,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.20.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Setup-1.40.20.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.21.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Setup-1.40.21.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.20) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Setup-1.40.20.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.20/Cherry-AI-Connect-Web-Demo-1.40.20.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.21) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Setup-1.40.21.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.21/Cherry-AI-Connect-Web-Demo-1.40.21.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -230,6 +231,7 @@ npm run dist
 
 Verification scope:
 
+- v1.40.21: Usage totals now use one selected source while All history preserves both observations. Fourteen source-merge regressions and one gateway usage test passed; TypeScript, renderer, and Windows x64 NSIS builds passed.
 - v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
 
 - v1.40.19: TypeScript, renderer and Windows installer builds passed. The sidebar and update card take their version from package.json; the packaged renderer and application metadata both declare 1.40.19. No automated tests were added or run for this small display correction; installed-device update acceptance remains pending.
@@ -290,6 +292,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.20 · Windows x64
+Cherry AI Connect · v1.40.21 · Windows x64
 
 </div>

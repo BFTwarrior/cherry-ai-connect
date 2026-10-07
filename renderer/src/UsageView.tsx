@@ -27,6 +27,7 @@ type UsagePoint = Omit<UsageTotals, "cacheHitRate"> & { at: string };
 
 type UsageResponse = {
   source?: UsageSourceFilter;
+  totalsSource?: "official" | "relay";
   official?: { enabled: boolean; available: boolean; source: string; label: string; origin: string; checkedAt: string; status: string; errorCode?: string } | null;
   detailCache: { count: number; bytes: number; maxBytes: number; targetBytes: number; pageLimit: number; relayMaxBytes?: number; codexOfficialMaxBytes?: number };
   lifetime: UsageTotals;
@@ -81,8 +82,8 @@ const DEMO_USAGE: UsageResponse = (() => {
     const inputTokens = 42_000 + index * 8_000;
     const outputTokens = 4_200 + index * 600;
     return {
-      id: `demo-codex-session-${index + 1}`, at: new Date(base + (10 - index) * 2 * 60 * 60 * 1000).toISOString(), clientKeyName: "Codex Official",
-      providerId: "codex-official", providerName: "Codex Official", source: "codex-official", model: ["gpt-6-luna", "gpt-6-sol"][index], endpoint: "/local/codex/request", reasoningLevel: "—",
+      id: `demo-codex-session-${index + 1}`, at: new Date(base + (10 - index) * 2 * 60 * 60 * 1000).toISOString(), clientKeyName: "Codex Local Records",
+      providerId: "codex-official", providerName: "Codex Local Records", source: "codex-official", model: ["gpt-6-luna", "gpt-6-sol"][index], endpoint: "/local/codex/request", reasoningLevel: "—",
       status: null, durationMs: null, ttftMs: null, stream: null, inputTokens, outputTokens, totalTokens: inputTokens + outputTokens, cacheReadTokens: 18_000 + index * 2_000, cacheWriteTokens: 0, usageKind: "request",
     };
   });
@@ -94,13 +95,13 @@ const DEMO_USAGE: UsageResponse = (() => {
       : { ...point, requests: 0, errors: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 });
   const relayLifetime: UsageTotals = { requests: 432, errors: 9, inputTokens: 57_595_034, outputTokens: 103_339, totalTokens: 57_698_373, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: new Date(base - 30 * 86400000).toISOString(), lastRequestAt: series[series.length - 1]?.at };
   const relaySummary: UsageTotals = { requests: 48, errors: 1, inputTokens: 57_595_034, outputTokens: 10_817, totalTokens: 57_605_851, cacheReadTokens: 52_364_000, cacheWriteTokens: 0, cacheHitRate: 90.9, firstRequestAt: series[0].at, lastRequestAt: series[series.length - 1]?.at };
-  const officialLifetime = addDemoTotals(emptyTotals, { requests: 2, errors: 0, inputTokens: 92_000, outputTokens: 9_000, totalTokens: 101_000, cacheReadTokens: 38_000, cacheWriteTokens: 0, cacheHitRate: 0, firstRequestAt: officialRecords[1].at, lastRequestAt: officialRecords[0].at });
+  const officialLifetime: UsageTotals = { requests: 2, errors: 0, unknownRequests: 2, inputTokens: 92_000, outputTokens: 9_000, totalTokens: 101_000, cacheReadTokens: 38_000, cacheWriteTokens: 0, cacheHitRate: 38_000 / 92_000 * 100, firstRequestAt: officialRecords[1].at, lastRequestAt: officialRecords[0].at };
   return {
     detailCache: { count: combinedRecords.length, bytes: 12_845_312, maxBytes: 100 * 1024 * 1024, targetBytes: 90 * 1024 * 1024, pageLimit: 200, relayMaxBytes: 50 * 1024 * 1024, codexOfficialMaxBytes: 50 * 1024 * 1024 },
-    lifetime: addDemoTotals(relayLifetime, officialLifetime),
-    summary: addDemoTotals(relaySummary, officialLifetime),
-    source: "all", official: { enabled: true, available: true, source: "codex-official", label: "Codex Official", origin: "http://127.0.0.1:43189", checkedAt: "2026-09-19T02:05:00.000Z", status: "available" },
-    series: series.map((point, index) => addDemoPoints(point, officialSeries[index])), records: combinedRecords, recordPagination: { total: combinedRecords.length, offset: 0, limit: 200 }, filters: { providers: [{ id: "codex-official", name: "Codex Official" }, { id: "DEMO-NORTH", name: "北境中转（演示）" }, { id: "DEMO-AURORA", name: "极光线路（演示）" }, { id: "DEMO-LOAD", name: "本地压测线（演示）" }], models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "codex-auto-review"] }, range: "24h", updatedAt: "2026-09-19T02:05:00.000Z",
+    lifetime: relayLifetime,
+    summary: relaySummary,
+    totalsSource: "relay", source: "all", official: { enabled: true, available: true, source: "codex-official", label: "Codex Local Records", origin: "http://127.0.0.1:43189", checkedAt: "2026-09-19T02:05:00.000Z", status: "available" },
+    series, records: combinedRecords, recordPagination: { total: combinedRecords.length, offset: 0, limit: 200 }, filters: { providers: [{ id: "codex-official", name: "Codex Local Records" }, { id: "DEMO-NORTH", name: "北境中转（演示）" }, { id: "DEMO-AURORA", name: "极光线路（演示）" }, { id: "DEMO-LOAD", name: "本地压测线（演示）" }], models: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.5", "codex-auto-review"] }, range: "24h", updatedAt: "2026-09-19T02:05:00.000Z",
     demoSources: { relayLifetime, relaySummary, relaySeries: series, officialLifetime, officialSummary: officialLifetime, officialSeries },
   };
 })();
@@ -120,34 +121,6 @@ function dateTime(value: string, language: Language) {
 
 function megabytes(value: number | undefined) {
   return (Number(value || 0) / 1024 / 1024).toFixed(1);
-}
-
-// 中文：演示页按来源复用与真实接口相同的加法规则，只生成浏览器内存数据。
-// English: Demo data uses the same source-addition rules as the real endpoint and stays in memory.
-function addDemoTotals(left: UsageTotals, right: UsageTotals): UsageTotals {
-  const result: UsageTotals = { ...emptyTotals };
-  for (const key of ["requests", "errors", "inputTokens", "outputTokens", "totalTokens", "cacheReadTokens", "cacheWriteTokens"] as const) {
-    result[key] = Number(left[key] || 0) + Number(right[key] || 0);
-  }
-  result.firstRequestAt = [left.firstRequestAt, right.firstRequestAt].filter(Boolean).sort()[0];
-  result.lastRequestAt = [left.lastRequestAt, right.lastRequestAt].filter(Boolean).sort().at(-1);
-  result.cacheHitRate = result.inputTokens ? Math.min(100, (result.cacheReadTokens / result.inputTokens) * 100) : 0;
-  return result;
-}
-
-// 中文：演示趋势按时间点叠加官方与中转站，不改变真实网关数据。
-// English: Demo trend points add official and relay values by timestamp without touching gateway data.
-function addDemoPoints(left: UsagePoint, right: UsagePoint): UsagePoint {
-  return {
-    at: left.at,
-    requests: left.requests + right.requests,
-    errors: left.errors + right.errors,
-    inputTokens: left.inputTokens + right.inputTokens,
-    outputTokens: left.outputTokens + right.outputTokens,
-    totalTokens: left.totalTokens + right.totalTokens,
-    cacheReadTokens: left.cacheReadTokens + right.cacheReadTokens,
-    cacheWriteTokens: left.cacheWriteTokens + right.cacheWriteTokens,
-  };
 }
 
 function TinyIcon({ name }: { name: "pulse" | "tokens" | "input" | "output" | "cache" | "request" | "refresh" }) {
@@ -243,6 +216,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const [range, setRange] = useState<RangeKey>("24h");
   const [sourceFilter, setSourceFilter] = useState<UsageSourceFilter>("all");
+  const [totalsSource, setTotalsSource] = useState<"official" | "relay">("relay");
   const [providerId, setProviderId] = useState("");
   const [model, setModel] = useState("");
   const [status, setStatus] = useState("all");
@@ -283,19 +257,21 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     if (!silent) setLoading(true);
     try {
       if (demo) {
-        const demoRecords = DEMO_USAGE.records.filter((record) => sourceFilter === "all" || (sourceFilter === "official" ? record.source === "codex-official" : record.source !== "codex-official"));
+        const demoRecords = DEMO_USAGE.records.filter((record) =>
+          (sourceFilter === "all" || (sourceFilter === "official" ? record.source === "codex-official" : record.source !== "codex-official"))
+          && (!providerId || record.providerId === providerId));
         const sourceData = DEMO_USAGE.demoSources;
-        const selectedSource = sourceFilter === "official"
+        const selectedTotalsSource = sourceFilter === "official" || providerId === "codex-official" ? "official"
+          : sourceFilter === "relay" || providerId ? "relay" : totalsSource;
+        const selectedSource = selectedTotalsSource === "official"
           ? { lifetime: sourceData?.officialLifetime || DEMO_USAGE.lifetime, summary: sourceData?.officialSummary || DEMO_USAGE.summary, series: sourceData?.officialSeries || DEMO_USAGE.series }
-          : sourceFilter === "relay"
-            ? { lifetime: sourceData?.relayLifetime || DEMO_USAGE.lifetime, summary: sourceData?.relaySummary || DEMO_USAGE.summary, series: sourceData?.relaySeries || DEMO_USAGE.series }
-            : { lifetime: DEMO_USAGE.lifetime, summary: DEMO_USAGE.summary, series: DEMO_USAGE.series };
+          : { lifetime: sourceData?.relayLifetime || DEMO_USAGE.lifetime, summary: sourceData?.relaySummary || DEMO_USAGE.summary, series: sourceData?.relaySeries || DEMO_USAGE.series };
         if (usageRequest.current.sequence !== sequence) return;
-        setData({ ...DEMO_USAGE, ...selectedSource, source: sourceFilter, range, records: demoRecords, recordPagination: { total: demoRecords.length, offset: 0, limit: 200 } });
+        setData({ ...DEMO_USAGE, ...selectedSource, totalsSource: selectedTotalsSource, source: sourceFilter, range, records: demoRecords, recordPagination: { total: demoRecords.length, offset: 0, limit: 200 } });
         setError("");
         return;
       }
-      const query = new URLSearchParams({ range, limit: "200", recordsOffset: String(recordsOffset), status, source: sourceFilter });
+      const query = new URLSearchParams({ range, limit: "200", recordsOffset: String(recordsOffset), status, source: sourceFilter, totalsSource });
       if (providerId) query.set("providerId", providerId);
       if (model) query.set("model", model);
       const response = await fetch(`${gatewayOrigin}/admin/api/usage?${query}`, { cache: "no-store", signal: controller.signal });
@@ -314,7 +290,7 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
         if (!silent) setLoading(false);
       }
     }
-  }, [demo, gatewayOrigin, model, providerId, range, recordsOffset, sourceFilter, status]);
+  }, [demo, gatewayOrigin, model, providerId, range, recordsOffset, sourceFilter, status, totalsSource]);
 
   useEffect(() => { void loadUsage(); }, [loadUsage]);
   useEffect(() => {
@@ -338,27 +314,36 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
     const official = providers.find((provider) => provider.id === "codex-official");
     const relay = providers.filter((provider) => provider.id !== "codex-official");
     // 中文：双重保证官方 Codex 固定在“全部线路”后第一项；后端排序变化也不能影响界面。
-    // English: Keep Codex Official immediately after “All routes” even if backend ordering changes.
+    // English: Keep Codex Local Records immediately after “All routes” even if backend ordering changes.
     return [
-      ...(official ? [{ value: official.id, label: official.name }] : []),
+      ...(official ? [{ value: official.id, label: tr("Codex 本地记录", "Codex Local Records") }] : []),
       ...relay.map((provider) => ({ value: provider.id, label: provider.name })),
     ];
-  }, [data]);
+  }, [data, tr]);
+
+  const accountingLabel = data?.totalsSource === "official" ? tr("Codex 本地记录", "Codex Local Records") : tr("中转站", "Relay Stations");
 
   const officialAvailable = data?.official?.available === true;
   const officialStateText = sourceFilter === "relay"
     ? tr("当前仅显示中转站", "Relay-only view")
     : officialAvailable
-      ? tr("Codex 官方已连接 · 每 5 秒更新", "Codex Official connected · updates every 5s")
+      ? tr("Codex 本地统计已连接 · 每 5 秒更新", "Codex local usage connected · updates every 5s")
       : data?.official?.errorCode
-        ? tr("Codex 官方统计读取失败 · 每 5 秒重试", "Codex Official read failed · retrying every 5s")
-        : tr("Codex 官方等待本机服务 · 每 5 秒检查", "Codex Official waiting for local service · checks every 5s");
+        ? tr("Codex 本地统计读取失败 · 每 5 秒重试", "Codex local usage read failed · retrying every 5s")
+        : tr("Codex 本地统计等待服务 · 每 5 秒检查", "Codex local usage waiting for service · checks every 5s");
   return <section className="page-view usage-view">
-    <div className="page-intro"><div><div className="section-kicker">{tr("使用统计", "USAGE ANALYTICS")}</div><p>{tr("实时记录本地连接服务与正版 Codex 的使用情况；不记录聊天正文和密钥。", "Live local relay and official Codex usage without storing prompts, responses, or secrets.")}</p></div><div className="usage-live"><span className={`status-dot ${officialAvailable ? "" : "is-muted"}`} />{officialStateText}</div></div>
+    <div className="page-intro"><div><div className="section-kicker">{tr("使用统计", "USAGE ANALYTICS")}</div><p>{tr("分别查看中转站用量与 Codex 本地记录；不记录聊天正文和密钥。", "View relay usage and Codex local records separately, without storing prompts, responses, or secrets.")}</p></div><div className="usage-live"><span className={`status-dot ${officialAvailable ? "" : "is-muted"}`} />{officialStateText}</div></div>
+
+    {sourceFilter === "all" && !providerId && <div className="usage-toolbar usage-accounting-toolbar">
+      <div className="usage-accounting-choice"><span>{tr("汇总来源", "Totals source")}</span><div className="usage-source-tabs" role="group" aria-label={tr("汇总来源", "Totals source")}>
+        <button type="button" aria-pressed={totalsSource === "relay"} className={totalsSource === "relay" ? "active" : ""} onClick={() => setTotalsSource("relay")}>{tr("中转站", "Relay Stations")}</button>
+        <button type="button" aria-pressed={totalsSource === "official"} className={totalsSource === "official" ? "active" : ""} onClick={() => setTotalsSource("official")}>{tr("Codex 本地记录", "Codex Local Records")}</button>
+      </div></div><small>{tr("同一次调用可能被两边记录，累计、用量卡片和趋势只统计所选来源。", "Both sources may observe one call. Totals, metrics and trends use only the selected source.")}</small>
+    </div>}
 
     <article className="lifetime-card">
       <div className="lifetime-icon"><TinyIcon name="tokens" /></div>
-      <div className="lifetime-main"><span>{tr("永久累计使用量", "LIFETIME USAGE")}</span><strong>{number(lifetime.totalTokens, language)}</strong><small>{tr("Token 总数 · 没有时间限制，不随明细保留策略而归零", "Total tokens · no time limit; never reset by detail-retention rules")}</small></div>
+      <div className="lifetime-main"><span>{tr("永久累计使用量", "LIFETIME USAGE")} · {accountingLabel}</span><strong>{number(lifetime.totalTokens, language)}</strong><small>{tr("Token 总数 · 没有时间限制，不随明细保留策略而归零", "Total tokens · no time limit; never reset by detail-retention rules")}</small></div>
       <div className="lifetime-details"><div className="lifetime-breakdown">
         <div><small>{tr("累计请求", "Requests")}</small><strong>{number(lifetime.requests, language)}</strong></div>
         <div title={tr(`累计输入（不含缓存读取）：${number(inputExcludingCacheReads(lifetime), language)}`, `Lifetime input (excluding cache reads): ${number(inputExcludingCacheReads(lifetime), language)}`)}><small>{tr("累计输入", "Input")}</small><strong>{compactNumber(inputExcludingCacheReads(lifetime), language)}</strong></div>
@@ -388,10 +373,11 @@ export function UsageView({ language, gatewayOrigin, demo = false }: { language:
       <article><span className="summary-icon teal"><TinyIcon name="request" /></span><div><small>{tr("请求", "Requests")}</small><strong>{number(summary.requests, language)}</strong><em>{successRate === null ? tr("状态未知", "Status unknown") : `${successRate.toFixed(1)}% ${tr("成功", "successful")}`}</em></div></article>
     </div>
 
-    <article className="usage-panel chart-panel"><header><div><span>{tr("使用趋势", "USAGE TREND")}</span><h3>{selectedLabel}</h3></div><small>{tr("悬停折线查看具体时间点", "Hover the lines for exact values")}</small></header>{loading && !data ? <div className="usage-loading">{tr("正在读取统计…", "Loading analytics…")}</div> : data?.series.length ? <UsageChart points={data.series} language={language} range={range} /> : <div className="usage-loading">{tr("该时间范围暂无请求", "No requests in this period")}</div>}</article>
+    <article className="usage-panel chart-panel"><header><div><span>{tr("使用趋势", "USAGE TREND")}</span><h3>{selectedLabel} · {accountingLabel}</h3></div><small>{tr("悬停折线查看具体时间点", "Hover the lines for exact values")}</small></header>{loading && !data ? <div className="usage-loading">{tr("正在读取统计…", "Loading analytics…")}</div> : data?.series.length ? <UsageChart points={data.series} language={language} range={range} /> : <div className="usage-loading">{tr("该时间范围暂无请求", "No requests in this period")}</div>}</article>
 
     <article className="usage-panel records-panel">
-      <header><div><span>{tr("历史请求记录", "REQUEST HISTORY")}</span><h3>{tr(`第 ${recordStart}–${recordEnd} 条，共 ${recordPage.total} 条`, `Records ${recordStart}–${recordEnd} of ${recordPage.total}`)}</h3></div><div className="records-header-actions"><div className="usage-source-tabs" role="tablist" aria-label={tr("统计来源", "Usage source")}><button type="button" role="tab" aria-selected={sourceFilter === "all"} className={sourceFilter === "all" ? "active" : ""} onClick={() => changeSource("all")}>{tr("全部", "All")}</button><button type="button" role="tab" aria-selected={sourceFilter === "official"} className={sourceFilter === "official" ? "active" : ""} onClick={() => changeSource("official")}>{tr("Codex 官方", "Codex Official")}</button><button type="button" role="tab" aria-selected={sourceFilter === "relay"} className={sourceFilter === "relay" ? "active" : ""} onClick={() => changeSource("relay")}>{tr("中转站", "Relay Stations")}</button></div><div className="record-density-toggle" role="group" aria-label={tr("请求记录显示方式", "Request record layout")}><button type="button" className={recordDensity === "compact" ? "active" : ""} onClick={() => changeRecordDensity("compact")}>{tr("单行", "Single line")}</button><button type="button" className={recordDensity === "detailed" ? "active" : ""} onClick={() => changeRecordDensity("detailed")}>{tr("双行", "Two lines")}</button></div><small>{tr(`中转 ${megabytes(data?.detailCache.relayMaxBytes || 50 * 1024 * 1024)} MB + Codex 官方 ${megabytes(data?.detailCache.codexOfficialMaxBytes || 50 * 1024 * 1024)} MB`, `Relay ${megabytes(data?.detailCache.relayMaxBytes || 50 * 1024 * 1024)} MB + Codex Official ${megabytes(data?.detailCache.codexOfficialMaxBytes || 50 * 1024 * 1024)} MB`)}</small></div></header>
+      <header><div><span>{sourceFilter === "all" ? tr("两侧采集记录", "SOURCE OBSERVATIONS") : tr("历史请求记录", "REQUEST HISTORY")}</span><h3>{tr(`第 ${recordStart}–${recordEnd} 条，共 ${recordPage.total} 条`, `Records ${recordStart}–${recordEnd} of ${recordPage.total}`)}</h3></div><div className="records-header-actions"><div className="usage-source-tabs" role="tablist" aria-label={tr("统计来源", "Usage source")}><button type="button" role="tab" aria-selected={sourceFilter === "all"} className={sourceFilter === "all" ? "active" : ""} onClick={() => changeSource("all")}>{tr("全部", "All")}</button><button type="button" role="tab" aria-selected={sourceFilter === "official"} className={sourceFilter === "official" ? "active" : ""} onClick={() => changeSource("official")}>{tr("Codex 本地记录", "Codex Local Records")}</button><button type="button" role="tab" aria-selected={sourceFilter === "relay"} className={sourceFilter === "relay" ? "active" : ""} onClick={() => changeSource("relay")}>{tr("中转站", "Relay Stations")}</button></div><div className="record-density-toggle" role="group" aria-label={tr("请求记录显示方式", "Request record layout")}><button type="button" className={recordDensity === "compact" ? "active" : ""} onClick={() => changeRecordDensity("compact")}>{tr("单行", "Single line")}</button><button type="button" className={recordDensity === "detailed" ? "active" : ""} onClick={() => changeRecordDensity("detailed")}>{tr("双行", "Two lines")}</button></div><small>{tr(`中转 ${megabytes(data?.detailCache.relayMaxBytes || 50 * 1024 * 1024)} MB + Codex 本地记录 ${megabytes(data?.detailCache.codexOfficialMaxBytes || 50 * 1024 * 1024)} MB`, `Relay ${megabytes(data?.detailCache.relayMaxBytes || 50 * 1024 * 1024)} MB + Codex Local Records ${megabytes(data?.detailCache.codexOfficialMaxBytes || 50 * 1024 * 1024)} MB`)}</small></div></header>
+      {sourceFilter === "all" && !providerId && <div className="usage-observation-note">{tr("这里保留两侧采集记录，可能包含同一次调用的两条记录；条数不代表独立请求数。", "Both source observations are retained. Two rows may describe one call; this row count is not a unique request count.")}</div>}
       <UsageRecordsTable records={data?.records || []} language={language} density={recordDensity} />
       {recordPage.total > recordPage.limit && <nav className="usage-record-pagination" aria-label={tr("历史记录分页", "History pages")}><button type="button" disabled={recordPage.offset === 0 || loading} onClick={() => setRecordsOffset(Math.max(0, recordPage.offset - recordPage.limit))}>{tr("较新记录", "Newer")}</button><span>{recordStart}–{recordEnd} / {recordPage.total}</span><button type="button" disabled={recordPage.offset + recordPage.limit >= recordPage.total || loading} onClick={() => setRecordsOffset(recordPage.offset + recordPage.limit)}>{tr("更早记录", "Older")}</button></nav>}
     </article>

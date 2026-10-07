@@ -7,6 +7,12 @@
 /* Usage analytics: content-first, restrained and static. */
 .usage-view { --usage-gold: #d9b968; --usage-purple: #9470b8; }
 
+.usage-view .usage-accounting-toolbar { flex-wrap: wrap; gap: 10px 20px; }
+.usage-view .usage-accounting-choice { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.usage-view .usage-accounting-choice > span { color: var(--usage-gold); font-size: 11px; }
+.usage-view .usage-accounting-toolbar > small { color: #9991a4; font-size: 11px; line-height: 1.5; }
+.usage-view .usage-observation-note { padding: 10px 18px; color: #9991a4; font-size: 11px; line-height: 1.5; border-bottom: 1px solid rgba(148, 112, 184, .2); }
+
 /* Keep each metric label and value on shared rows when another metric has a note. */
 .usage-view .usage-record-metrics > div { align-self: start; }
 

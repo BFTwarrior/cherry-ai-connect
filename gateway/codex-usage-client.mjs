@@ -10,8 +10,10 @@
  */
 
 export const CODEX_OFFICIAL_SOURCE = "codex-official";
-export const CODEX_OFFICIAL_LABEL_ZH = "Codex 官方";
-export const CODEX_OFFICIAL_LABEL_EN = "Codex Official";
+// This feed measures the Codex client, including calls routed through custom providers.
+// Keep the internal source ID for compatibility, but do not label it as official billing.
+export const CODEX_OFFICIAL_LABEL_ZH = "Codex 本地记录";
+export const CODEX_OFFICIAL_LABEL_EN = "Codex Local Records";
 export const CODEX_OFFICIAL_CACHE_MAX_BYTES = 50 * 1024 * 1024;
 export const CODEX_OFFICIAL_CACHE_TARGET_BYTES = 45 * 1024 * 1024;
 export const CODEX_OFFICIAL_MAX_RECORD_FETCH = 5000;
@@ -357,25 +359,6 @@ function emptySnapshot(url, source = "relay") {
   return { source, official: null, detailCache: { count: 0, bytes: 0, maxBytes: 50 * 1024 * 1024, targetBytes: 45 * 1024 * 1024, pageLimit: 0 }, lifetime: emptyTotals(), summary: emptyTotals(), series: [], records: [], recordPagination: { total: 0, offset: 0, limit: 0 }, filters: { providers: [], models: [] }, range, updatedAt: new Date().toISOString() };
 }
 
-function addTotals(left, right) {
-  const result = { ...emptyTotals() };
-  for (const key of ["requests", "errors", "unknownRequests", "inputTokens", "outputTokens", "totalTokens", "cacheReadTokens", "cacheWriteTokens"]) result[key] = boundedNumber(left?.[key]) + boundedNumber(right?.[key]);
-  result.firstRequestAt = [left?.firstRequestAt, right?.firstRequestAt].filter(Boolean).sort()[0] || "";
-  result.lastRequestAt = [left?.lastRequestAt, right?.lastRequestAt].filter(Boolean).sort().at(-1) || "";
-  result.cacheHitRate = result.inputTokens ? Math.min(100, (result.cacheReadTokens / result.inputTokens) * 100) : 0;
-  return result;
-}
-
-function mergeSeries(left = [], right = []) {
-  const values = new Map();
-  for (const point of [...left, ...right]) {
-    const current = values.get(point.at) || { at: point.at, ...emptyTotals() };
-    values.set(point.at, addTotals(current, point));
-    values.get(point.at).at = point.at;
-  }
-  return [...values.values()].sort((a, b) => String(a.at).localeCompare(String(b.at))).map((point) => ({ ...point, cacheHitRate: undefined }));
-}
-
 function uniqueOptions(items) {
   const map = new Map();
   for (const item of items || []) if (item?.id) map.set(String(item.id), { id: String(item.id), name: text(item.name || item.id) });
@@ -398,6 +381,12 @@ export function combineUsageSnapshots(relay, official, url) {
   const wantsRelay = sourceFilter !== "official" && providerId !== CODEX_OFFICIAL_SOURCE;
   const relayValue = wantsRelay ? relay : emptySnapshot(url, "relay");
   const officialValue = wantsOfficial ? official : emptySnapshot(url, CODEX_OFFICIAL_SOURCE);
+  // Client observations and gateway observations can describe the same call. Their IDs
+  // are unrelated, so neither additive totals nor token/time-based deduplication is safe.
+  // All-source history retains both observations; every metric has one explicit source.
+  const totalsSource = !wantsRelay ? "official" : !wantsOfficial ? "relay"
+    : queryValue(url, "totalsSource", "relay") === "official" ? "official" : "relay";
+  const totalsValue = totalsSource === "official" ? officialValue : relayValue;
   const requestedOffset = Math.max(0, Math.min(1_000_000, Number(queryValue(url, "recordsOffset", "0")) || 0));
   const requestedLimit = Math.min(CODEX_OFFICIAL_MAX_RECORD_FETCH, Math.max(1, Number(queryValue(url, "limit", "100")) || 100));
   const records = [...(relayValue.records || []), ...(officialValue.records || [])].sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(right.id).localeCompare(String(left.id)));
@@ -432,13 +421,14 @@ export function combineUsageSnapshots(relay, official, url) {
   };
   return {
     source: sourceFilter,
+    totalsSource,
     // Keep source health in the response when that source was requested; relay-only queries do
     // not contact the optional official service just to render a global status badge.
     official: official?.official || officialValue.official || null,
     detailCache,
-    lifetime: addTotals(relayValue.lifetime, officialValue.lifetime),
-    summary: addTotals(relayValue.summary, officialValue.summary),
-    series: mergeSeries(relayValue.series, officialValue.series),
+    lifetime: totalsValue.lifetime,
+    summary: totalsValue.summary,
+    series: totalsValue.series,
     // For the combined view both sources are fetched from offset zero, then one global
     // time-ordered page is selected. This prevents an offset from being applied twice
     // independently and losing records when relay and official streams are interleaved.

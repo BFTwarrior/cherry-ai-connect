@@ -158,7 +158,7 @@ test("an unavailable official service is reported without disabling the source",
   assert.equal(value.records.length, 0);
 });
 
-test("all-source merge sums relay and official totals without putting official records in relay data", () => {
+test("all-source history retains observations but totals default to the relay source", () => {
   const relay = relaySnapshot();
   const official = {
     source: CODEX_OFFICIAL_SOURCE,
@@ -173,13 +173,75 @@ test("all-source merge sums relay and official totals without putting official r
     range: "24h",
   };
   const value = combineUsageSnapshots(relay, official, new URL("http://gateway.test/admin/api/usage?range=24h&source=all&limit=20"));
-  assert.equal(value.summary.totalTokens, 132);
-  assert.equal(value.lifetime.totalTokens, 132);
+  assert.equal(value.totalsSource, "relay");
+  assert.deepEqual(value.summary, relay.summary);
+  assert.deepEqual(value.lifetime, relay.lifetime);
+  assert.deepEqual(value.series, relay.series);
+  const localTotals = combineUsageSnapshots(relay, official, new URL("http://gateway.test/admin/api/usage?source=all&totalsSource=official"));
+  assert.equal(localTotals.totalsSource, "official");
+  assert.deepEqual(localTotals.summary, official.summary);
+  assert.deepEqual(localTotals.lifetime, official.lifetime);
+  assert.deepEqual(localTotals.series, official.series);
+  assert.deepEqual(localTotals.records, value.records);
   assert.equal(value.detailCache.relayMaxBytes, 50 * 1024 * 1024);
   assert.equal(value.detailCache.codexOfficialMaxBytes, CODEX_OFFICIAL_CACHE_MAX_BYTES);
   assert.deepEqual(new Set(value.records.map((item) => item.source)), new Set(["relay", CODEX_OFFICIAL_SOURCE]));
   assert.equal(value.filters.providers[0].id, CODEX_OFFICIAL_SOURCE, "Codex Official stays first after All routes");
   assert.ok(value.filters.providers.some((item) => item.id === CODEX_OFFICIAL_SOURCE));
+});
+
+test("matching client and gateway observations never double accounting or erase history", () => {
+  const relay = relaySnapshot();
+  const local = {
+    ...structuredClone(relay), source: CODEX_OFFICIAL_SOURCE,
+    records: relay.records.map((row) => ({ ...row, id: "client-unrelated-id", source: CODEX_OFFICIAL_SOURCE, providerId: CODEX_OFFICIAL_SOURCE, status: null })),
+  };
+  const before = structuredClone({ relay, local });
+  const value = combineUsageSnapshots(relay, local, new URL("http://gateway.test/admin/api/usage?source=all"));
+  assert.equal(value.summary.requests, 1);
+  assert.equal(value.summary.totalTokens, 12);
+  assert.equal(value.lifetime.totalTokens, 12);
+  assert.equal(value.summary.cacheReadTokens, 4);
+  assert.equal(value.series[0].totalTokens, 12);
+  assert.equal(value.recordPagination.total, 2);
+  assert.deepEqual(new Set(value.records.map((row) => row.id)), new Set(["relay-1", "client-unrelated-id"]));
+  assert.deepEqual({ relay, local }, before, "neither source's counters or raw records are mutated");
+});
+
+test("source and route filters override the independent all-source totals choice", () => {
+  const relay = relaySnapshot();
+  const local = structuredClone(relay);
+  local.summary.totalTokens = 120;
+  local.summary.unknownRequests = 1;
+  local.summary.cacheWriteTokens = 5;
+  for (const [query, expectedSource, expectedTokens] of [
+    ["source=relay&totalsSource=official", "relay", 12],
+    ["source=official&totalsSource=relay", "official", 120],
+    ["source=all&providerId=route-a&totalsSource=official", "relay", 12],
+    ["source=all&providerId=codex-official&totalsSource=relay", "official", 120],
+    ["source=all&totalsSource=invalid", "relay", 12],
+  ]) {
+    const value = combineUsageSnapshots(relay, local, new URL(`http://gateway.test/admin/api/usage?${query}`));
+    assert.equal(value.totalsSource, expectedSource, query);
+    assert.equal(value.summary.totalTokens, expectedTokens, query);
+    assert.deepEqual(value.summary, expectedSource === "relay" ? relay.summary : local.summary, query);
+  }
+});
+
+test("an empty relay ledger does not silently adopt client usage", () => {
+  const relay = relaySnapshot();
+  relay.lifetime = { ...relay.lifetime, requests: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheReadTokens: 0 };
+  relay.summary = { ...relay.lifetime };
+  relay.series = [];
+  relay.records = [];
+  relay.recordPagination.total = 0;
+  const local = relaySnapshot();
+  const value = combineUsageSnapshots(relay, local, new URL("http://gateway.test/admin/api/usage?source=all"));
+  assert.equal(value.totalsSource, "relay");
+  assert.equal(value.lifetime.totalTokens, 0);
+  assert.equal(value.summary.requests, 0);
+  assert.deepEqual(value.series, []);
+  assert.equal(value.records.length, 1);
 });
 
 // 中文：分页必须在两类来源合并后按全局时间顺序计算，不能分别 offset 后再拼接。
