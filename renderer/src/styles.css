@@ -430,11 +430,18 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .group-summary { display: flex; align-items: center; gap: 11px; margin-left: auto; color: #8b828e; font-size: 10px; white-space: nowrap; }
 .icon-text-button { padding: 5px 4px; color: #b79ade; font-size: 10px; }
 .model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 12px; }
-.model-item { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid #302c39; border-radius: 8px; background: #191820; }
+.model-item { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #302c39; border-radius: 8px; background: #191820; color: inherit; font: inherit; text-align: left; cursor: pointer; position: relative; overflow: hidden; }
 .model-item:hover { border-color: #5c447b; background: #211c29; }
+.model-item:focus-visible { outline: 2px solid #c59bff; outline-offset: 2px; }
+.model-item:disabled { cursor: progress; }
+.model-item.is-disabled { border-color: rgb(139 62 75 / 65%) !important; background-color: rgb(39 22 30 / 92%) !important; }
+.model-item.is-disabled code { color: #a998a7; }
+.model-item.is-disabled .model-mark { filter: grayscale(.55); opacity: .7; }
+.model-ready { display: inline-flex; align-items: center; gap: 7px; margin-left: auto; flex: 0 0 auto; }
+.model-ready .status-dot.is-disabled { background: #f16b7b; box-shadow: 0 0 8px rgb(241 107 123 / 72%); }
+.model-toggle-busy { color: #a997b5; font-size: 9px; }
 .model-item code { min-width: 0; overflow: hidden; color: #d2c5e0; font: 11px Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .model-mark { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 7px; background: #2c2140; color: #b697e6; }
-.model-ready { margin-left: auto; }
 .model-ready .status-dot { width: 5px; height: 5px; }
 .inline-empty { padding: 14px; color: #79717f; font-size: 11px; }
 
@@ -559,9 +566,11 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .toast { position: fixed; z-index: 30; right: 25px; bottom: 22px; display: flex; align-items: center; gap: 9px; max-width: min(430px, calc(100vw - 50px)); padding: 11px 14px; border: 1px solid #5b3f80; border-radius: 9px; background: #291e3b; color: #eee6f5; box-shadow: var(--shadow); font-size: 11px; animation: toast-in .2s ease-out; }
 .toast-success { border-color: #3d7c67; background: #1d3b31; }
 .toast-error { border-color: #7d4053; background: #3d222d; }
+.toast-danger { border-color: #a34c64; background: #3d202b; color: #ffe8ed; }
 .toast-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--purple-bright); }
 .toast-success .toast-dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
 .toast-error .toast-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
+.toast-danger .toast-dot { background: var(--red); box-shadow: 0 0 8px var(--red); }
 @keyframes gateway-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .42; } }
 @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes confirm-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -884,7 +893,8 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .usage-record-metrics > div:first-child { padding-left: 0; border-left: 0; }
 .usage-record-metrics strong { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
 .reasoning-tag { display: inline-flex; padding: 5px 8px; border: 1px solid #856138; border-radius: 6px; background: #3c2c1c; color: #e7bd75; font-size: 10px; font-weight: 800; letter-spacing: .25px; }
-.record-reasoning { text-align: center; }
+.record-reasoning,
+.record-status { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .record-reasoning .reasoning-tag { justify-content: center; }
 .token-input { color: #cf9ef0 !important; }
 .token-output { color: #e4bb73 !important; }
@@ -2790,7 +2800,9 @@ select:focus-visible { outline-color: var(--gold); }
  * English: Keep open filter menus above the following summary cards instead of letting the
  * later analytics section paint over the lower options. */
 .usage-view .usage-toolbar {
-  z-index: 30;
+  /* Keep the whole toolbar below the sticky app header; its isolated stacking
+   * context still sits above the following summary panels for open menus. */
+  z-index: 2;
   overflow: visible;
 }
 .usage-view .usage-filters,
@@ -5808,6 +5820,7 @@ select:focus-visible { outline-color: var(--gold); }
 
 .model-item code { color: #dcd0e9; }
 .model-item .model-ready .status-dot { box-shadow: 0 0 8px rgb(85 216 167 / 72%); }
+.model-item .model-ready .status-dot.is-disabled { background: #f16b7b; box-shadow: 0 0 8px rgb(241 107 123 / 72%); }
 
 /* 中文：可点击图标按钮的扫掠层统一提高可见度；展示图标不添加交互光效。
  * English: Increase sweep visibility consistently on clickable icon controls; display
@@ -6252,6 +6265,13 @@ select:focus-visible { outline-color: var(--gold); }
   border-color: rgb(169 113 242 / 74%) !important;
   background-color: rgb(28 19 43 / 96%) !important;
   box-shadow: inset 0 1px rgb(225 195 255 / 16%), 0 8px 18px rgb(80 45 133 / 18%) !important;
+}
+
+.model-item.is-disabled,
+.model-item.is-disabled:hover {
+  border-color: rgb(176 76 97 / 75%) !important;
+  background-image: linear-gradient(112deg, #21151d 0%, #301b28 48%, #21151d 100%) !important;
+  box-shadow: inset 0 1px rgb(255 196 208 / 8%), 0 6px 15px rgb(0 0 0 / 14%) !important;
 }
 
 .model-item .model-mark {

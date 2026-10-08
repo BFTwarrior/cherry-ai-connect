@@ -167,6 +167,7 @@ export default function App() {
   const [testingKeyId, setTestingKeyId] = useState<string | null>(null);
   const [modelFilter, setModelFilter] = useState("all");
   const [modelQuery, setModelQuery] = useState("");
+  const [modelToggleKey, setModelToggleKey] = useState<string | null>(null);
   // 中文：模型分组的折叠状态属于纯界面偏好，保存在本机，不参与云同步。
   // English: Model-group collapse state is a local UI preference and never enters cloud sync.
   const [collapsedModelGroups, setCollapsedModelGroups] = useState<Set<string>>(() => {
@@ -429,6 +430,40 @@ export default function App() {
       throw error;
     } finally {
       setSyncing(null);
+    }
+  };
+
+  const toggleModel = async (provider: Provider, model: string) => {
+    const enabled = (provider.disabledModels || []).includes(model);
+    const key = `${provider.id}:${model}`;
+    if (modelToggleKey) return;
+    setModelToggleKey(key);
+    try {
+      if (DEMO_MODE) {
+        await new Promise((resolve) => window.setTimeout(resolve, 180));
+        setProviders((current) => current.map((item) => {
+          if (item.id !== provider.id) return item;
+          const disabled = new Set(item.disabledModels || []);
+          if (enabled) disabled.delete(model);
+          else disabled.add(model);
+          return { ...item, disabledModels: [...disabled] };
+        }));
+      } else {
+        const result = await request<{ provider: Provider }>(`/admin/api/providers/${encodeURIComponent(provider.id)}/model-state`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ model, enabled }),
+        });
+        setProviders((current) => current.map((item) => item.id === provider.id ? result.provider : item));
+      }
+      showToast(
+        enabled ? tr(`已启用模型：${model}`, `Enabled model: ${model}`) : tr(`已停用模型：${model}`, `Disabled model: ${model}`),
+        enabled ? "success" : "danger",
+      );
+    } catch (error) {
+      showToast(tr(`切换模型状态失败：${error instanceof Error ? error.message : String(error)}`, `Could not change model state: ${error instanceof Error ? error.message : String(error)}`), "error");
+    } finally {
+      setModelToggleKey(null);
     }
   };
 
@@ -1005,7 +1040,13 @@ export default function App() {
             <div className="group-identity"><RouteAvatar provider={provider} /><div><strong>{provider.name || provider.id}</strong><code>{provider.id}</code></div></div>
             <div className="group-summary"><span>{models.length} {tr("个匹配模型", "matching models")}</span><button className="icon-text-button" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id}><Icon name="refresh" size={13} />{tr("刷新", "Refresh")}</button></div>
           </header>
-          {!collapsed && (models.length ? <div className="model-grid">{models.map((model) => <article className="model-item" key={`${provider.id}:${model}`}><span className="model-mark"><Icon name="layers" size={14} /></span><code title={model}>{model}</code><span className="model-ready"><span className="status-dot" /></span></article>)}</div> : <div className="inline-empty">{tr("没有匹配模型；尝试清空搜索词，或先同步线路。", "No matching models. Clear the search or sync this route.")}</div>)}
+          {!collapsed && (models.length ? <div className="model-grid">{models.map((model) => {
+            const disabled = (provider.disabledModels || []).includes(model);
+            const busy = modelToggleKey === `${provider.id}:${model}`;
+            return <button type="button" className={`model-item ${disabled ? "is-disabled" : ""}`} key={`${provider.id}:${model}`} onClick={() => void toggleModel(provider, model)} disabled={Boolean(modelToggleKey)} aria-pressed={!disabled} aria-label={`${model} · ${disabled ? tr("已停用，点击启用", "Disabled, click to enable") : tr("已启用，点击停用", "Enabled, click to disable")}`} title={disabled ? tr("已停用，点击重新启用", "Disabled · click to enable") : tr("已启用，点击停用", "Enabled · click to disable")}>
+              <span className="model-mark"><Icon name="layers" size={14} /></span><code title={model}>{model}</code><span className="model-ready"><span className={`status-dot ${disabled ? "is-disabled" : ""}`} />{busy && <span className="model-toggle-busy">{tr("保存中", "Saving")}</span>}</span>
+            </button>;
+          })}</div> : <div className="inline-empty">{tr("没有匹配模型；尝试清空搜索词，或先同步线路。", "No matching models. Clear the search or sync this route.")}</div>)}
         </section>;
       })}</div> : <EmptyState icon="layers" title={providers.length ? tr("没有匹配的模型", "No matching models") : tr("还没有模型目录", "No model catalog yet")} description={providers.length ? tr("换一个搜索词试试。", "Try another search term.") : tr("去中转站线路页添加线路并同步模型。", "Add and sync a route from the Upstream Routes page.")} action={providers.length ? undefined : <button className="button button-primary" onClick={() => navigate("providers")}>{tr("去添加线路", "Go to routes")}</button>} />}
     </section>;

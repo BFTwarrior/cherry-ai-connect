@@ -15,6 +15,7 @@ export type Provider = {
   name: string;
   baseUrl: string;
   models: string[];
+  disabledModels?: string[];
   modelCount: number;
   enabled: boolean;
   routeVerified?: boolean;
@@ -73,7 +74,7 @@ export type ModalState =
   | { kind: "key-result"; secret: string }
   | null;
 
-export type ToastTone = "success" | "error" | "info" | "warning";
+export type ToastTone = "success" | "error" | "info" | "warning" | "danger";
 export type ToastState = { message: string; tone: ToastTone } | null;
 export type ConfirmTone = "primary" | "warning" | "danger";
 export type ConfirmDialogOptions = {

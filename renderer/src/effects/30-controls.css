@@ -181,7 +181,9 @@
  * surrounding panel stacking layers clip their options. */
 .catalog-toolbar {
   position: relative;
-  z-index: 20 !important;
+  /* Keep the toolbar below the sticky page header while preserving its own
+   * stacking context above the model groups for the open route menu. */
+  z-index: 2 !important;
   overflow: visible !important;
 }
 
@@ -255,7 +257,7 @@
   transition-property: border-color, background-color, transform !important;
 }
 
-/* Key state feedback: enabling is gold, disabling is red, never green by default. */
+/* Warning feedback stays amber; model disabling uses its own red danger tone. */
 .toast-warning {
   border-color: rgb(193 145 62 / 78%) !important;
   background: linear-gradient(110deg, #3c2a1a, #2b2028) !important;

@@ -24,7 +24,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40.21";
+const gatewayVersion = "1.40.23";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -198,6 +198,17 @@ function uniqueModels(value) {
   return names.filter((item, index, list) => list.indexOf(item) === index);
 }
 
+// 中文：模型手动停用状态是设备本地偏好，不进入云同步的上游线路元数据。
+// English: Manual model-disable state is a device-local preference, separate from synced route metadata.
+function disabledModelsFor(providerId) {
+  const states = config.localModelStates && typeof config.localModelStates === "object" ? config.localModelStates : {};
+  return uniqueModels(states[String(providerId || "")]);
+}
+
+function isModelDisabled(providerId, model) {
+  return Boolean(model) && disabledModelsFor(providerId).includes(String(model));
+}
+
 // 中文：部分中转站能正常聊天，但不提供可用的 /v1/models 目录（例如返回 404 或空数组）。
 // Cherry Studio 的“检测并启用”把目录请求当作前置条件；没有目录时返回空 data 会让它把
 // 一条可用线路误判为失败。因此只对已经完成上游目录探测、且失败类型明确属于目录兼容性
@@ -286,6 +297,7 @@ function migrateConfig() {
   };
   config.forcedLevel = validReasoningLevel(config.forcedLevel) ? config.forcedLevel : "unchanged";
   config.providers = Array.isArray(config.providers) ? config.providers : [];
+  config.localModelStates = config.localModelStates && typeof config.localModelStates === "object" && !Array.isArray(config.localModelStates) ? config.localModelStates : {};
   config.clientKeys = Array.isArray(config.clientKeys) ? config.clientKeys : [];
   const requestStatus = ["never", "pending", "ok", "error"].includes(config.lastClientRequest?.status)
     ? config.lastClientRequest.status
@@ -420,6 +432,7 @@ function providerView(provider) {
     name: provider.name,
     baseUrl: provider.baseUrl,
     models,
+    disabledModels: disabledModelsFor(provider.id),
     modelCount: models.length,
     enabled: provider.enabled !== false,
     hasApiKey: Boolean(provider.apiKeyEnc && decrypt(provider.apiKeyEnc)),
@@ -500,8 +513,13 @@ async function proxyRequest(req, res, rawBody) {
   if (typeof payload !== "object" || Array.isArray(payload)) return json(res, 400, { error: "json_body_required" });
   const boundProvider = client.providerId ? findProvider(client.providerId) : null;
   if (client.providerId && !boundProvider) return json(res, 503, { error: "bound_provider_unavailable", provider: client.providerId });
-  const selected = boundProvider ? { provider: boundProvider, model: String(payload.model || "").includes("/") ? String(payload.model).split("/").slice(1).join("/") : payload.model } : selectProvider(payload.model);
+  const requestedModel = String(payload.model || "");
+  const boundModel = boundProvider && requestedModel.startsWith(`${boundProvider.id}/`)
+    ? requestedModel.slice(boundProvider.id.length + 1)
+    : requestedModel;
+  const selected = boundProvider ? { provider: boundProvider, model: boundModel } : selectProvider(payload.model);
   if (!selected.provider) return json(res, 503, { error: "no_provider_configured" });
+  if (isModelDisabled(selected.provider.id, selected.model)) return json(res, 403, { error: "model_disabled", provider: selected.provider.id, model: selected.model });
   if (selected.model && payload.model) payload.model = selected.model;
   const pathname = new URL(req.url || "/", "http://gateway.local").pathname;
   forceReasoning(payload, pathname, client.reasoningLevel);
@@ -764,6 +782,22 @@ async function admin(req, res, url) {
   if (url.pathname === "/admin/api/settings" && req.method === "GET") return json(res, 200, { forcedLevel: config.forcedLevel || "unchanged", defaultProvider: config.defaultProvider || "", reasoningLevels: supportedReasoningLevels });
   if (url.pathname === "/admin/api/status" && req.method === "GET") return json(res, 200, { version: gatewayVersion, forcedLevel: config.forcedLevel || "unchanged", lastClientRequestAt, lastClientRequestStatus, lastClientRequestModel, ledger: usageLedger.status() });
   if (url.pathname === "/admin/api/usage" && req.method === "GET") return json(res, 200, await usageSnapshot(url));
+  const modelStateRoute = url.pathname.match(/^\/admin\/api\/providers\/([^/]+)\/model-state$/);
+  if (modelStateRoute && req.method === "POST") {
+    const provider = config.providers.find((item) => item.id === decodeURIComponent(modelStateRoute[1]));
+    if (!provider) return json(res, 404, { error: "provider_not_found" });
+    const data = bodyJson(await readBody(req)) || {};
+    const model = String(data.model || "").trim();
+    if (!model || !catalogModels(provider).includes(model)) return json(res, 404, { error: "model_not_found" });
+    if (typeof data.enabled !== "boolean") return json(res, 400, { error: "model_enabled_boolean_required" });
+    const disabled = new Set(disabledModelsFor(provider.id));
+    if (data.enabled) disabled.delete(model);
+    else disabled.add(model);
+    if (disabled.size) config.localModelStates[provider.id] = [...disabled];
+    else delete config.localModelStates[provider.id];
+    saveConfig({ bumpRevision: false });
+    return json(res, 200, { ok: true, model, enabled: data.enabled, provider: providerView(provider) });
+  }
   if (url.pathname === "/admin/api/providers" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
     if (!data.id || !data.baseUrl) return json(res, 400, { error: "线路代号和 API URL 必填" });
@@ -1004,7 +1038,7 @@ async function handleRequest(req, res) {
       // English: Cherry Studio treats created=0 as malformed catalog metadata; use the current
       // Unix time when the probe timestamp is absent without changing the model or route.
       const created = Number.isFinite(fetchedAt) && fetchedAt > 0 ? Math.floor(fetchedAt / 1000) : Math.floor(Date.now() / 1000);
-      for (const model of catalogModels(provider)) {
+      for (const model of catalogModels(provider).filter((name) => !isModelDisabled(provider.id, name))) {
         models.push({ id: client.providerId ? model : `${provider.id}/${model}`, object: "model", created, owned_by: provider.id });
       }
     }

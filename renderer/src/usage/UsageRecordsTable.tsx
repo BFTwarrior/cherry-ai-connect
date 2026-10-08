@@ -89,8 +89,8 @@ export const UsageRecordsTable = memo(function UsageRecordsTable({ records, lang
           <div><small>{tr("时间", "Time")}</small><time>{formattedDate(record.at, language, dateFormatter)}</time><em>{streamLabel}</em></div>
           <div><small>{tr("客户端 / 线路", "Client / Route")}</small><strong>{record.source === "codex-official" ? tr("Codex 本地记录", "Codex Local Records") : (record.clientKeyName || "—")}</strong><em>{record.source === "codex-official" ? tr("客户端侧记录", "Client observation") : (record.providerName || record.providerId)}</em></div>
           <div className="record-model"><small>{tr("模型", "Model")}</small><code title={record.model}>{record.model || "—"}</code><em title={record.endpoint}>{record.endpoint}</em></div>
-          <div className="record-reasoning"><small>{tr("思考强度", "Reasoning")}</small><span className="reasoning-tag">{String(record.reasoningLevel || "—").toUpperCase()}</span></div>
-          <div><small>{tr("状态", "Status")}</small><span className={`request-status ${record.status === null ? "unknown" : successful ? "ok" : "error"}`}>{record.status === null ? tr("未知", "Unknown") : record.status}</span></div>
+          <div className="record-reasoning"><small>{tr("思考强度", "Reasoning")}</small><span className="reasoning-tag">{record.source === "codex-official" ? "UNCHANGED" : String(record.reasoningLevel || "—").toUpperCase()}</span></div>
+          <div className="record-status"><small>{tr("状态", "Status")}</small><span className={`request-status ${record.status === null ? "unknown" : successful ? "ok" : "error"}`}>{record.status === null ? tr("未知", "Unknown") : record.status}</span></div>
         </header>
         <div className="usage-record-metrics">
           <div className="token-input"><small title={tr("不含缓存读取", "Excludes cache reads")}>{tr("输入 Token", "Input tokens")}</small><strong>{formattedNumber(inputExcludingCacheReads(record))}</strong><em>{record.usageKind === "request" ? tr("单次请求 · 不含缓存读取", "Single request · excludes cache reads") : tr("不含缓存读取", "Excludes cache reads")}</em></div>
