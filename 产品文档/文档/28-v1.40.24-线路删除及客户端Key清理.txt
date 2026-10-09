@@ -21,21 +21,23 @@
 
 ## 三、候选产物
 
-- Windows x64 NSIS：`dist/current-build/Cherry-AI-Connect-Setup-1.40.24.exe`
+- Windows x64 NSIS（GitHub 手动下载资产名）：`dist/current-build/Cherry-AI-Connect-Manual-Install-1.40.24.exe`
   - 大小：99,935,942 bytes
   - SHA-256：`67287A995A5B010D6291389C51A222B2E9BE03BDA7682B14D21922C7DFF7C941`
   - SHA-512：`BgP1bxUkXHPKQm0Ts/ORP+vZHSHy76+hxoqrN4QJUX42FJY6/R7qrah1WRWxQavlcieeFg4b4uwHym5HDH7zog==`
-- Blockmap：`dist/current-build/Cherry-AI-Connect-Setup-1.40.24.exe.blockmap`
+- Blockmap：`dist/current-build/Cherry-AI-Connect-Manual-Install-1.40.24.exe.blockmap`
   - 大小：104,875 bytes
   - SHA-256：`E58B9640CDDD6F134A636FC316570BC3FF55371F7CD3A9608BE65785DCBB2C82`
 - Web Demo：`dist/Cherry-AI-Connect-Web-Demo-1.40.24.zip`
   - 大小：153,926 bytes
   - SHA-256：`344A84E0CD8676880B2CCA95DE92327AAE8C74716977FFA16916D7DEFB315058`
-- `latest.yml`：`dist/current-build/latest.yml`；标记 1.40.24，安装包大小 99,935,942 bytes，与本地构建一致。
+- `latest.yml`：`dist/current-build/latest.yml`；标记 1.40.24，路径与手动下载资产名一致，安装包大小 99,935,942 bytes。
+  - 大小：386 bytes
+  - SHA-256：`DBD6DE9529CD4F6F558193181E568CB55ACA2A62702A2788A4FA7382D68ADBA5`
 
 ## 四、发布状态
 
-- 分发方式：等待确认（内置更新 / GitHub 手动下载安装）。
+- 分发方式：GitHub 手动安装；正式 Release 作为 Latest 发布，安装包资产使用 `Cherry-AI-Connect-Manual-Install-1.40.24.exe`，使现有内置更新器无法将其作为可一键安装资产。
 - GitHub tag 和 Release：待发布。
 - 公开资产链接、远端大小及远端 SHA-256：待发布后核对。
 - 此报告是候选构建记录；GitHub Release 完成后补录发布结果和未完成的现场验收。

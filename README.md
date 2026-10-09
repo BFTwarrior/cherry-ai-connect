@@ -141,18 +141,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Manual-Install-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Manual-Install-1.40.24.exe)
 
 | Artifact | Purpose |
 | --- | --- |
 | [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.24) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe) | Windows x64 NSIS package |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Manual-Install-1.40.24.exe) | Windows x64 NSIS package; this version is installed manually from GitHub |
 | [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Web-Demo-1.40.24.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  0D62DD5BDE28B29F9F721082BCE84F181FBD01A6661CEA900C5E84E54BB14C6B
+SHA-256  67287A995A5B010D6291389C51A222B2E9BE03BDA7682B14D21922C7DFF7C941
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
