@@ -1,0 +1,41 @@
+# v1.40.24 线路删除及客户端 Key 清理
+
+更新时间：2026-10-10（UTC+8）
+版本：v1.40.24
+发布基线：GitHub `main` 修复提交 `8a6e07a5f7cdde5e51ec4598bb153d14f64871a7`
+
+## 一、本版本范围
+
+- 删除中转站线路前，确认框明确说明绑定的客户端 Key 也会一并删除。
+- 用户确认后，网关删除线路及其全部绑定客户端 Key，更新默认线路，并将删除墓碑写入同步数据；返回实际删除的 Key 数量。
+- 确认界面和完成提示对应同一次级联删除，避免旧流程要求先逐个解绑或删除客户端 Key。
+
+## 二、验证记录
+
+- `npm test`：135/135 通过（2026-10-10，本次 v1.40.24 工作树）。
+- `npm run check`：通过。
+- `npm run web-demo:build`：通过；生成 Web Demo ZIP。
+- `npm run dist`：通过；生成 Windows x64 NSIS 安装包，体积低于项目 100,000,000 bytes 门槛。
+- `git diff --check`：通过。
+- 已安装设备的线路删除界面及多设备同步验收：待用户实测。
+
+## 三、候选产物
+
+- Windows x64 NSIS：`dist/current-build/Cherry-AI-Connect-Setup-1.40.24.exe`
+  - 大小：99,935,942 bytes
+  - SHA-256：`67287A995A5B010D6291389C51A222B2E9BE03BDA7682B14D21922C7DFF7C941`
+  - SHA-512：`BgP1bxUkXHPKQm0Ts/ORP+vZHSHy76+hxoqrN4QJUX42FJY6/R7qrah1WRWxQavlcieeFg4b4uwHym5HDH7zog==`
+- Blockmap：`dist/current-build/Cherry-AI-Connect-Setup-1.40.24.exe.blockmap`
+  - 大小：104,875 bytes
+  - SHA-256：`E58B9640CDDD6F134A636FC316570BC3FF55371F7CD3A9608BE65785DCBB2C82`
+- Web Demo：`dist/Cherry-AI-Connect-Web-Demo-1.40.24.zip`
+  - 大小：153,926 bytes
+  - SHA-256：`344A84E0CD8676880B2CCA95DE92327AAE8C74716977FFA16916D7DEFB315058`
+- `latest.yml`：`dist/current-build/latest.yml`；标记 1.40.24，安装包大小 99,935,942 bytes，与本地构建一致。
+
+## 四、发布状态
+
+- 分发方式：等待确认（内置更新 / GitHub 手动下载安装）。
+- GitHub tag 和 Release：待发布。
+- 公开资产链接、远端大小及远端 SHA-256：待发布后核对。
+- 此报告是候选构建记录；GitHub Release 完成后补录发布结果和未完成的现场验收。

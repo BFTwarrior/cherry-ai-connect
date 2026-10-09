@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.23** — Add per-model enable/disable controls with persistent local state and clear red disabled feedback; align compact usage history and keep page toolbars below the sticky header.
+> **Current release · v1.40.24** — Deleting a provider route now clearly warns that its bound client keys will also be deleted, then removes the route and keys together.
 
 ## Product tour
 
@@ -37,7 +37,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.40.23
+### What is included in v1.40.24
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
@@ -47,6 +47,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
 | Usage analytics | Shows relay traffic and `Codex Local Records` usage with source, route, model, status, and history filters. | Relay and Codex local observations use separate accounting sources and separate cache budgets. |
 | Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
 | Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
+| Route deletion | Warns that bound client keys will also be removed, then deletes the route and its keys together. | The confirmation is explicit and the result reports how many client keys were removed. |
 
 ### The user journey
 
@@ -140,13 +141,13 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.23.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.23/Cherry-AI-Connect-Setup-1.40.23.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.23) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.23/Cherry-AI-Connect-Setup-1.40.23.exe) | Windows x64 NSIS package |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.23/Cherry-AI-Connect-Web-Demo-1.40.23.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.24) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe) | Windows x64 NSIS package |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Web-Demo-1.40.24.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
@@ -233,6 +234,7 @@ npm run dist
 Verification scope:
 
 - v1.40.23: Adds local per-model enable/disable controls and gateway enforcement; disabled models are omitted from the model catalog and rejected with HTTP 403. Also fixes disabled-state feedback and keeps compact usage-history columns aligned. TypeScript, renderer, full regression, and Windows x64 installer verification passed; installed-device acceptance remains pending.
+- v1.40.24: Route deletion removes bound client keys with an explicit warning and reports the deletion count. TypeScript, regression, renderer, and Windows x64 installer verification are recorded in the version report; installed-device acceptance remains pending.
 - v1.40.22: Aligns compact usage-history reasoning and status columns; centers the reasoning-level badge. TypeScript, renderer, and Windows x64 NSIS builds passed. No automated tests were added or run for this UI alignment correction.
 - v1.40.21: Usage totals now use one selected source while All history preserves both observations. Fourteen source-merge regressions and one gateway usage test passed; TypeScript, renderer, and Windows x64 NSIS builds passed.
 - v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
@@ -295,6 +297,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.23 · Windows x64
+Cherry AI Connect · v1.40.24 · Windows x64
 
 </div>
