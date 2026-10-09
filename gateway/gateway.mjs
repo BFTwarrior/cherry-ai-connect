@@ -1005,16 +1005,23 @@ async function admin(req, res, url) {
   const providerDelete = url.pathname.match(/^\/admin\/api\/providers\/([^/]+)$/);
   if (providerDelete && req.method === "DELETE") {
     const providerId = decodeURIComponent(providerDelete[1]);
-    if (config.clientKeys.some((item) => item.providerId === providerId)) return json(res, 409, { error: "仍有客户端 Key 绑定此线路，请先改绑或删除这些 Key" });
-    const before = config.providers.length;
+    if (!config.providers.some((item) => item.id === providerId)) return json(res, 404, { error: "线路不存在" });
+    const deletedKeys = config.clientKeys.filter((item) => item.providerId === providerId);
+    const deletedRevision = String(Date.now());
+    const deletedAt = new Date().toISOString();
     config.providers = config.providers.filter((item) => item.id !== providerId);
-    if (config.providers.length === before) return json(res, 404, { error: "线路不存在" });
-    config.deletionTombstones.push({ object_type: "provider", object_id: providerId, deleted_revision: String(Date.now()), deleted_by_device: usageLedger.identity.deviceId, deleted_at_utc: new Date().toISOString() });
+    config.clientKeys = config.clientKeys.filter((item) => item.providerId !== providerId);
+    config.clientKeyOrder.ids = config.clientKeyOrder.ids.filter((id) => !deletedKeys.some((item) => item.id === id));
+    for (const key of deletedKeys) {
+      config.deletionTombstones.push({ object_type: "client-key", object_id: key.id, deleted_revision: deletedRevision, deleted_by_device: usageLedger.identity.deviceId, deleted_at_utc: deletedAt });
+      usageLedger.addTombstone("client-key", key.id, deletedRevision);
+    }
+    config.deletionTombstones.push({ object_type: "provider", object_id: providerId, deleted_revision: deletedRevision, deleted_by_device: usageLedger.identity.deviceId, deleted_at_utc: deletedAt });
     if (config.defaultProvider === providerId) config.defaultProvider = config.providers.find((item) => item.enabled !== false)?.id || "";
     saveConfig();
-    usageLedger.addTombstone("provider", providerId, String(Date.now()));
+    usageLedger.addTombstone("provider", providerId, deletedRevision);
     notifySyncChange("secure-route-delete");
-    return json(res, 200, { ok: true, deleted: true });
+    return json(res, 200, { ok: true, deleted: true, deletedClientKeyCount: deletedKeys.length });
   }
   return json(res, 404, { error: "not_found" });
 }

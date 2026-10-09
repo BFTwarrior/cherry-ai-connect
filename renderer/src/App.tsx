@@ -565,10 +565,14 @@ export default function App() {
   };
 
   const deleteProvider = async (id: string) => {
+    const localBoundKeyCount = keys.filter((key) => key.providerId === id).length;
+    const boundKeyCount = Math.max(providers.find((provider) => provider.id === id)?.clientKeyCount || 0, localBoundKeyCount);
     const confirmed = await requestConfirmation({
       title: tr("删除中转站线路", "Delete upstream route"),
-      message: tr("这条线路将被永久删除；已绑定的客户端 Key 必须先改绑或删除。", "This route will be permanently deleted. Bound client keys must be moved or deleted first."),
-      confirmLabel: tr("永久删除线路", "Delete route"),
+      message: boundKeyCount > 0
+        ? tr(`该中转站线路仍绑定 ${boundKeyCount} 个客户端 Key。删除线路后，这些客户端 Key 也会一并永久删除。`, `This route has ${boundKeyCount} bound client key(s). Deleting the route will permanently delete them too.`)
+        : tr("这条中转站线路将被永久删除。", "This upstream route will be permanently deleted."),
+      confirmLabel: boundKeyCount > 0 ? tr("删除线路及绑定 Key", "Delete route and keys") : tr("永久删除线路", "Delete route"),
       cancelLabel: tr("取消", "Cancel"),
       tone: "danger",
       icon: "trash",
@@ -578,12 +582,16 @@ export default function App() {
       if (DEMO_MODE) {
         setProviders((current) => current.filter((provider) => provider.id !== id));
         setKeys((current) => current.filter((key) => key.providerId !== id));
-        showToast(tr("演示线路已删除", "Demo route deleted"), "success");
+        showToast(boundKeyCount > 0
+          ? tr(`演示线路及 ${boundKeyCount} 个客户端 Key 已删除`, `Demo route and ${boundKeyCount} client key(s) deleted`)
+          : tr("演示线路已删除", "Demo route deleted"), "success");
         return;
       }
-      await request(`/admin/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const result = await request<{ deletedClientKeyCount: number }>(`/admin/api/providers/${encodeURIComponent(id)}`, { method: "DELETE" });
       await load(true);
-      showToast(tr("线路已删除", "Route deleted"), "success");
+      showToast(result.deletedClientKeyCount > 0
+        ? tr(`线路及 ${result.deletedClientKeyCount} 个客户端 Key 已删除`, `Route and ${result.deletedClientKeyCount} client key(s) deleted`)
+        : tr("线路已删除", "Route deleted"), "success");
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
     }
