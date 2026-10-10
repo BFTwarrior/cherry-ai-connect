@@ -2,7 +2,7 @@
 
 更新时间：2026-10-10（UTC+8）
 版本：v1.40.24
-发布基线：修复提交 `8a6e07a5f7cdde5e51ec4598bb153d14f64871a7`；发布配置提交待补录
+发布基线：修复提交 `8a6e07a5f7cdde5e51ec4598bb153d14f64871a7`；发布配置提交 `db12d884e052b4a8feef48127e6dc72cf71595be`
 
 ## 一、本版本范围
 
@@ -32,12 +32,12 @@
   - 大小：153,926 bytes
   - SHA-256：`344A84E0CD8676880B2CCA95DE92327AAE8C74716977FFA16916D7DEFB315058`
 - `latest.yml`：`dist/current-build/latest.yml`；标记 1.40.24，路径与标准安装包资产名一致，安装包大小 99,935,942 bytes。
-  - 大小：386 bytes
+  - 大小：368 bytes
   - SHA-256：`5A5BC5AFD36BF5FA239CB811BB17BD05B8CD1342B609B5A234535284A9CE63B6`
 
 ## 四、发布状态
 
 - 分发方式：标准内置更新安装；正式 Release 作为 Latest 发布，包含标准名称安装包、Blockmap 与 latest.yml，供现有内置更新器识别和校验。
-- GitHub tag 和 Release：待发布。
-- 公开资产链接、远端大小及远端 SHA-256：待发布后核对。
-- 此报告是候选构建记录；GitHub Release 完成后补录发布结果和未完成的现场验收。
+- GitHub tag 和 Release：已发布为 Latest，`https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.24`。
+- 远端 4 项资产的文件名、大小和 SHA-256 均已与本地产物逐项核对一致；安装包远端 SHA-256 为 `67287A995A5B010D6291389C51A222B2E9BE03BDA7682B14D21922C7DFF7C941`。
+- 尚未完成已安装设备上的内置更新及线路删除/多设备同步实机验收。
