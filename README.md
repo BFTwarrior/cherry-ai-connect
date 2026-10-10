@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.24** — Deleting a provider route now clearly warns that its bound client keys will also be deleted, then removes the route and keys together.
+> **Current release · v1.40.25** — All-source Codex usage history keeps the relay record when a CC Switch or other Codex local observation uniquely matches the same relayed request.
 
 ## Product tour
 
@@ -37,7 +37,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.40.24
+### What is included in v1.40.25
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
@@ -48,6 +48,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
 | Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
 | Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
 | Route deletion | Warns that bound client keys will also be removed, then deletes the route and its keys together. | The confirmation is explicit and the result reports how many client keys were removed. |
+| Codex usage history | In All sources, a high-confidence matching local Codex observation is folded into its relay record, keeping the relay row as the primary record. | Matching requires the same normalized model, exact input/output token counts, and a unique timestamp match within a duration-aware window; ambiguous or incomplete observations remain separate. |
 
 ### The user journey
 
@@ -99,7 +100,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 - Keep request details under a 50 MB local limit while preserving lifetime totals.
 - Browse historical request pages independently from the chart time range.
 - Keep `Codex Local Records` fixed immediately after `All routes` in the route filter; relay routes remain below it.
-- In the All view, choose one totals source (relay by default). Lifetime totals, period metrics and trends never add client observations to gateway observations. All history retains both sources and counts observation rows, which may overlap.
+- In the All view, choose one totals source (relay by default). Lifetime totals, period metrics and trends never add client observations to gateway observations. History prefers relay rows when a unique high-confidence match exists; ambiguous observations remain separately visible.
 
 ### Private sync and recovery
 
@@ -119,7 +120,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 The local Codex adapter keeps `Codex Local Records` as a separate source (internal compatibility ID: `codex-official`) and reads only the local `codex-usage` loopback API at `http://127.0.0.1:43189`. The Windows installer carries the helper and starts it only when that loopback port is not already in use; an existing user-started service is left untouched. The detail table now uses the helper's JSON export, where each row is one model request; it no longer displays the session's cumulative input as if it were one request. The adapter keeps a separate 45 MiB trim target / 50 MiB hard-limit memory cache, never reads `auth.json`, session JSONL, chat content, or keys, and never writes to the relay ledger.
 
-This local feed records Codex client activity, including custom-provider calls; it cannot establish that a request used OpenAI directly. It is not OpenAI account billing. Existing records are retained without guessing duplicate pairs from timestamps and token counts. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
+This local feed records Codex client activity, including custom-provider calls; it cannot establish that a request used OpenAI directly. It is not OpenAI account billing. In All-source history, the read-time merge prefers the relay record when the local observation has a unique high-confidence match by normalized model, exact input/output token counts, and a timestamp window based on relay duration. Ambiguous or incomplete rows remain separate, and neither source's stored records are deleted. OpenAI documents `/usage` for account token activity and `/status` for current session, context, and rate limits. This local adapter may be unavailable or incomplete; cloud sync, backup, and cross-device recovery are not implemented for it.
 
 ## The workflow
 
@@ -141,18 +142,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.25.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Setup-1.40.25.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.24) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Web-Demo-1.40.24.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.25) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Setup-1.40.25.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Web-Demo-1.40.25.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  67287A995A5B010D6291389C51A222B2E9BE03BDA7682B14D21922C7DFF7C941
+SHA-256  913FEFECD4D66BF0C9DF3193C00D0C7A389C50533A56818108010597BCFED1AA
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -235,6 +236,7 @@ Verification scope:
 
 - v1.40.23: Adds local per-model enable/disable controls and gateway enforcement; disabled models are omitted from the model catalog and rejected with HTTP 403. Also fixes disabled-state feedback and keeps compact usage-history columns aligned. TypeScript, renderer, full regression, and Windows x64 installer verification passed; installed-device acceptance remains pending.
 - v1.40.24: Route deletion removes bound client keys with an explicit warning and reports the deletion count. TypeScript, regression, renderer, and Windows x64 installer verification are recorded in the version report; installed-device acceptance remains pending.
+- v1.40.25: All-source usage history prefers a relay record over a uniquely matched Codex local observation using normalized model, exact input/output tokens, and a duration-aware timestamp window. Ambiguous or incomplete pairs remain visible. TypeScript and renderer builds passed; the Windows x64 NSIS installer passed the 100 MB size gate at 99,937,116 bytes (SHA-256 `913FEFECD4D66BF0C9DF3193C00D0C7A389C50533A56818108010597BCFED1AA`). Web Demo packaged successfully. No automated tests were run; installed-device acceptance remains pending.
 - v1.40.22: Aligns compact usage-history reasoning and status columns; centers the reasoning-level badge. TypeScript, renderer, and Windows x64 NSIS builds passed. No automated tests were added or run for this UI alignment correction.
 - v1.40.21: Usage totals now use one selected source while All history preserves both observations. Fourteen source-merge regressions and one gateway usage test passed; TypeScript, renderer, and Windows x64 NSIS builds passed.
 - v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
@@ -297,6 +299,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.24 · Windows x64
+Cherry AI Connect · v1.40.25 · Windows x64
 
 </div>

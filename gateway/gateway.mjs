@@ -695,11 +695,14 @@ async function usageSnapshot(url) {
   // English: All-source pagination must happen after merging both streams; fetch each prefix first
   // so independent offsets cannot drop interleaved records.
   const sourceUrl = new URL(url);
-  if (String(url.searchParams.get("source") || "all") === "all") {
-    const offset = Math.max(0, Number(url.searchParams.get("recordsOffset") || 0) || 0);
-    const limit = Math.min(5000, Math.max(1, Number(url.searchParams.get("limit") || 100) || 100));
+  const requestedSource = String(url.searchParams.get("source") || "all");
+  const requestedProvider = String(url.searchParams.get("providerId") || "");
+  if (requestedSource === "all" && !requestedProvider) {
+    // Read a bounded common prefix from both sources before pairing duplicate
+    // client observations with relay records. The merge applies the visible page
+    // offset only after relay-first matching.
     sourceUrl.searchParams.set("recordsOffset", "0");
-    sourceUrl.searchParams.set("limit", String(Math.min(5000, offset + limit)));
+    sourceUrl.searchParams.set("limit", "5000");
   }
   const sourceFilter = String(url.searchParams.get("source") || "all");
   const providerId = String(url.searchParams.get("providerId") || "");

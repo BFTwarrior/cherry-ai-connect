@@ -371,6 +371,105 @@ function uniqueOptions(items) {
   return official ? [official, ...relay] : relay;
 }
 
+function normalizedModelName(value) {
+  // CC Switch can expose the same model with an aggregation prefix, such as
+  // "ccs-provider/gpt-6-luna". Compare the model portion while retaining the
+  // original display value on the chosen relay record.
+  return text(value).trim().toLowerCase().split("/").at(-1) || "";
+}
+
+function timestampMs(value) {
+  const parsed = Date.parse(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function recordSignature(record) {
+  return JSON.stringify([
+    normalizedModelName(record.model),
+    Number(record.inputTokens),
+    Number(record.outputTokens),
+  ]);
+}
+
+function closestCandidates(otherGroups, entry, toleranceFor) {
+  if (entry.atMs === null) return [];
+  const group = otherGroups.get(recordSignature(entry.record)) || [];
+  const maxWindow = 5 * 60_000;
+  const minAt = entry.atMs - maxWindow;
+  const maxAt = entry.atMs + maxWindow;
+  let low = 0;
+  let high = group.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (group[mid].atMs < minAt) low = mid + 1;
+    else high = mid;
+  }
+  const candidates = [];
+  for (let index = low; index < group.length && group[index].atMs <= maxAt; index += 1) {
+    const other = group[index];
+    const delta = Math.abs(entry.atMs - other.atMs);
+    const tolerance = toleranceFor(entry, other);
+    if (tolerance !== false && delta <= tolerance) candidates.push({ index: other.index, delta });
+  }
+  return candidates.sort((a, b) => a.delta - b.delta);
+}
+
+function uniqueClosestMatches(leftRecords, rightRecords, toleranceFor) {
+  const rightGroups = new Map();
+  const leftGroups = new Map();
+  for (const entry of rightRecords) {
+    const key = recordSignature(entry.record);
+    const group = rightGroups.get(key) || [];
+    group.push(entry);
+    rightGroups.set(key, group);
+  }
+  for (const entry of leftRecords) {
+    const key = recordSignature(entry.record);
+    const group = leftGroups.get(key) || [];
+    group.push(entry);
+    leftGroups.set(key, group);
+  }
+  for (const group of [...rightGroups.values(), ...leftGroups.values()]) group.sort((a, b) => a.atMs - b.atMs);
+
+  const leftCandidates = leftRecords.map((left) => closestCandidates(rightGroups, left, toleranceFor));
+  const rightCandidates = rightRecords.map((right) => closestCandidates(leftGroups, right, (candidate, rightEntry) => toleranceFor(candidate, rightEntry)));
+  const matches = [];
+  for (let leftIndex = 0; leftIndex < leftCandidates.length; leftIndex += 1) {
+    const leftOptions = leftCandidates[leftIndex];
+    if (!leftOptions.length || (leftOptions[1] && leftOptions[0].delta === leftOptions[1].delta)) continue;
+    const rightIndex = leftOptions[0].index;
+    const rightOptions = rightCandidates[rightIndex];
+    if (!rightOptions.length || (rightOptions[1] && rightOptions[0].delta === rightOptions[1].delta)) continue;
+    if (rightOptions[0].index === leftIndex) matches.push([leftIndex, rightIndex]);
+  }
+  return matches;
+}
+
+function mergeSourceRecords(relayRecords, localRecords) {
+  // A local Codex event has a different ID from the gateway's event. Pair only
+  // high-confidence matches: same normalized model and exact input/output token
+  // counts, with timestamps close enough to the gateway's measured request span.
+  // Ambiguous matches are kept as separate observations rather than discarded.
+  const relay = relayRecords.map((record, index) => ({ record, atMs: timestampMs(record.at), index }));
+  const local = localRecords.map((record, index) => ({ record, atMs: timestampMs(record.at), index }));
+  const matches = uniqueClosestMatches(local, relay, (localEntry, relayEntry) => {
+    if (localEntry.atMs === null || relayEntry.atMs === null) return false;
+    if (localEntry.record.usageAvailable === false || relayEntry.record.usageAvailable === false) return false;
+    if (!normalizedModelName(localEntry.record.model)) return false;
+    const duration = Number(relayEntry.record.durationMs);
+    const tolerance = Number.isFinite(duration) && duration > 0 ? Math.min(5 * 60_000, duration + 5_000) : 5_000;
+    return tolerance;
+  });
+  const suppressedLocalIndexes = new Set(matches.map(([localIndex]) => localIndex));
+  return {
+    records: [
+      ...relayRecords,
+      ...localRecords.filter((_, index) => !suppressedLocalIndexes.has(index)),
+    ].sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(right.id).localeCompare(String(left.id))),
+    matchedCount: matches.length,
+  };
+}
+
 export function combineUsageSnapshots(relay, official, url) {
   // 中文：只在读取层组合两类来源；永久累计、明细缓存和来源标记不会互相写入。
   // English: Combine sources only at the read layer; lifetime totals, detail retention, and source
@@ -389,13 +488,23 @@ export function combineUsageSnapshots(relay, official, url) {
   const totalsValue = totalsSource === "official" ? officialValue : relayValue;
   const requestedOffset = Math.max(0, Math.min(1_000_000, Number(queryValue(url, "recordsOffset", "0")) || 0));
   const requestedLimit = Math.min(CODEX_OFFICIAL_MAX_RECORD_FETCH, Math.max(1, Number(queryValue(url, "limit", "100")) || 100));
-  const records = [...(relayValue.records || []), ...(officialValue.records || [])].sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(right.id).localeCompare(String(left.id)));
-  const total = boundedNumber(relayValue.recordPagination?.total) + boundedNumber(officialValue.recordPagination?.total);
+  const mergedRecords = sourceFilter === "all" && wantsRelay && wantsOfficial
+    ? mergeSourceRecords(relayValue.records || [], officialValue.records || [])
+    : { records: [...(relayValue.records || []), ...(officialValue.records || [])].sort((left, right) => String(right.at).localeCompare(String(left.at)) || String(right.id).localeCompare(String(left.id))), matchedCount: 0 };
+  const records = mergedRecords.records;
+  const total = Math.max(0, boundedNumber(relayValue.recordPagination?.total) + boundedNumber(officialValue.recordPagination?.total) - mergedRecords.matchedCount);
   const effectiveOffset = Math.min(requestedOffset, total ? Math.floor((total - 1) / requestedLimit) * requestedLimit : 0);
   const officialPagination = officialValue.recordPagination || {};
   const relayPagination = relayValue.recordPagination || {};
   const sourcePagination = providerId === CODEX_OFFICIAL_SOURCE || sourceFilter === "official" ? officialPagination : relayPagination;
-  const truncatedSources = [relayPagination, officialPagination].filter((item) => item.truncated);
+  const relayRecordCount = (relayValue.records || []).length;
+  const officialRecordCount = (officialValue.records || []).length;
+  const truncatedSources = [
+    ...(boundedNumber(relayPagination.total) > relayRecordCount ? [{ availableCount: relayRecordCount }] : []),
+    ...(officialPagination.truncated || boundedNumber(officialPagination.total) > officialRecordCount
+      ? [{ availableCount: boundedNumber(officialPagination.availableCount ?? officialRecordCount) }]
+      : []),
+  ];
   const guaranteedPrefix = truncatedSources.length ? Math.min(...truncatedSources.map((item) => boundedNumber(item.availableCount))) : total;
   const combinedPageAvailable = truncatedSources.length ? effectiveOffset < guaranteedPrefix : sourcePagination.available !== false;
   const combinedPagination = {
