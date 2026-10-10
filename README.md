@@ -141,12 +141,12 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Manual-Install-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Manual-Install-1.40.24.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.24.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe)
 
 | Artifact | Purpose |
 | --- | --- |
 | [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.24) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Manual-Install-1.40.24.exe) | Windows x64 NSIS package; this version is installed manually from GitHub |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Setup-1.40.24.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
 | [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.24/Cherry-AI-Connect-Web-Demo-1.40.24.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
