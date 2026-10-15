@@ -42,4 +42,5 @@
 - `npm run dist`：通过；Windows x64 NSIS 安装包 99,937,369 bytes，SHA-256 `B81E77085B4F8A29ABB999318396FDD0F3CDA89FB337D0D7F3E254AB9AB18531`。
 - `npm run web-demo:build`：通过；Web Demo ZIP 154,073 bytes，SHA-256 `88A858FC93D3B157B71F06A3A6130C00107FA67ED26BE2E8A31A9A0F068D583D`。
 - `dist/current-build/latest.yml`：版本、安装包文件名、大小和 SHA-512 已生成并一致。
+- GitHub Release：<https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.26>；已上传 Windows 安装包、`.blockmap`、`latest.yml` 和 Web Demo ZIP，Release 状态为已发布。
 - 已安装设备现场验收：待用户操作。
