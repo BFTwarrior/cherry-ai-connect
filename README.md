@@ -23,7 +23,7 @@
 
 </div>
 
-> **Current release · v1.40.25** — All-source Codex usage history keeps the relay record when a CC Switch or other Codex local observation uniquely matches the same relayed request.
+> **Current release · v1.40.26** — Upstream route form errors now preserve every entered value while showing the validation prompt.
 
 ## Product tour
 
@@ -37,7 +37,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.40.25
+### What is included in v1.40.26
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
@@ -48,6 +48,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
 | Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
 | Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
 | Route deletion | Warns that bound client keys will also be removed, then deletes the route and its keys together. | The confirmation is explicit and the result reports how many client keys were removed. |
+| Route form validation | Keeps the route ID, name, URL, and key fields intact when the save request returns a validation error. | The error is shown as a prompt and no entered value is discarded. |
 | Codex usage history | In All sources, a high-confidence matching local Codex observation is folded into its relay record, keeping the relay row as the primary record. | Matching requires the same normalized model, exact input/output token counts, and a unique timestamp match within a duration-aware window; ambiguous or incomplete observations remain separate. |
 
 ### The user journey
@@ -142,18 +143,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.25.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Setup-1.40.25.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.26.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Setup-1.40.26.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.25) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Setup-1.40.25.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.25/Cherry-AI-Connect-Web-Demo-1.40.25.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.26) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Setup-1.40.26.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Web-Demo-1.40.26.zip) | Safe browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  913FEFECD4D66BF0C9DF3193C00D0C7A389C50533A56818108010597BCFED1AA
+SHA-256  B81E77085B4F8A29ABB999318396FDD0F3CDA89FB337D0D7F3E254AB9AB18531
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -236,7 +237,7 @@ Verification scope:
 
 - v1.40.23: Adds local per-model enable/disable controls and gateway enforcement; disabled models are omitted from the model catalog and rejected with HTTP 403. Also fixes disabled-state feedback and keeps compact usage-history columns aligned. TypeScript, renderer, full regression, and Windows x64 installer verification passed; installed-device acceptance remains pending.
 - v1.40.24: Route deletion removes bound client keys with an explicit warning and reports the deletion count. TypeScript, regression, renderer, and Windows x64 installer verification are recorded in the version report; installed-device acceptance remains pending.
-- v1.40.25: All-source usage history prefers a relay record over a uniquely matched Codex local observation using normalized model, exact input/output tokens, and a duration-aware timestamp window. Ambiguous or incomplete pairs remain visible. TypeScript and renderer builds passed; the Windows x64 NSIS installer passed the 100 MB size gate at 99,937,116 bytes (SHA-256 `913FEFECD4D66BF0C9DF3193C00D0C7A389C50533A56818108010597BCFED1AA`). Web Demo packaged successfully. No automated tests were run; installed-device acceptance remains pending.
+- v1.40.26: Route form validation errors preserve the route ID, name, API URL, and upstream key fields while showing the error prompt. TypeScript, renderer, and regression checks passed; the Windows x64 NSIS installer passed the 100 MB size gate at 99,937,369 bytes (SHA-256 `B81E77085B4F8A29ABB999318396FDD0F3CDA89FB337D0D7F3E254AB9AB18531`). Web Demo packaged successfully; installed-device acceptance remains pending.
 - v1.40.22: Aligns compact usage-history reasoning and status columns; centers the reasoning-level badge. TypeScript, renderer, and Windows x64 NSIS builds passed. No automated tests were added or run for this UI alignment correction.
 - v1.40.21: Usage totals now use one selected source while All history preserves both observations. Fourteen source-merge regressions and one gateway usage test passed; TypeScript, renderer, and Windows x64 NSIS builds passed.
 - v1.40.20: Four changed runtime files passed syntax checks; TypeScript, renderer and Windows installer builds passed. Tombstone acknowledgements use the committed snapshot outbox IDs; newly arriving usage remains pending until later synchronization and requires a complete verified local backup before installer handoff. No automated tests were added or run. Actual device update, backup recovery and concurrent sync acceptance remain pending.
@@ -299,6 +300,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.25 · Windows x64
+Cherry AI Connect · v1.40.26 · Windows x64
 
 </div>

@@ -2,7 +2,7 @@
  * 中文：React 渲染层负责页面状态、双语界面、线路/模型/客户端 Key 管理。
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type PointerEvent, type ReactNode } from "react";
 import { version as VERSION } from "../../package.json";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
@@ -130,7 +130,7 @@ function PageIntro({ kicker, description, action }: { kicker: string; descriptio
 function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
 function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
 function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span><span className="nav-fireflies" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</span></button>; }
-function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} /></label>; }
+function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false, onChange }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean; onChange?: (event: ChangeEvent<HTMLInputElement>) => void }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} onChange={onChange} /></label>; }
 function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }
 
 export default function App() {
@@ -150,6 +150,7 @@ export default function App() {
   const [gatewayPort, setGatewayPort] = useState(DEMO_MODE ? 27891 : 20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
+  const providerDraftRef = useRef<{ id: string; name: string; baseUrl: string; apiKey: string } | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [loading, setLoading] = useState(false);
@@ -180,6 +181,21 @@ export default function App() {
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
   const showToast = useCallback((message: string, tone: ToastTone = "info") => {
     setToast({ message, tone });
+  }, []);
+
+  const closeModal = useCallback(() => {
+    providerDraftRef.current = null;
+    setModal(null);
+  }, []);
+
+  const openProviderModal = useCallback((provider?: Provider) => {
+    providerDraftRef.current = {
+      id: provider?.id || "",
+      name: provider?.name || "",
+      baseUrl: provider?.baseUrl || "",
+      apiKey: "",
+    };
+    setModal({ kind: "provider", provider });
   }, []);
 
   const requestConfirmation = useCallback((options: ConfirmDialogOptions) => new Promise<boolean>((resolve) => {
@@ -494,7 +510,14 @@ export default function App() {
   const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const id = String(form.get("id") || "").trim();
+    const draft = {
+      id: String(form.get("id") || ""),
+      name: String(form.get("name") || ""),
+      baseUrl: String(form.get("baseUrl") || ""),
+      apiKey: String(form.get("apiKey") || ""),
+    };
+    providerDraftRef.current = draft;
+    const id = draft.id.trim();
     const isEditing = modal?.kind === "provider" && Boolean(modal.provider);
     try {
       if (DEMO_MODE) {
@@ -506,7 +529,7 @@ export default function App() {
           clientKeyCount: current?.clientKeyCount || 0,
         };
         setProviders((currentProviders) => currentProviders.some((provider) => provider.id === id) ? currentProviders.map((provider) => provider.id === id ? nextProvider : provider) : [...currentProviders, nextProvider]);
-        setModal(null);
+        closeModal();
         showToast(isEditing ? tr("演示线路已更新", "Demo route updated") : tr("演示线路已添加", "Demo route added"), "success");
         return;
       }
@@ -515,7 +538,7 @@ export default function App() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, name: form.get("name"), baseUrl: form.get("baseUrl"), apiKey: form.get("apiKey") }),
       });
-      setModal(null);
+      closeModal();
       try {
         await syncProvider(id, true);
         showToast(isEditing ? tr("线路已更新，模型目录已同步", "Route updated and model catalog synced") : tr("线路已添加，模型目录已同步", "Route added and model catalog synced"), "success");
@@ -978,7 +1001,7 @@ export default function App() {
         <span className="route-fact"><small>{tr("客户端 Key", "Client keys")}</small><b>{boundKeys}</b></span>
         <span className="route-fact route-latency" title={formatDate(provider.lastTestAt || provider.modelFetchedAt, language)}><small>{tr("延迟", "Latency")}</small><b>{provider.lastLatencyMs ? `${provider.lastLatencyMs}ms` : "—"}</b></span>
       </div>
-      {showActions && <div className="route-actions">{showSync && <button className="button button-secondary button-small" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id || syncing === "all"}><Icon name="refresh" size={14} />{syncing === provider.id ? tr("检测中", "Testing") : tr("检测线路", "Test route")}</button>}<button className="icon-button" onClick={() => setModal({ kind: "provider", provider })} title={tr("编辑线路", "Edit route")} aria-label={tr("编辑线路", "Edit route")}><Icon name="edit" size={15} /></button><button className="icon-button danger" onClick={() => void deleteProvider(provider.id)} title={tr("删除线路", "Delete route")} aria-label={tr("删除线路", "Delete route")}><Icon name="trash" size={15} /></button></div>}
+      {showActions && <div className="route-actions">{showSync && <button className="button button-secondary button-small" onClick={() => void syncProvider(provider.id)} disabled={syncing === provider.id || syncing === "all"}><Icon name="refresh" size={14} />{syncing === provider.id ? tr("检测中", "Testing") : tr("检测线路", "Test route")}</button>}<button className="icon-button" onClick={() => openProviderModal(provider)} title={tr("编辑线路", "Edit route")} aria-label={tr("编辑线路", "Edit route")}><Icon name="edit" size={15} /></button><button className="icon-button danger" onClick={() => void deleteProvider(provider.id)} title={tr("删除线路", "Delete route")} aria-label={tr("删除线路", "Delete route")}><Icon name="trash" size={15} /></button></div>}
       {provider.lastTestStatus === "error" && provider.lastError && <div className="route-error" title={provider.lastError}><Icon name="shield" size={13} /><span><strong>{provider.routeVerified ? tr("模型目录检测异常，线路仍可用", "Catalog check issue; route remains ready") : provider.modelListStatus === "auth" ? tr("模型目录鉴权失败", "Model catalog authentication failed") : tr("线路检测未确认", "Route not verified")}</strong>{errorSummary(provider.lastError)}</span><button className="text-button" onClick={() => void copyErrorDetails(provider.lastError || "")}>{tr("复制详情", "Copy details")}</button></div>}
     </article>;
   }
@@ -991,7 +1014,7 @@ export default function App() {
     const hasSuccessfulClientRequest = activeKeys > 0 && lastClientRequestStatus === "ok";
     const firstActiveKey = keys.find((key) => key.enabled);
     const nextStep = !providers.length
-      ? { label: tr("添加第一条线路", "Add your first route"), action: () => setModal({ kind: "provider" }), icon: "plus" }
+      ? { label: tr("添加第一条线路", "Add your first route"), action: () => openProviderModal(), icon: "plus" }
       : !totalModels
         ? { label: tr("刷新模型目录", "Refresh model catalog"), action: () => void syncAll(), icon: "refresh" }
         : !keys.length
@@ -1011,20 +1034,20 @@ export default function App() {
         <section className="panel routing-panel"><PanelHeading kicker={tr("客户端路由", "CLIENT ROUTING")} title={tr("当前 Key 路由", "Current key routing")} description={tr("每个客户端 Key 只绑定一条线路；这里显示有效 Key 的实际去向。", "Each client key binds to one route; this shows where active keys actually go.")} /><div className="routing-summary">{boundRoutes.length ? <div className="routing-list">{boundRoutes.slice(0, 3).map(({ key, provider }) => <div className="routing-row" key={key.id}><div className="routing-icon"><Icon name="key" size={17} /></div><div><strong>{key.name}</strong><code>{provider?.name || key.providerId}</code></div><span className="level-chip">{levelLabel(key.reasoningLevel)}</span></div>)}{boundRoutes.length > 3 && <small className="routing-more">+{boundRoutes.length - 3} {tr("个客户端 Key", "more client keys")}</small>}</div> : <div className="routing-empty"><Icon name="route" size={18} /><span>{tr("生成客户端 Key 后，这里会显示它绑定的线路。", "Create a client key to see its bound route here.")}</span></div>}</div><div className="safe-note"><Icon name="shield" size={14} /><span>{tr("上游 Key 加密保存在本机，客户端永远看不到。", "Upstream keys are encrypted locally and never shown to clients.")}</span></div></section>
         <section className="panel connection-panel"><PanelHeading kicker={tr("连接状态", "CONNECTION STATUS")} title={tr("本地连接状态", "Local connection status")} description={tr("集中查看本地入口和最近一次请求，不占用配置引导空间。", "See the local endpoint and latest request without permanent onboarding clutter.")} /><div className="connection-pulse-grid"><button type="button" onClick={() => void copyApiAddress()}><span className="connection-pulse-icon"><Icon name="copy" size={16} /></span><span><small>{tr("本地 API 地址", "Local API URL")}</small><strong>{apiBase}</strong></span></button><div><span className={`connection-pulse-icon status-${lastClientRequestStatus}`}><Icon name={lastClientRequestStatus === "ok" ? "check" : lastClientRequestStatus === "error" ? "shield" : "refresh"} size={16} /></span><span><small>{tr("最近请求", "Latest request")}</small><strong>{lastClientRequestStatus === "ok" ? tr("转发成功", "Forwarded") : lastClientRequestStatus === "error" ? tr("转发失败", "Failed") : tr("等待请求", "Waiting")}</strong><em>{lastClientRequestModel || formatDate(lastClientRequestAt, language)}</em></span></div></div><div className="connection-panel-footer"><span><i className="gold-dot" />{tr(`${DEMO_MODE ? 12 : providers.length} 条线路 · ${DEMO_MODE ? 8 : activeKeys} 个有效 Key`, `${DEMO_MODE ? 12 : providers.length} routes · ${DEMO_MODE ? 8 : activeKeys} active keys`)}</span><button className="text-button" onClick={() => navigate("usage")}>{tr("查看使用记录", "View usage")} <Icon name="arrow" size={13} /></button></div></section>
       </div>
-      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{overviewProviders.length ? <div className="route-list compact-route-list">{overviewProviders.map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
+      <section className="section-block"><PanelHeading kicker={tr("线路概览", "ROUTE SNAPSHOT")} title={tr("线路概览", "Route snapshot")} description={tr("这里只显示状态摘要；完整模型列表统一放在模型目录。", "Only status appears here; the full catalog lives in Models.")} action={<button className="text-button" onClick={() => navigate("providers")}>{tr("管理线路", "Manage routes")} <Icon name="arrow" size={14} /></button>} />{overviewProviders.length ? <div className="route-list compact-route-list">{overviewProviders.map((provider) => <RouteCard provider={provider} compact key={provider.id} />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加第一条线路后，点击检测即可读取模型。", "Add your first route, then test it to read its models.")} action={<button className="button button-primary" onClick={() => openProviderModal()}>{tr("添加第一条线路", "Add first route")}</button>} />}</section>
     </>;
   }
 
   function ProvidersView() {
     const actions = <div className="page-action-group">
       {providers.length > 0 && <button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("全部检测中", "Testing all") : tr("检测全部线路", "Test all routes")}</button>}
-      <button className="button button-primary" onClick={() => setModal({ kind: "provider" })}><Icon name="plus" size={15} />{tr("添加线路", "Add route")}</button>
+      <button className="button button-primary" onClick={() => openProviderModal()}><Icon name="plus" size={15} />{tr("添加线路", "Add route")}</button>
     </div>;
     return <section className="page-view">
       <PageIntro kicker={tr("中转站线路", "UPSTREAM ROUTES")} description={tr("一条线路保存一个上游地址和 Key；创建客户端 Key 时必须绑定其中一条。", "Each route stores one upstream URL and key. Every client key must bind to one route.")} action={actions} />
       <div className="info-banner"><div className="banner-icon"><Icon name="shield" size={17} /></div><div><strong>{tr("先检测，再绑定", "Test before binding")}</strong><span>{tr("新增线路会自动检测；也可以随时单独检测或一次检测全部线路。", "New routes are tested automatically. You can also test one route or all routes at any time.")}</span></div><span className="banner-rule">{tr("一 Key 一线路", "1 key · 1 route")}</span></div>
       {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在检测 ${syncProgress.current}/${syncProgress.total}`, `Testing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
-      {providers.length ? <div className="route-list">{providers.map((provider) => <RouteCard provider={provider} key={provider.id} showSync />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "provider" })}>{tr("添加中转站线路", "Add upstream route")}</button>} />}
+      {providers.length ? <div className="route-list">{providers.map((provider) => <RouteCard provider={provider} key={provider.id} showSync />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => openProviderModal()}>{tr("添加中转站线路", "Add upstream route")}</button>} />}
     </section>;
   }
 
@@ -1133,7 +1156,13 @@ export default function App() {
 
   function Modal() {
     if (!modal) return null;
-    const close = () => setModal(null);
+    const close = closeModal;
+    const providerDraft = providerDraftRef.current || {
+      id: modal.kind === "provider" ? modal.provider?.id || "" : "",
+      name: modal.kind === "provider" ? modal.provider?.name || "" : "",
+      baseUrl: modal.kind === "provider" ? modal.provider?.baseUrl || "" : "",
+      apiKey: "",
+    };
     return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
       <div className="modal" role="dialog" aria-modal="true">
         {modal.kind === "provider" && <>
@@ -1142,10 +1171,10 @@ export default function App() {
           <h2>{modal.provider ? tr("编辑中转站线路", "Edit upstream route") : tr("添加中转站线路", "Add upstream route")}</h2>
           <p>{tr("保存后会立即检测 /v1/models；上游 Key 只会加密保存在本机。", "Saving will test /v1/models. The upstream key is encrypted and kept on this PC.")}</p>
           <form onSubmit={handleProviderSubmit}>
-            <Field label={tr("线路代号", "Route ID")} name="id" defaultValue={modal.provider?.id || ""} placeholder="router-luna" readOnly={Boolean(modal.provider)} required />
-            <Field label={tr("线路名称", "Route name")} name="name" defaultValue={modal.provider?.name || ""} placeholder={tr("例如 我的 Luna 线路", "e.g. My Luna route")} required />
-            <Field label="API URL" name="baseUrl" type="url" defaultValue={modal.provider?.baseUrl || ""} placeholder="https://example.com" required />
-            <Field label={modal.provider ? tr("中转站 Key（留空保持不变）", "Upstream key (blank keeps it)") : tr("中转站 Key", "Upstream key")} name="apiKey" type="password" placeholder="sk-..." />
+            <Field label={tr("线路代号", "Route ID")} name="id" defaultValue={providerDraft.id} placeholder="router-luna" readOnly={Boolean(modal.provider)} required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.id = event.target.value; }} />
+            <Field label={tr("线路名称", "Route name")} name="name" defaultValue={providerDraft.name} placeholder={tr("例如 我的 Luna 线路", "e.g. My Luna route")} required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.name = event.target.value; }} />
+            <Field label="API URL" name="baseUrl" type="url" defaultValue={providerDraft.baseUrl} placeholder="https://example.com" required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.baseUrl = event.target.value; }} />
+            <Field label={modal.provider ? tr("中转站 Key（留空保持不变）", "Upstream key (blank keeps it)") : tr("中转站 Key", "Upstream key")} name="apiKey" type="password" defaultValue={providerDraft.apiKey} placeholder="sk-..." onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.apiKey = event.target.value; }} />
             <div className="form-tip"><Icon name="shield" size={14} />{tr("模型不手填，检测成功后自动读取。", "Models are read automatically after a successful test.")}</div>
             <ModalActions cancel={tr("取消", "Cancel")} submit={modal.provider ? tr("保存并同步", "Save & sync") : tr("添加并同步", "Add & sync")} />
           </form>
@@ -1198,7 +1227,7 @@ export default function App() {
     {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
   </div>;
 
-  function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={() => setModal(null)}>{cancel}</button><button type="submit" className="button button-secondary button-text-emphasis" disabled={disabled}><span className="button-action-label">{submit}</span></button></div>; }
+  function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={closeModal}>{cancel}</button><button type="submit" className="button button-secondary button-text-emphasis" disabled={disabled}><span className="button-action-label">{submit}</span></button></div>; }
   function ConfirmDialog() {
     if (!confirmDialog) return null;
     const tone = confirmDialog.tone || "primary";
