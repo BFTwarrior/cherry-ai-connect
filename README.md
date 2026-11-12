@@ -278,7 +278,7 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [User guide for v1.41.1](产品文档/文档/01-使用说明.txt)
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Cloud sync v2 protocol](sync/SYNC-PROTOCOL.md)
-- [v1.41.1 emergency update map](产品文档/逻辑图/2026-11-12-v1.41.1-模型获取紧急更新-v1.xmind)
+- [v1.41.1 emergency update map](产品文档/逻辑图/2026-11-12-v1.41.1-模型获取紧急更新-v2.xmind)
 - [v1.41.1 release verification](产品文档/验收证据/2026-11-12-v1.41.1-紧急更新/发布核验.json)
 
 ### Historical docs

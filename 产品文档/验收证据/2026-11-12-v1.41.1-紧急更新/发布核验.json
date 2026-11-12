@@ -7,9 +7,18 @@
   "installerBytes": 103892222,
   "sha256": "532265b2f2f3a93ebc14ea64ec4661d94413e47f3e3673bceafe54529554dd80",
   "sha512": "MnbrKcXiT6iDGuvuRZ8J0sD+k8mhFJPOUTQq27+V21ONyPZpk7GWhojsSZIrpP3yH/cEION0xkIsh/Vwi9jpcQ==",
-  "releasePublished": false,
+  "releasePublished": true,
   "nodeTests": 262,
   "uiTests": 6,
   "syntaxAndTypeChecks": true,
-  "candidateReview": 5
+  "candidateReview": 5,
+  "releaseUrl": "https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.41.1",
+  "publishedAt": "2026-11-12T15:06:22Z",
+  "releaseTargetCommit": "e067783ee4dcbe2a1dbef06742ea082a7de26239",
+  "latestApiVerified": true,
+  "latestWebsiteRedirectVerified": true,
+  "remoteAssetCount": 4,
+  "remoteAssetDigestsVerified": true,
+  "remoteReview": 5,
+  "physicalDeviceInstallationVerified": false
 }
