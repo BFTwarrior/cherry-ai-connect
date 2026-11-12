@@ -1,8 +1,8 @@
 # Cherry AI Connect Cloud Sync Protocol — Schema 2
 
-Current for product v1.41.0, updated 2026-11-12. The committed manifest uses schema 2 with minimum reader and writer version `2.0`. Product versions, manifest schema, and embedded configuration schema are separate identifiers.
+Current for product v1.41.1, updated 2026-11-12. The committed manifest uses schema 2 with minimum reader and writer version `2.0`. Product versions, manifest schema, and embedded configuration schema are separate identifiers.
 
-本文对应v1.41.0正式版。上一份schema 1完整协议保存在[历史目录](../产品文档/历史/文档/2026-11-12-主页文档更新/SYNC-PROTOCOL-schema1.md)。共享对象与加密约定沿用原实现，下面记录v2布局、迁移和当前合并规则。
+本文对应v1.41.1正式版。上一份schema 1完整协议保存在[历史目录](../产品文档/历史/文档/2026-11-12-主页文档更新/SYNC-PROTOCOL-schema1.md)。共享对象与加密约定沿用原实现，下面记录v2布局、迁移和当前合并规则。
 
 ## Repository layout
 
@@ -87,6 +87,6 @@ Changes between preview and confirmation invalidate the preview. Authentication 
 
 ## Verification
 
-The v1.41.0 regression suite covers two-device convergence, omissions and tombstones, concurrent and late branches, vault authentication failures, migration preview changes, v2 namespace isolation, history seeding, replay protection, backup recovery and retirement of late model-protocol records.
+The v1.41.1 regression suite covers two-device convergence, omissions and tombstones, concurrent and late branches, vault authentication failures, migration preview changes, v2 namespace isolation, history seeding, replay protection, backup recovery and retirement of late model-protocol records.
 
-The full Node suite passed 256 tests. Real user-repository migration and affected-device update remain field-acceptance work. See the [current acceptance checklist](../产品文档/文档/流程与规范/05-待验收与后续计划.txt).
+The full Node suite passed 262 tests. Real user-repository migration and affected-device update remain field-acceptance work. See the [current acceptance checklist](../产品文档/文档/流程与规范/05-待验收与后续计划.txt).

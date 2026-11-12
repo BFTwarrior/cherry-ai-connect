@@ -1,0 +1,15 @@
+{
+  "version": "1.41.1",
+  "sourceFix": "bbb00d0",
+  "modelDiscoveryBaseline": "9f11965",
+  "packedDiscoveryMatchesOriginal": true,
+  "packedWorkerConversionVerified": true,
+  "installerBytes": 103892222,
+  "sha256": "532265b2f2f3a93ebc14ea64ec4661d94413e47f3e3673bceafe54529554dd80",
+  "sha512": "MnbrKcXiT6iDGuvuRZ8J0sD+k8mhFJPOUTQq27+V21ONyPZpk7GWhojsSZIrpP3yH/cEION0xkIsh/Vwi9jpcQ==",
+  "releasePublished": false,
+  "nodeTests": 262,
+  "uiTests": 6,
+  "syntaxAndTypeChecks": true,
+  "candidateReview": 5
+}

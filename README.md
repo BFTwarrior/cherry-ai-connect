@@ -23,8 +23,8 @@
 
 </div>
 
-> **Current release · v1.41.0** — Model-family filters, client-key search, stable route forms, four dialogue protocols, and private-sync v2 migration.
-> **v1.41.0 已发布** — 模型家族分类、Key 快捷筛选、四协议转换及云同步 v2 迁移。
+> **Current release · v1.41.1** — Emergency fix restoring the original model-discovery endpoint and Bearer authentication for every route protocol.
+> **v1.41.1 紧急更新** — 获取模型恢复旧版方式，统一使用 GET /v1/models 与 Bearer 认证。
 
 ## Product tour
 
@@ -38,7 +38,7 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.41.0
+### What is included in v1.41.1
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
@@ -83,7 +83,7 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 ### Route control
 
 - Manage multiple upstream routes behind one local OpenAI-compatible gateway.
-- Test routes in batches; model refreshes and route checks are queued safely.
+- Test routes in batches; model refreshes and route checks are queued safely. Model discovery uses the established `GET /v1/models` and Bearer authentication independently of the route dialogue protocol.
 - Filter routes and models by catalog-derived model families. New model groups start collapsed and remember local choices. Search temporarily reveals matching groups.
 - Click a model card to switch its green/red enable state. Protocol selection belongs to the route.
 - Set each upstream route to passthrough, Chat Completions, Responses, Anthropic Messages, or Gemini GenerateContent. Incoming request paths select the client protocol automatically.
@@ -149,18 +149,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.41.0.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Setup-1.41.0.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.41.1.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.1/Cherry-AI-Connect-Setup-1.41.1.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.41.0) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Setup-1.41.0.exe) | Windows x64 NSIS package; standard filename and checksum support the in-app updater |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Web-Demo-1.41.0.zip) | Browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.41.1) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.1/Cherry-AI-Connect-Setup-1.41.1.exe) | Windows x64 NSIS package; standard filename and checksum support the in-app updater |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.1/Cherry-AI-Connect-Web-Demo-1.41.1.zip) | Browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  417CBFEBFFB61AA141881F766DA5912325E600F0FD042AE29C1262268DF47061
+SHA-256  532265B2F2F3A93EBC14EA64EC4661D94413E47F3E3673BCEAFE54529554DD80
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -241,10 +241,10 @@ npm run web-demo:build
 npm run dist
 ```
 
-Current v1.41.0 verification
+Current v1.41.1 verification
 
-- 256 Node regressions and 6 React DOM tests passed, along with TypeScript checks and the production renderer build.
-- Windows x64 NSIS package built at 103,892,064 bytes. Packaged UI, worker integrity, startup handshake, and a Chinese text conversion were checked.
+- 262 Node regressions and 6 React DOM tests passed, along with TypeScript checks and the production renderer build.
+- Windows x64 NSIS package built at 103,892,222 bytes. Packaged UI, worker integrity, startup handshake, and a Chinese text conversion were checked.
 - Local HTTP fixtures cover four native protocols, twelve conversion directions, passthrough, SSE, function tools, authentication, errors, and one usage entry per request.
 - Browser checks cover key search/filtering, empty results, model-group collapse memory, and desktop menu layout. Device update, real-client import, and real-provider acceptance remain tracked below.
 
@@ -275,11 +275,11 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 ### Current docs
 
 - [Document index](产品文档/文档/00-文档索引.txt)
-- [User guide for v1.41.0](产品文档/文档/01-使用说明.txt)
+- [User guide for v1.41.1](产品文档/文档/01-使用说明.txt)
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
 - [Cloud sync v2 protocol](sync/SYNC-PROTOCOL.md)
-- [v1.41.0 implementation and release map](产品文档/逻辑图/2026-11-12-v1.41.0-分类表单协议转换-实施逻辑图-v5.xmind)
-- [v1.41.0 release verification](产品文档/验收证据/2026-11-12-v1.41.0-本地验收/正式发布核验-v5.json)
+- [v1.41.1 emergency update map](产品文档/逻辑图/2026-11-12-v1.41.1-模型获取紧急更新-v1.xmind)
+- [v1.41.1 release verification](产品文档/验收证据/2026-11-12-v1.41.1-紧急更新/发布核验.json)
 
 ### Historical docs
 
@@ -321,6 +321,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.41.0 · Windows x64
+Cherry AI Connect · v1.41.1 · Windows x64
 
 </div>
