@@ -745,41 +745,52 @@ async function usageSnapshot(url) {
   return combineUsageSnapshots(relaySnapshot, officialSnapshot, url);
 }
 
+// Model discovery follows the established relay contract: GET /v1/models with Bearer auth.
+// A route's upstream dialogue protocol must not change this request or add pagination.
 async function fetchProviderModels(provider) {
-  const protocol = upstreamProtocol(config.catalogMetadata, provider.id);
+  const target = targetUrl(provider.baseUrl, "/v1/models");
   const apiKey = decrypt(provider.apiKeyEnc);
   if (!apiKey) throw new Error("中转站 Key 未填写");
-  const headers = protocol === 'gemini' ? {accept:'application/json','x-goog-api-key':apiKey} : protocol === 'messages' ? {accept:'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'} : {accept:'application/json',authorization:`Bearer ${apiKey}`};
-  let target = targetUrl(provider.baseUrl, '/v1/models');
-  if(protocol === 'gemini') {
-    target = new URL(provider.baseUrl);
-    target.pathname = target.pathname.replace(/\/(v1|v1beta)\/?$/, '').replace(/\/+$/, '') + '/v1beta/models';
-    target.search='';
-  }
-  const started=Date.now(), result=[], seen=new Set();
-  for(let page=0;page<50;page++) {
-    const data = await new Promise((resolve,reject) => {
-      const upstream = requestUpstream(target,'GET',headers,response => {
-        const chunks=[];let size=0;
-        response.on('error',() => reject(providerModelsError('模型目录响应中断','network')));
-        response.on('data',chunk => {size+=chunk.length;if(size>8*1024*1024) {response.destroy();reject(providerModelsError('模型目录响应过大','invalid-response'));}else chunks.push(chunk);});
-        response.on('end',() => {
-          const status=Number(response.statusCode || 0);
-          if(status>=200 && status<300) {const body=bodyJson(Buffer.concat(chunks));if(!body || typeof body!=='object') reject(providerModelsError('上游模型目录响应格式无效','invalid-response',status));else resolve(body);}
-          else reject(providerModelsError(`HTTP ${status}`,[404,405,501].includes(status)?'unsupported':status===429?'rate_limited':[401,403].includes(status)?'auth':[408,504].includes(status)?'timeout':'error',status));
-        });
+  const headers = { accept: "application/json", authorization: `Bearer ${apiKey}` };
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const request = requestUpstream(target, "GET", headers, (response) => {
+      const chunks = [];
+      response.on("data", (chunk) => chunks.push(chunk));
+      response.on("end", () => {
+        const data = bodyJson(Buffer.concat(chunks));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          const rawModels = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
+          if (!rawModels) return reject(providerModelsError("上游模型目录响应格式无效", "invalid-response", response.statusCode));
+          // 中文：兼容少数上游使用 model/slug 而不是标准 id 的目录项；否则模型明明可用却会被误判为空目录。
+          // English: Accept catalog entries that use model/slug instead of standard id; otherwise
+          // a usable upstream can be falsely classified as an empty catalog.
+          const models = uniqueModels(rawModels.map((item) => typeof item === "string" ? item : item?.id || item?.model || item?.slug || item?.name));
+          if (!models.length) return reject(providerModelsError("上游模型目录为空或不含有效模型", "invalid-response", response.statusCode));
+          resolve({ status: response.statusCode, latencyMs: Date.now() - started, models });
+        } else {
+          const statusCode = Number(response.statusCode || 0);
+          const modelListStatus = [404, 405, 501].includes(statusCode)
+            ? "unsupported"
+            : statusCode === 429
+              ? "rate_limited"
+              : [401, 403].includes(statusCode)
+                ? "auth"
+                : [408, 504].includes(statusCode)
+                  ? "timeout"
+                  : "error";
+          reject(providerModelsError(`HTTP ${statusCode}${data?.error?.message ? `: ${data.error.message}` : ""}`, modelListStatus, statusCode));
+        }
       });
-      upstream.on('error',error=>reject(providerModelsError('无法连接上游模型目录',error.message==='upstream_timeout'?'timeout':'network',0,error.code || '')));upstream.end();
     });
-    const raw=Array.isArray(data.data)?data.data:Array.isArray(data.models)?data.models:null;
-    if(!raw) throw providerModelsError('上游模型目录响应格式无效','invalid-response',200);
-    result.push(...raw.map(item => typeof item==='string'?item:item?.id || item?.model || item?.slug || (protocol==='gemini'?String(item?.name || '').replace(/^models\//,''):item?.name)).filter(Boolean));
-    const cursor=protocol==='gemini'?data.nextPageToken:protocol==='messages' && data.has_more?data.last_id:'';
-    if(!cursor) {const models=uniqueModels(result);if(!models.length) throw providerModelsError('上游模型目录为空或不含有效模型','invalid-response',200);return {status:200,latencyMs:Date.now()-started,models};}
-    if(seen.has(cursor)) throw providerModelsError('模型目录分页重复','invalid-response',200);
-    seen.add(cursor);target.searchParams.set(protocol==='gemini'?'pageToken':'after_id',cursor);
-  }
-  throw providerModelsError('模型目录分页超过限制','invalid-response',200);
+    request.on("error", (error) => reject(providerModelsError(
+      error?.message || "无法连接上游模型目录",
+      error?.message === "upstream_timeout" ? "timeout" : "network",
+      0,
+      error?.code || (error?.message === "upstream_timeout" ? "ETIMEDOUT" : ""),
+    )));
+    request.end();
+  });
 }
 
 function providerErrorMessage(error, provider) {
