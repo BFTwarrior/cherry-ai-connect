@@ -86,5 +86,5 @@
   <text x="88" y="366" fill="#B6ABC9" font-family="Inter,Segoe UI,sans-serif" font-size="15">Route traffic. Issue access. Understand usage. Keep control local.</text>
   <rect x="88" y="411" width="178" height="42" rx="21" fill="#A855F7" fill-opacity=".25" stroke="#A855F7" stroke-opacity=".72"/>
   <text x="116" y="438" fill="#FFF8ED" font-family="Inter,Segoe UI,sans-serif" font-size="14" font-weight="700">OPEN SOURCE · MIT</text>
-  <text x="88" y="532" fill="#8E829F" font-family="Inter,Segoe UI,sans-serif" font-size="13">Cherry AI Connect · v1.37 · Windows x64</text>
+  <text x="88" y="532" fill="#8E829F" font-family="Inter,Segoe UI,sans-serif" font-size="13">Cherry AI Connect · v1.41.0 · Windows x64</text>
 </svg>

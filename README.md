@@ -23,7 +23,8 @@
 
 </div>
 
-> **Current release · v1.40.26** — Upstream route form errors now preserve every entered value while showing the validation prompt.
+> **Current release · v1.41.0** — Model-family filters, client-key search, stable route forms, four dialogue protocols, and private-sync v2 migration.
+> **v1.41.0 已发布** — 模型家族分类、Key 快捷筛选、四协议转换及云同步 v2 迁移。
 
 ## Product tour
 
@@ -37,13 +38,14 @@ Cherry AI Connect is built around a simple idea: keep the operational boundary l
   </tr>
 </table>
 
-### What is included in v1.40.26
+### What is included in v1.41.0
 
 | Surface | What it does | Boundary worth knowing |
 | --- | --- | --- |
-| Local gateway | Routes OpenAI-compatible requests across multiple upstream providers. | The default listener stays on `127.0.0.1`. |
+| Local gateway | Accepts Chat Completions, Responses, Anthropic Messages, and Gemini GenerateContent. Set the upstream protocol once per route. | The listener stays on `127.0.0.1`. Verified text and function-tool flows support cross-protocol conversion and SSE. |
+| Model families | Filters routes and models by families derived from their actual catalogs. Routes and bound keys can carry multiple family tags. | Empty catalogs show an unsynced state. |
 | Model catalog | Toggle individual models off or on; disabled models disappear from `/v1/models` and requests receive HTTP 403. | Disabled-model choices are saved locally per device and are not included in cloud sync. |
-| Client Keys | Creates one key per route and generates safe import flows for Cherry Studio and CC Switch. | Decrypted upstream keys do not return to the renderer or logs. |
+| Client Keys | Binds each key to one route, searches key/route names, and filters by reasoning level and provider. Imports into Cherry Studio and CC Switch. | Upstream keys remain encrypted locally. Clear filters before reordering. Bulk import includes all eligible keys. |
 | Usage analytics | Shows relay traffic and `Codex Local Records` usage with source, route, model, status, and history filters. | Relay and Codex local observations use separate accounting sources and separate cache budgets. |
 | Private GitHub sync | Stores encrypted configuration in the user’s selected private repository. | Only the selected repository needs `Contents: Read and write` and `Metadata: Read-only`. |
 | Update center | Checks release metadata, keeps download progress visible, and preserves local data safeguards. | Device-specific update and data-retention acceptance remains tracked honestly below. |
@@ -82,13 +84,16 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 - Manage multiple upstream routes behind one local OpenAI-compatible gateway.
 - Test routes in batches; model refreshes and route checks are queued safely.
-- Group and collapse model catalogs by route.
+- Filter routes and models by catalog-derived model families. New model groups start collapsed and remember local choices. Search temporarily reveals matching groups.
+- Click a model card to switch its green/red enable state. Protocol selection belongs to the route.
+- Set each upstream route to passthrough, Chat Completions, Responses, Anthropic Messages, or Gemini GenerateContent. Incoming request paths select the client protocol automatically.
+- Cross-protocol conversion covers verified text, dialogue, and function-tool calls. Images, structured output, signatures, conversation references, and server-hosted tools remain gated with explicit errors when conversion is unsupported.
 - Support five reasoning levels: `low`, `medium`, `high`, `xhigh`, and `max`.
 - Reset the local service using a secure selection from 29,000 candidate ports.
 
 ### Client access
 
-- Issue client keys bound to exactly one route.
+- Issue client keys bound to exactly one route. Combine quick search with reasoning-level and bound-provider filters.
 - Keep client-key names synchronized with route names until a user customizes them.
 - Import one key or all enabled keys into Cherry Studio or CC Switch.
 - Generate import links in the Electron main process; decrypted client keys never return to the renderer or logs.
@@ -105,10 +110,11 @@ Cherry AI Connect 不是又一个聊天客户端，而是运行在本机的 AI �
 
 ### Private sync and recovery
 
-- Sync encrypted route configuration to the user’s own private GitHub Release.
+- Sync encrypted route configuration to the user’s private repository, using the independent `cherry-sync-v2` Release area after migration.
 - Keep usage/request metadata in a separate sync path so a vault failure does not hide local usage.
 - Relay usage is the current cloud-synced usage ledger. Codex Local Records are read from a separate local loopback service and remain separately named and separately budgeted; they are not included in relay records or cloud sync.
-- Resolve sync conflicts by choosing **Keep Local** or **Use Cloud** before credentials are requested.
+- Upgrade participating devices before enabling v2. Review the migration preview, authenticate the vault when required, then confirm backup and migration.
+- Merge supported records automatically. Newly detected legacy commits stay pending until reviewed and merged into v2.
 - Protect update recovery and data migration with version binding, one-time consumption, and fail-closed startup checks.
 
 ### Desktop experience
@@ -143,18 +149,18 @@ The key boundary is intentional: clients talk to the local gateway, the gateway 
 
 ### 1. Download the current release
 
-**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.40.26.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Setup-1.40.26.exe)
+**Public Windows x64 installer:** [Cherry-AI-Connect-Setup-1.41.0.exe](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Setup-1.41.0.exe)
 
 | Artifact | Purpose |
 | --- | --- |
-| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.40.26) | Notes, checksums, and all release assets |
-| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Setup-1.40.26.exe) | Windows x64 NSIS package; the standard filename and checksum support the in-app updater |
-| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.40.26/Cherry-AI-Connect-Web-Demo-1.40.26.zip) | Safe browser preview with in-memory demo state |
+| [Release page](https://github.com/BFTwarrior/cherry-ai-connect/releases/tag/v1.41.0) | Notes, checksums, and all release assets |
+| [Windows installer](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Setup-1.41.0.exe) | Windows x64 NSIS package; standard filename and checksum support the in-app updater |
+| [Web Demo](https://github.com/BFTwarrior/cherry-ai-connect/releases/download/v1.41.0/Cherry-AI-Connect-Web-Demo-1.41.0.zip) | Browser preview with in-memory demo state |
 
 Verify the installer before running it:
 
 ```text
-SHA-256  B81E77085B4F8A29ABB999318396FDD0F3CDA89FB337D0D7F3E254AB9AB18531
+SHA-256  417CBFEBFFB61AA141881F766DA5912325E600F0FD042AE29C1262268DF47061
 ```
 
 The installer is not commercially code-signed, so Windows SmartScreen may show **Unknown publisher**. Download only from the official Release page.
@@ -164,7 +170,7 @@ The installer is not commercially code-signed, so Windows SmartScreen may show *
 1. Open **Routes** and create an upstream connection.
 2. Enter the upstream endpoint and API key locally.
 3. Test the route and refresh its model catalog.
-4. Select the required reasoning level.
+4. Select the route's upstream protocol. Passthrough keeps the client's protocol. Choose the reasoning level when creating or editing each client key.
 
 ### 3. Create a client key
 
@@ -200,7 +206,7 @@ Create a fine-grained GitHub token with the minimum scope:
 3. Grant `Contents: Read and write`.
 4. Leave `Metadata: Read-only`.
 5. Do not add Actions, Administration, Issues, Pull requests, Secrets, or account-level permissions.
-6. Enter the token in **Settings → GitHub Cloud Sync**, then run one immediate sync.
+6. Open **Cloud Sync** and enter the token. When migration is offered, upgrade participating devices, review the preview, and confirm backup and migration before syncing.
 
 ### Final permission reference
 
@@ -214,6 +220,8 @@ The screenshot is a sanitized reference. Confirm that exactly one private sync r
 
 令牌只显示一次，生成后立即复制到软件的 GitHub 云同步设置中；不要放进聊天、截图、Issue 或公开仓库。同步逻辑自动合并最新记录，不再选择保留本机或使用云端。客户端 Key 条目与顺序使用 GitHub Token 同步，实际 Key 在各设备本地生成；中转站 Key/地址须经保险库密码或恢复码认证后加密同步。本机修改去重触发同步，其他设备每分钟检查一次。
 
+首次使用 v2 时，先升级参与同步的设备，在独立“云同步”页面查看迁移预览并确认备份。新格式使用 `cherry-sync-v2` 发布区，保留原 dataset 与旧区资产。发现旧区新增提交时显示待合并状态，查看预览并确认后再合入 v2。
+
 <p align="center">
   <a href="https://github.com/settings/personal-access-tokens/new">🇨🇳 创建 GitHub API 令牌</a>
   &nbsp; · &nbsp;
@@ -222,7 +230,7 @@ The screenshot is a sanitized reference. Confirm that exactly one private sync r
 
 ## Development
 
-Requirements: Node.js and npm. End users do not need Node.js, npm, pnpm, or SQLite after installing the Windows package.
+Development requires Node.js and npm. Building the bundled Windows x64 protocol worker also requires Go 1.27.4. The Windows installer includes Electron, its Node runtime, SQLite, and the compiled protocol worker. End users install the Windows package directly.
 
 ```bash
 npm install
@@ -233,7 +241,14 @@ npm run web-demo:build
 npm run dist
 ```
 
-Verification scope:
+Current v1.41.0 verification
+
+- 256 Node regressions and 6 React DOM tests passed, along with TypeScript checks and the production renderer build.
+- Windows x64 NSIS package built at 103,892,064 bytes. Packaged UI, worker integrity, startup handshake, and a Chinese text conversion were checked.
+- Local HTTP fixtures cover four native protocols, twelve conversion directions, passthrough, SSE, function tools, authentication, errors, and one usage entry per request.
+- Browser checks cover key search/filtering, empty results, model-group collapse memory, and desktop menu layout. Device update, real-client import, and real-provider acceptance remain tracked below.
+
+Historical verification records
 
 - v1.40.23: Adds local per-model enable/disable controls and gateway enforcement; disabled models are omitted from the model catalog and rejected with HTTP 403. Also fixes disabled-state feedback and keeps compact usage-history columns aligned. TypeScript, renderer, full regression, and Windows x64 installer verification passed; installed-device acceptance remains pending.
 - v1.40.24: Route deletion removes bound client keys with an explicit warning and reports the deletion count. TypeScript, regression, renderer, and Windows x64 installer verification are recorded in the version report; installed-device acceptance remains pending.
@@ -249,7 +264,7 @@ Verification scope:
 - v1.40.12: Full isolated regression 132/132 passed. Coverage includes cache isolation, ETag refresh, rate-limit cooldown and restart, manifest/GC read failures, offline update pause, pending data backup and corrupt-copy rejection. Installed-device update acceptance remains pending.
 - v1.40.11: TypeScript, renderer and Windows installer builds passed; full isolated regression 118/118 passed, including completion-time preservation, persisted state, failure, restart, retry and no-op rounds. Real-device built-in update acceptance is pending user testing.
 
-- Public v1.37 baseline: `npm test` 47/47; the public installer uses the SHA-256 shown above.
+- Public v1.37 baseline passed `npm test` 47/47. Its checksum belongs to its historical release record.
 - v1.40 verification is recorded in [the final delivery report](产品文档/文档/22-v1.40最终版本交付与交叉验证.txt). The v1.40.2 fixes and verification scope are recorded in [the v1.40.2 critical-fixes report](产品文档/文档/24-v1.40.2关键修复.txt). Older assets at the `dist/` root are retained locally and are not part of this release.
 - Device update/data retention, real client import, model refresh, historical pagination, particle animation, and real GitHub sync remain field-acceptance items.
 
@@ -260,8 +275,16 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 ### Current docs
 
 - [Document index](产品文档/文档/00-文档索引.txt)
-- [User guide](产品文档/文档/01-使用说明.txt)
+- [User guide for v1.41.0](产品文档/文档/01-使用说明.txt)
 - [Current acceptance plan](产品文档/文档/流程与规范/05-待验收与后续计划.txt)
+- [Cloud sync v2 protocol](sync/SYNC-PROTOCOL.md)
+- [v1.41.0 implementation and release map](产品文档/逻辑图/2026-11-12-v1.41.0-分类表单协议转换-实施逻辑图-v5.xmind)
+- [v1.41.0 release verification](产品文档/验收证据/2026-11-12-v1.41.0-本地验收/正式发布核验-v5.json)
+
+### Historical docs
+
+- [Versioned documentation archive](产品文档/历史)
+- [Previous homepage guides and schema 1 contract](产品文档/历史/文档/2026-11-12-主页文档更新)
 - [Serious issue checklist](产品文档/文档/严重问题核查文档.txt)
 - [v1.40.2 usage analytics issue review](产品文档/文档/25-v1.40.2新增问题-使用统计核查.txt)
 - [v1.40.3 fixes and release record](产品文档/文档/26-v1.40.3修复与发布记录.txt)
@@ -271,10 +294,8 @@ The `dist/` directory is generated output and is intentionally excluded from sou
 - [v1.40.2 critical-fix logic map](产品文档/逻辑图/24-v1.40.2关键修复逻辑图.xmind)
 - [v1.37 import and regression notes](产品文档/文档/20-v1.37客户端导入与回归修复候选.txt)
 - [v1.37 acceptance logic map](产品文档/逻辑图/20-v1.37客户端导入与回归验收逻辑图.xmind)
-- [Software interface map](产品文档/逻辑图/软件界面逻辑图.xmind)
-- [Cloud sync map](产品文档/逻辑图/云同步逻辑图.xmind)
-
-### Historical docs
+- [Earlier software interface map](产品文档/逻辑图/软件界面逻辑图.xmind)
+- [Earlier cloud sync map](产品文档/逻辑图/云同步逻辑图.xmind)
 
 Older release evidence is preserved under [产品文档/历史](产品文档/历史). Historical records describe their original release and do not replace the current acceptance checklist.
 
@@ -287,7 +308,7 @@ The following are intentionally not presented as completed just because automate
 - Cherry Studio model-pull behavior on the target client version, including the compatibility placeholder used when a route is usable but its upstream model catalog is unavailable.
 - Particle animation on devices where the effect was previously static.
 - Full historical usage pagination on an installed target build.
-- Persistent official Codex usage sync, backup, and cross-device recovery; the current official detail cache is local and memory-bounded only.
+- Persistent sync, backup, and cross-device recovery for Codex Local Records. These observations can include custom-provider calls, and the current request-detail cache is local and memory-bounded.
 - Real GitHub sync, conflict recovery, and backup continuity on the target device.
 
 This distinction is part of the project’s reliability boundary: a browser demo and an automated test can prove structure, but not every device-specific runtime outcome.
@@ -300,6 +321,6 @@ Released under the [MIT License](LICENSE).
 
 **Local control. Clear boundaries. Better AI operations.**
 
-Cherry AI Connect · v1.40.26 · Windows x64
+Cherry AI Connect · v1.41.0 · Windows x64
 
 </div>

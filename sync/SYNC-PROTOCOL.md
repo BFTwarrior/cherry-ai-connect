@@ -1,203 +1,92 @@
-# Cherry AI Connect Cloud Sync Protocol — Schema 1
+# Cherry AI Connect Cloud Sync Protocol — Schema 2
 
-> 中文：本文描述当前兼容的云同步数据协议。产品版本（当前源码 v1.40.8）与云端 `schemaVersion` 是两套版本号；当前云端格式仍为 schema 1，不随产品版本号自动递增。
-> English: This document describes the compatible cloud-sync data contract. The product version (current source v1.40.8) and cloud `schemaVersion` are independent; the current cloud format remains schema 1 and does not increment with each product release.
+Current for product v1.41.0, updated 2026-11-12. The committed manifest uses schema 2 with minimum reader and writer version `2.0`. Product versions, manifest schema, and embedded configuration schema are separate identifiers.
 
-## 1. Safety boundary / 安全边界
+本文对应v1.41.0正式版。上一份schema 1完整协议保存在[历史目录](../产品文档/历史/文档/2026-11-12-主页文档更新/SYNC-PROTOCOL-schema1.md)。共享对象与加密约定沿用原实现，下面记录v2布局、迁移和当前合并规则。
 
-- The local connection service remains usable when GitHub, authentication, or sync is unavailable.
-- 本地请求先写入 SQLite；云端失败只保留待同步队列，不能阻塞本地转发。
-- Prompt, response, message body, Authorization, cookies, full client keys, passwords, recovery codes, and OAuth/PAT tokens are never cloud objects.
-- 上游 API Key、Base URL、认证方式、代理和 TLS 设置只能进入加密 vault。
-- Usage records contain no upstream secrets and are stored as compressed JSONL without an additional encryption layer; the repository must still remain private.
-- Every download is size-limited, hashed, parsed in a staging area, and merged only after validation.
+## Repository layout
 
-## 2. Identifiers / 编号
+| Area | Release tag | Role |
+| --- | --- | --- |
+| Legacy | `cherry-sync` | Retains schema 1 commits and supplies explicitly reviewed legacy imports |
+| Current | `cherry-sync-v2` | Stores schema 2 commits after migration |
 
-| Field | Meaning |
-| --- | --- |
-| `datasetId` | One cloud data universe, formatted as `ds_<uuid>` |
-| `deviceId` | Random installation identity, formatted as `dev_<uuid>` |
-| `deviceEpoch` | Incremented when a cloned/rolled-back device identity is detected |
-| `eventId` | Globally unique request event ID |
-| `sequence` | Monotonic counter inside one `deviceId + deviceEpoch` |
-| `syncId` | Unique ID for one sync attempt, formatted as `sync_<uuid>` |
-| `generation` | Monotonic committed cloud generation |
+Use the user's selected private repository. Assets are immutable, hashed Release objects. Data uploads precede the committed manifest. A manifest is accepted only after dataset, schema, object-size, and SHA-256 validation. Filenames and wall-clock time do not decide conflicts.
 
-All stored protocol timestamps use UTC ISO-8601. The interface displays UTC+8 or the user's chosen display zone. Time is never the sole conflict-resolution key.
+The v2 namespace and cleanup operate independently from legacy assets. When a v2 dataset exists, upgraded devices join it. The client does not fall back to writing legacy format after a migration failure.
 
-## 3. GitHub layout / GitHub 布局
+## Migration transaction
 
-- One private repository per user-selected sync dataset.
-- One fixed Release tagged `cherry-sync`.
-- High-frequency data is stored as Release assets, not Git commits.
-- Asset names are ASCII and immutable.
+1. Inspect both Release areas and identify the existing dataset.
+2. Preview legacy data and required vault authentication. Require confirmation that participating devices have upgraded.
+3. Create a recoverable local backup, including configuration, local secret material, device identity and SQLite snapshot, with the existing desktop/vault recovery coverage.
+4. Recheck the preview's local state and legacy manifest asset IDs and hashes. Changed inputs require a fresh preview.
+5. Seed v2 with supported legacy objects, including historical usage beyond the local detail-cache window. Preserve the dataset and history.
+6. Upload and verify the v2 commit. Record processed legacy fingerprints only after the v2 commit succeeds.
 
-```text
-manifest-20260917-183025-123-ssync_<uuid>.json
-summary-20260917-183025-123-ssync_<uuid>.json.gz
-client-metadata-20260917-183025-123-ssync_<uuid>.json.gz
-config-20260917-183025-123-ssync_<uuid>.json.gz
-vault-20260917-183025-123-ssync_<uuid>.enc
-usage-<deviceId>-e<epoch>-<yyyymm>-s<first>-e<last>-20260917-183025-123-ssync_<uuid>.jsonl.gz
-```
+Authentication failures and missing keys retain the pending state. A failed attempt must not replace secrets with empty values or claim complete synchronization.
 
-The date-time segment is generated in UTC+8 as `YYYYMMDD-HHmmss-SSS`. Version 1.1 and later readers still accept legacy `*-g000042-*` objects, while current writers use only the readable date-time form. The manifest's internal `generation` remains the authoritative order; filenames are never used to resolve conflicts.
+## Manifest and object contracts
 
-日期时间段固定按 UTC+8 生成，格式为 `YYYYMMDD-HHmmss-SSS`。1.1 及之后版本仍能读取旧的 `*-g000042-*` 文件，但当前写入只使用日期时间名称。真正的版本顺序仍以 manifest 内部的 `generation` 为准。
-
-## 4. Manifest / 提交清单
+The manifest envelope contains the following fields. The example omits asset descriptors and counters for brevity.
 
 ```json
 {
   "format": "cherry-ai-connect-sync",
-  "schemaVersion": 1,
-  "minReaderVersion": "1.2",
-  "minWriterVersion": "1.2",
+  "schemaVersion": 2,
+  "minReaderVersion": "2.0",
+  "minWriterVersion": "2.0",
   "datasetId": "ds_...",
   "syncId": "sync_...",
   "generation": 42,
   "parentGeneration": 41,
-  "parentManifestSha256": "hex-or-empty",
-  "mergedManifestSha256s": ["hash-of-each-observed-manifest"],
-  "writerDeviceId": "dev_...",
-  "writerDeviceEpoch": 1,
-  "createdAtUtc": "2026-09-16T10:30:00.000Z",
-  "displayTimezone": "Asia/Shanghai",
+  "parentManifestSha256": "...",
   "state": "committed",
-  "configRevision": { "counter": 18, "deviceId": "dev_..." },
-  "keyEpoch": 1,
-  "vaultRevision": 3,
   "files": [],
-  "tombstones": [],
-  "retention": {
-    "localDetailCacheBytes": 52428800,
-    "localDetailTargetBytes": 47185920,
-    "prunedBeforeUtc": null
-  }
+  "tombstones": []
 }
 ```
 
-Only a `state: committed` manifest whose schema, dataset, parent, sizes, and SHA-256 values validate may be read. Unknown required versions make the client read-only.
+Embedded public configuration remains `schemaVersion: 1`. This value does not downgrade the enclosing schema 2 manifest. Encrypted secure configuration likewise has its own schema and dataset validation.
 
-## 5. Commit order / 提交顺序
+| Object | Current behavior |
+| --- | --- |
+| Usage events and cumulative counters | Merge by stable event/device identities, retain lifetime counts, acknowledge only the committed outbox snapshot |
+| Provider references and client-key metadata | Merge explicit per-item revisions and tombstones, preserve locally unique entries when the remote omits them |
+| Client-key order | Merge its independent revision while retaining local key secrets |
+| Settings | Apply their revision independently from item edits |
+| Encrypted vault | Authenticate before applying upstream secrets and URLs, retain ciphertext on failed authentication |
+| Catalog metadata | Merge independent category, model-category and route-protocol records by exact ID and revision |
 
-1. Read and validate the latest committed manifest.
-2. Export pending local events, per-device G-Counters, tombstones, public configuration, and encrypted vault.
-3. Validate and gzip JSON/JSONL. Encrypt the compressed vault with AES-256-GCM.
-4. Compute SHA-256 and size for every immutable data asset.
-5. Re-read the latest manifest. If the parent changed, abandon the candidate and merge/retry.
-6. Upload data assets.
-7. Download every uploaded asset and verify exact size and SHA-256.
-8. Upload the committed manifest last.
-9. Download and verify the manifest and all references.
-10. Only then mark local outbox events as synced.
-11. Garbage collection is best effort and never changes commit success.
+Public catalog metadata uses `id`, `kind`, `providerId`, `model`, `value`, `deleted`, and `revision { counter, deviceId }`. Model IDs retain exact spelling and case. Refreshing a directory preserves stored classification metadata. Route tags derive from the union of model categories.
 
-An interrupted candidate without a committed manifest is an orphan and is never treated as current data.
+Public configuration exports catalog metadata in both full-config and metadata-only sync paths. Upstream URLs and keys remain in the encrypted vault. Full client-key secrets stay local to each device. Existing local keys survive merge and update.
 
-## 6. Merge rules / 合并规则
+## Retired model-protocol records
 
-- Usage events merge by `eventId`; duplicates are ignored.
-- Each `deviceId + deviceEpoch` counter merges by field-wise maximum. Global lifetime usage is the sum of all device counters.
-- A counter must never decrease.
-- Explicit tombstones permanently suppress their stable ID. Omission, old snapshots, failed decrypts, and empty lists are never deletion instructions. Recreating a deleted object requires a new ID.
-- Client metadata/order merge every round with GitHub credentials alone in a separate `client-metadata` asset. Public route references contain only ID/name; URL/API Key/local client secret/hash/ciphertext are excluded.
-- Records use independent `{counter, deviceId}` revisions: compare the monotonic counter, then device ID; equal revisions use deterministic content order. Missing records are unioned. This merges whole records, not individual fields within one record.
-- Local counters observe every incoming record, settings and ordering revision before the next edit; they use `max(Date.now(), observed + 1)`. Wall-clock skew can affect which concurrent edit wins, but both devices converge to the same result.
-- Client-key order has its own revision and cannot overwrite key names/bindings. Unknown concurrent additions are appended deterministically; stale reorder lists are rejected.
-- Client bearer secrets remain local-only. Every newly received stable key ID creates one local secret, including on an existing device. An existing ID preserves its secret; unreadable existing secrets are protective errors, never automatic rotation triggers.
-- Route secrets merge only after vault authentication. Metadata-only route references remain pending until authenticated route data arrives; they do not block existing route sync.
-- Usage and metadata continue when vault authentication fails, retaining all valid encrypted config/vault branch assets. Local/remote configuration choices are removed from the current UI; credentials only authorize decryption.
-- A delete first persists the removed object and durable deletion intent in config, then writes the SQLite tombstone. Config-write failure rolls back without a tombstone; a later ledger failure is replayed on restart and the durable intent remains exportable.
-- Merge every unmerged manifest branch, including late lower-generation siblings. Compare the full observed manifest hash set before and after candidate upload; retry with fresh immutable names if cloud heads or local config change.
-- Vault changes require a valid password/recovery key, matching `datasetId`, valid AAD, and a non-decreasing `keyEpoch`.
+v1.41.0 configures the upstream protocol at route level. New `model-protocol` mutations are rejected. Legacy candidate records remain readable for migration.
 
-## 7. Vault format / 加密仓库
+Before startup migration, remote merge, metadata-only merge, or explicit replacement persists an active retired record, the gateway saves a recoverable local snapshot and creates a tombstone with a revision counter greater than the observed catalog clock. Existing tombstones are not incremented again. A late active record with a higher revision is retired again before persistence.
 
-### 7.1 Code ownership / 代码职责边界
+Validation-only operations do not write migration backups. The runtime protocol resolver uses only the route setting, so an old model override cannot change request routing. Old offline development candidates retain their own old behavior until upgraded.
 
-- `sync/sync-crypto.mjs` owns Argon2id, AES-256-GCM, AAD, DEK wrappers, payload compression, and envelope validation. It must not perform file I/O or GitHub requests.
-- `sync/vault.mjs` is a compatibility re-export only. Existing imports must continue to work while the cryptographic implementation stays in one dedicated module.
-- `sync/local-vault-store.mjs` owns local files, backups, atomic writes, and Windows DPAPI/safeStorage protection of the DEK. It must authenticate a remote envelope before writing it.
-- `sync/sync-engine.mjs` owns manifest-last ordering and must treat vault bytes as opaque. When the local vault is unavailable, it may publish usage-only generations only by inheriting the last valid remote config/vault assets.
+## Late legacy commits
 
-- `sync/sync-crypto.mjs` 负责 Argon2id、AES-256-GCM、AAD、DEK 包裹、业务数据压缩和 envelope 校验；不得执行文件读写或 GitHub 请求。
-- `sync/vault.mjs` 只作为兼容 re-export 入口。旧代码继续从原路径导入，真正的加密实现集中在唯一的专用模块中。
-- `sync/local-vault-store.mjs` 负责本地文件、备份、原子写入和 Windows DPAPI/safeStorage 保护 DEK；远端 envelope 未通过认证前不得写入本地。
-- `sync/sync-engine.mjs` 负责 manifest-last 提交顺序，并把 vault 字节当作不透明资产处理。本机 vault 不可用时，只能继承上一代有效 config/vault 资产来发布用量-only 版本。
+Each round checks valid committed legacy manifests by asset ID and checksum. New legacy data produces a pending-merge state and an explicit preview. The merge includes supported usage events, counters, deletion markers, provider configuration, encrypted vault, client metadata, settings and order.
 
-The following rules are format invariants and require a migration plan before any change:
-以下规则属于协议不变量，任何改动都必须先设计迁移方案：
+Changes between preview and confirmation invalidate the preview. Authentication failures remain pending. Old data missing new category or protocol fields does not clear those fields. Re-importing a processed legacy commit is idempotent. Its fingerprint is acknowledged only after a verified v2 commit.
 
-- Keep `SYNC_FORMAT`, `SYNC_SCHEMA_VERSION`, envelope field names, `objectType`, AAD fields, base64url encoding, and the `vaultRevision` meaning unchanged.
-- Keep `SYNC_FORMAT`、`SYNC_SCHEMA_VERSION`、envelope 字段名、`objectType`、AAD 字段、base64url 编码和 `vaultRevision` 含义不变。
-- Never replace a failed decrypt with `{}` or an empty provider list. Preserve the local state or the last valid remote asset and return a stable vault error.
-- 解密失败时绝不能用 `{}` 或空线路列表替代；必须保留本地状态或上一份有效远端资产，并返回稳定的 vault 错误码。
+## Security and failure handling
 
-- A random 256-bit DEK encrypts gzip-compressed secure connection settings.
-- Password and one-time recovery code independently derive KEKs using Argon2id.
-- Each KEK wraps the same DEK with a fresh AES-256-GCM nonce.
-- Vault ciphertext also uses a fresh AES-256-GCM nonce.
-- AAD includes format, schema version, dataset ID, object type, key epoch, and vault revision.
-- Password, recovery code, plaintext DEK, GitHub token, and client-key secrets are never uploaded.
-- The local DEK and GitHub token are protected with Electron `safeStorage` (Windows DPAPI) before being written locally.
+- Local forwarding continues while cloud sync is unavailable. Requests first enter the local SQLite ledger and remain pending until acknowledged.
+- Prompts, responses, authorization headers, cookies, full client keys, passwords, recovery codes, and GitHub credentials are not cloud objects.
+- Upstream secrets and URLs enter the authenticated encrypted vault. Usage metadata is stored as compressed objects, so the repository must remain private.
+- Downloads are size-limited, hashed and staged before merge. Unknown required schema versions reject incompatible operations.
+- Concurrent parent changes require fresh metadata and merge. Never acknowledge newly arrived outbox records through an older snapshot.
+- Failed persistence restores the last durable local state. Retain backups and old assets until their existing retention and verification rules permit cleanup.
 
-## 8. Compression and limits / 压缩与限额
+## Verification
 
-- JSON and JSONL are UTF-8 and gzip compressed before upload.
-- Target compressed usage segment: at most 20 MiB; hard limit: 24 MiB.
-- Downloaded assets are rejected before decompression if they exceed their declared limit.
-- Decompressed output is bounded; malformed gzip/JSON/JSONL is rejected.
-- Local request details use a size-based cache: pruning starts only above 50 MiB and removes the oldest details until the database is near 45 MiB. There is no row-count or age-based deletion rule.
-- 本机请求明细只按容量清理：超过 50 MiB 后删除最早明细，回落到约 45 MiB；不再按 200 条、50,000 条或半年期限删除。
-- Lifetime G-Counters, request totals, and token totals have no time limit and are never reduced by detail-cache pruning.
-- At 800 Release assets the engine attempts maintenance. Ordinary commits stop above a projected 900 assets; bounded compaction or a new retirement-marker commit may use maintenance headroom up to 980. Capacity failures retain the outbox and retry after 10 minutes.
-- Identical verified summary, metadata, config and vault attachments are reused. At 64 usage segments (or asset pressure), a bounded pass can repack up to 256 small segments, 24 MiB compressed and 64 MiB event content. Only byte-equivalent stable JSON events are deduplicated; differing representations of an event ID are preserved. JSONL and counter contracts stay unchanged.
-- Optional `retention.retiredAssets` entries contain `{assetName, unreferencedAtUtc}`. Newly unreferenced attachments are first recorded in a committed manifest; referenced-again attachments restart their retirement period. Old readers may ignore this additive field.
-- GC protects each dataset's latest four manifests, unmerged branches and every surviving manifest's file references. Covered obsolete manifests and committed retired payloads have a 24-hour grace period, or 10 minutes under pressure. Creation age alone never authorizes payload deletion; unknown filenames are preserved.
-- GC refreshes manifest catalog fingerprints before deletion and after obsolete-manifest deletion. Due retirement can also be collected on otherwise unchanged scheduled rounds, at most hourly below the pressure threshold. Directory changes stop cleanup. GitHub asset operations lack an atomic transaction across commits and deletes; these guards and grace periods do not establish cross-device atomic GC.
+The v1.41.0 regression suite covers two-device convergence, omissions and tombstones, concurrent and late branches, vault authentication failures, migration preview changes, v2 namespace isolation, history seeding, replay protection, backup recovery and retirement of late model-protocol records.
 
-## 9. Sync state machine / 同步状态机
-
-```text
-DISABLED
-IDLE
-DIRTY
-SYNCING
-PENDING_NETWORK
-AUTH_REQUIRED
-CONFLICT
-ERROR_RECOVERABLE
-ERROR_FATAL
-```
-
-Automatic sync checks other devices every 60 seconds; local changes trigger the existing 1.5-second deduplicated timer. This is near-real-time polling, not push delivery. Enabling sync, disabling sync, application startup, normal exit, clicking the window close button (including close-to-tray), manual sync, account/repository changes, restore, vault changes, route changes, route health tests, and model refreshes trigger an additional deduplicated sync attempt. The settings page shows the next planned sync time in UTC+8. A sync failure never stops the local service.
-
-## 10. GitHub errors / GitHub 错误
-
-- `401`: authentication required.
-- `403`: inspect permissions, repository visibility, and rate-limit headers.
-- `404`: repository, Release, or asset recovery flow.
-- `409` / `412`: re-read the parent manifest and merge/retry.
-- `422`: invalid immutable object or API input; do not loop.
-- `429`: honor `Retry-After` and rate-limit headers.
-- `5xx`, timeout, reset, and offline: bounded exponential backoff with jitter.
-
-Retries have a maximum count. Exit sync has a short deadline and leaves durable outbox data for the next start.
-
-## 11. Compatibility / 兼容性
-
-- The new writer uses protocol version 1.2 with schema 1. Separate metadata/order revisions and branch merging require minReaderVersion/minWriterVersion 1.2. Read old 1.1 assets and seed missing record/order revisions from legacy configRevision; preserve the original local key order.
-- Update all devices before enabling this candidate on a shared dataset. The current reader fails protectively on a newer required protocol. Historical old clients may skip unsupported manifests; mixed-version writes are not validated or supported.
-
-
-- `schemaVersion = 1` remains the data schema. Product releases do not raise `minReaderVersion` or `minWriterVersion` unless an incompatible cloud-format change is explicitly designed and migrated.
-- Readers reject a manifest with a higher `minReaderVersion`.
-- Writers refuse to overwrite a manifest with a higher `minWriterVersion`.
-- Future optional fields must have safe defaults.
-- Any core schema change requires a migration and rollback point.
-
-## 12. Release gate / 发布门槛
-
-The implementation is not release-ready until fake-provider interruption tests, multi-device merge tests, vault tamper/password tests, local crash recovery, packaged tray behavior, migration, reinstall, and a small real private GitHub repository test have recorded evidence.
+The full Node suite passed 256 tests. Real user-repository migration and affected-device update remain field-acceptance work. See the [current acceptance checklist](../产品文档/文档/流程与规范/05-待验收与后续计划.txt).
