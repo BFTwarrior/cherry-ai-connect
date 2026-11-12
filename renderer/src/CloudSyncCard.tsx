@@ -209,9 +209,28 @@ export function CloudSyncCard({ language, requestConfirmation, demo = false, dem
     catch { setError(tr("复制失败，请手动选中恢复码", "Copy failed; select the recovery code manually")); }
   };
 
+  const migrateFormat = async () => {
+    if(busy) return;
+    setBusy(true);setError('');
+    try {
+      const preview = demo ? {token:'demo',format:status.syncFormat || 1,commits:3,routeNames:['北境中转（演示）','极光线路（演示）'],events:12,includesSettings:true,includesKeyOrder:true} : await window.desktop?.previewSyncFormat();
+      if(!preview) throw new Error('sync_desktop_required');
+      const upgrading = preview.format !== 2;
+      const confirmed = await requestConfirmation({title:tr(upgrading?'升级分类与协议同步格式':'合并旧版本新增数据',upgrading?'Upgrade catalog sync format':'Merge legacy updates'),message:tr(`将合并 ${preview.commits} 份已提交备份，涉及 ${preview.routeNames.join('、') || '无线路'}，包括用量、线路、客户端条目、设置与顺序。${upgrading?'请确认所有同步设备已经升级。启用后使用独立 v2 同步区，旧设备写入会标记为待合并。':''}操作前自动备份；保险库验证失败则保留待处理状态。`,`Merge ${preview.commits} committed backups, including routes, usage, client entries, settings and order. ${upgrading?'Confirm all syncing devices have been upgraded. V2 uses separate storage; later legacy updates require merging.':''} A local backup is created before applying changes.`),confirmLabel:tr(upgrading?'设备已升级，备份并迁移':'备份并合并',upgrading?'Devices upgraded — migrate':'Back up and merge'),cancelLabel:tr('取消','Cancel'),tone:'warning'});
+      if(!confirmed) return;
+      const credential=vaultCredential.trim();
+      const result=demo ? {status:{...status,syncFormat:2,legacyPending:false,warning:'',state:'IDLE' as const}} : await window.desktop?.applySyncFormat({token:preview.token,password:credential.startsWith('CGRC-')?'':credential,recoveryCode:credential.startsWith('CGRC-')?credential:'',allDevicesUpgraded:true});
+      if(result?.status) setStatus(result.status);
+      if(result && "recoveryCode" in result && result.recoveryCode) setRecoveryCode(String(result.recoveryCode));
+      setVaultCredential('');
+    } catch(reason) {setError(String(reason instanceof Error ? reason.message : reason));}
+    finally {setBusy(false);}
+  };
+
   return <article className={`settings-card cloud-sync-card${status.pausedForUpdate ? " is-update-paused" : ""}`}>
     <div className="cloud-sync-heading"><span className="settings-icon cloud-icon"><SyncIcon name="cloud" /></span><div><div className="cloud-title-line"><h3>{tr("GitHub 云同步", "GitHub cloud sync")}</h3>{status.connected && <span key={status.pausedForUpdate ? "paused" : "running"} className={`sync-state-chip state-${status.pausedForUpdate ? "paused-update" : status.state.toLowerCase()}`}>{status.pausedForUpdate ? <SyncIcon name="pause" /> : <span /> }<span className="sync-state-label">{stateLabel}</span></span>}</div><p>{tr("用一个私有仓库保存用量和可选的加密配置；修改后自动同步，并每分钟检查其他设备的最新版本。", "A private repository stores usage and optional encrypted configuration; changes sync automatically and other devices are checked every minute.")}</p></div></div>
     {status.connected && <div className="sync-mode-summary"><span className="status-dot" /><strong>{status.syncUpstream ? tr("中转站 API 加密同步已开启", "Encrypted upstream API sync is on") : tr("中转站 API 默认不上传", "Upstream API sync is off by default")}</strong><small>{status.syncUpstream ? tr("用量、客户端条目与顺序自动同步；中转站密钥通过保险库加密同步。", "Usage, client entries and order sync automatically; upstream keys sync through the encrypted vault.") : tr("当前同步用量、客户端条目和排列顺序。", "Usage, client entries and their order sync now.")}</small></div>}
+    {status.connected && ((status.syncFormat || 1) !== 2 || status.legacyPending) && <div className="sync-conflict-panel"><div><strong>{tr(status.legacyPending?'旧版数据待合并':'分类与协议设置等待升级同步格式',status.legacyPending?'Legacy updates pending':'Catalog sync requires format upgrade')}</strong><p>{tr('本机功能已可使用。新格式在独立区域同步分类和协议设置；旧备份保留。可在下方输入保险库密码或恢复码验证旧线路。','Local features are available. V2 syncs catalog metadata separately and keeps legacy backups. Use your vault credential below if required.')}</p></div><label><span>{tr('保险库密码或 CGRC 恢复码','Vault password or CGRC recovery code')}</span><input type="password" value={vaultCredential} onChange={e=>setVaultCredential(e.target.value)} autoComplete="off"/></label><button className="button button-secondary" disabled={busy || status.pausedForUpdate} onClick={()=>void migrateFormat()}>{tr(status.legacyPending?'预览并合并旧版数据':'预览并升级同步格式',status.legacyPending?'Preview legacy updates':'Preview sync upgrade')}</button></div>}
     {status.pausedForUpdate && <div className="sync-warning sync-update-notice" role="status">{tr("软件正在更新，云同步暂时暂停。可在设置中查看进度或取消更新；更新结束或失败后自动恢复同步，本地待同步数据会保留。", "The app is updating, so cloud sync is temporarily paused. View progress or cancel in Settings. Sync resumes when the update ends or fails; pending local changes are retained.")}</div>}
 
     {!status.connected ? <form className="github-connect-form" onSubmit={connect}>

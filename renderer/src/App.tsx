@@ -2,12 +2,15 @@
  * 中文：React 渲染层负责页面状态、双语界面、线路/模型/客户端 Key 管理。
  * English: The React renderer owns page state, bilingual UI, and route/model/client-key management.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent, type PointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent, type ReactNode } from "react";
 import { version as VERSION } from "../../package.json";
 import { UsageView } from "./UsageView";
 import { UpdateCard } from "./UpdateCard";
 import { CloudSyncCard } from "./CloudSyncCard";
 import { ClientKeyForm } from "./ClientKeyForm";
+import { DialogFrame, ProviderForm, ModalActions, ConfirmDialog } from './RouteDialogs';
+import { catalogCategories, catalogMutation, mergeCatalogMetadata, modelCategories, routeCategories, upstreamProtocol, type CatalogEntry } from '../../gateway/catalog-metadata.mjs';
+import { CatalogEditor, CatalogTags, type CatalogChange } from './CatalogEditor';
 import type { ClientKey, ClientRequestStatus, ConfirmDialogOptions, ConfirmDialogState, DesktopSettings, GatewaySettings, GatewayStatus, Language, ModalState, Provider, ReasoningLevel, SyncProgress, ToastState, ToastTone, View } from "./app-types";
 import { Icon } from "./ui/Icon";
 import { MenuSelect } from "./ui/MenuSelect";
@@ -32,7 +35,7 @@ function ClientImportMark({ target }: { target: ClientImportTarget }) {
 }
 
 const DEMO_PROVIDERS: Provider[] = [
-  { id: "DEMO-NORTH", name: "北境中转（演示）", baseUrl: "https://demo.example.invalid/north", models: Array.from({ length: 24 }, (_, index) => `demo-north-${index + 1}`), modelCount: 24, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 86, clientKeyCount: 3 },
+  { id: "DEMO-NORTH", name: "北境中转（演示）", baseUrl: "https://demo.example.invalid/north", models: ["gpt-5", "claude-sonnet-4", "deepseek-chat", "kimi-k2", "gemini-2.5-pro", "qwen3-32b", "glm-4.5", ...Array.from({length:17},(_,index) => `custom-model-${index+1}`)], modelCount: 24, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 86, clientKeyCount: 3 },
   { id: "DEMO-AURORA", name: "极光线路（演示）", baseUrl: "https://demo.example.invalid/aurora", models: Array.from({ length: 18 }, (_, index) => `demo-aurora-${index + 1}`), modelCount: 18, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 112, clientKeyCount: 2 },
   { id: "DEMO-LOAD", name: "本地压测线（演示）", baseUrl: "http://127.0.0.1:20000/demo", models: Array.from({ length: 9 }, (_, index) => `demo-load-${index + 1}`), modelCount: 9, enabled: true, hasApiKey: true, modelFetchedAt: "2026-09-19T02:00:00.000Z", lastTestAt: "2026-09-19T02:00:00.000Z", lastTestStatus: "ok", lastLatencyMs: 7, clientKeyCount: 3 },
 ];
@@ -130,7 +133,6 @@ function PageIntro({ kicker, description, action }: { kicker: string; descriptio
 function SettingsHeading({ icon, title, description }: { icon: string; title: string; description: string }) { return <div className="settings-heading"><span className="settings-icon"><Icon name={icon} size={17} /></span><div><h3>{title}</h3><p>{description}</p></div></div>; }
 function SettingCheck({ name, checked, onChange, title, description }: { name: string; checked: boolean; onChange: (checked: boolean) => void; title: string; description: string }) { return <label className="setting-check"><input type="checkbox" name={name} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong>{title}</strong><small>{description}</small></span></label>; }
 function NavItem({ icon, label, active, onClick }: { icon: string; label: string; active: boolean; onClick: () => void }) { return <button className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span className="nav-icon"><Icon name={icon} size={16} /></span><span>{label}</span><span className="nav-fireflies" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <i key={index} />)}</span></button>; }
-function Field({ label, name, defaultValue, placeholder, type = "text", readOnly = false, required = false, onChange }: { label: string; name: string; defaultValue?: string; placeholder?: string; type?: string; readOnly?: boolean; required?: boolean; onChange?: (event: ChangeEvent<HTMLInputElement>) => void }) { return <label className="field-label">{label}<input className="field-control" name={name} type={type} defaultValue={defaultValue} placeholder={placeholder} readOnly={readOnly} required={required} onChange={onChange} /></label>; }
 function EmptyState({ icon, title, description, action }: { icon: string; title: string; description: string; action?: ReactNode }) { return <div className="empty-state"><span className="empty-icon"><Icon name={icon} size={21} /></span><strong>{title}</strong><p>{description}</p>{action}</div>; }
 
 export default function App() {
@@ -145,12 +147,22 @@ export default function App() {
   const keyDragRef = useRef<{ id: string; x: number; y: number; currentY: number; moved: boolean; from: number; target: number; scrollTop: number; scroller: HTMLElement; cards: { id: string; element: HTMLElement; top: number; height: number }[] } | null>(null);
   const keyDragFrameRef = useRef<number | null>(null);
   const [keyOrderSaving, setKeyOrderSaving] = useState(false);
+  const [keyQuery, setKeyQuery] = useState("");
+  const [keyReasoning, setKeyReasoning] = useState("all");
+  const [keyProvider, setKeyProvider] = useState("all");
+  const keyFiltersActive = Boolean(keyQuery.trim() || keyReasoning !== "all" || keyProvider !== "all");
   const [settings, setSettings] = useState<GatewaySettings>({ forcedLevel: "unchanged", defaultProvider: "" });
   const [desktop, setDesktop] = useState<DesktopSettings>({ language: "zh", autoLaunch: false, startMinimized: false, closeToTray: true });
   const [gatewayPort, setGatewayPort] = useState(DEMO_MODE ? 27891 : 20000);
   const [apiBase, setApiBase] = useState(DEFAULT_GATEWAY_API_BASE);
   const [modal, setModal] = useState<ModalState>(null);
-  const providerDraftRef = useRef<{ id: string; name: string; baseUrl: string; apiKey: string } | null>(null);
+  const [providerSaving, setProviderSaving] = useState(false);
+  const providerSavingRef = useRef(false);
+  const [catalogRecords, setCatalogRecords] = useState<CatalogEntry[]>([]);
+  const [routeCategory, setRouteCategory] = useState('all');
+  const [routeQuery, setRouteQuery] = useState('');
+  const [modelCategory, setModelCategory] = useState('all');
+  const [catalogEditor, setCatalogEditor] = useState<{} | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>(null);
   const [loading, setLoading] = useState(false);
@@ -171,32 +183,65 @@ export default function App() {
   const [modelToggleKey, setModelToggleKey] = useState<string | null>(null);
   // 中文：模型分组的折叠状态属于纯界面偏好，保存在本机，不参与云同步。
   // English: Model-group collapse state is a local UI preference and never enters cloud sync.
-  const [collapsedModelGroups, setCollapsedModelGroups] = useState<Set<string>>(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("cherry-collapsed-model-groups") || "[]")); }
-    catch { return new Set(); }
+  const [modelGroupPreferences, setModelGroupPreferences] = useState<{version: number; known: string[]; expanded: string[]} | null>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("cherry-model-groups-v2") || "null");
+      return saved?.version === 2 && Array.isArray(saved.known) && Array.isArray(saved.expanded)
+        && [...saved.known, ...saved.expanded].every(id => typeof id === "string") ? saved : null;
+    } catch { return null; }
   });
+  useEffect(() => {
+    if (!providers.length) return;
+    setModelGroupPreferences(current => {
+      const ids = providers.map(provider => provider.id);
+      let next = current;
+      if (!next) {
+        let collapsed: string[] | null = null;
+        try {
+          const saved = JSON.parse(localStorage.getItem("cherry-collapsed-model-groups") || "null");
+          if (Array.isArray(saved) && saved.every(id => typeof id === "string")) collapsed = saved;
+        } catch { /* Missing or damaged preferences start collapsed. */ }
+        next = {version: 2, known: ids, expanded: collapsed ? ids.filter(id => !collapsed.includes(id)) : []};
+      } else {
+        const added = ids.filter(id => !next!.known.includes(id));
+        if (!added.length) return current;
+        next = {...next, known: [...next.known, ...added]};
+      }
+      try { localStorage.setItem("cherry-model-groups-v2", JSON.stringify(next)); } catch { /* Keep in-memory preferences when storage is unavailable. */ }
+      return next;
+    });
+  }, [providers]);
   const confirmResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const copy = useCopy();
 
   const tr = useCallback((zh: string, en: string) => language === "zh" ? zh : en, [language]);
+  const categories = catalogCategories(catalogRecords);
+  const categoryOptions = [{value:'all', label:tr('全部分类','All categories')}, {value:'unclassified',label:tr('未分类','Unclassified')}, ...categories.map(c => ({value:c.id,label:c.id === 'other' ? tr('其他','Other') : c.name}))];
+  const matchesCategory = (ids: string[], category: string) => category === 'all' || (category === 'unclassified' ? ids.length === 0 : ids.includes(category));
+  const saveCatalog = async (changes: CatalogChange[]) => {
+    if (DEMO_MODE) {
+      let records = catalogRecords;
+      changes.forEach((change, index) => { records = catalogMutation(records, change, {counter:Date.now()+index,deviceId:'demo'}); });
+      setCatalogRecords(records);
+    } else {
+      const result = await request<{records:CatalogEntry[]}>('/admin/api/catalog', {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({changes})});
+      setCatalogRecords(result.records);
+    }
+    showToast(tr('分类与协议设置已保存','Catalog settings saved'), 'success');
+  };
   const showToast = useCallback((message: string, tone: ToastTone = "info") => {
     setToast({ message, tone });
   }, []);
 
   const closeModal = useCallback(() => {
-    providerDraftRef.current = null;
+    if (providerSavingRef.current) return;
     setModal(null);
   }, []);
 
   const openProviderModal = useCallback((provider?: Provider) => {
-    providerDraftRef.current = {
-      id: provider?.id || "",
-      name: provider?.name || "",
-      baseUrl: provider?.baseUrl || "",
-      apiKey: "",
-    };
-    setModal({ kind: "provider", provider });
-  }, []);
+    if (providerSavingRef.current) return;
+    setModal({ kind: "provider", provider: provider ? {...provider, upstreamProtocol:upstreamProtocol(catalogRecords,provider.id)} : undefined });
+  }, [catalogRecords]);
 
   const requestConfirmation = useCallback((options: ConfirmDialogOptions) => new Promise<boolean>((resolve) => {
     confirmResolverRef.current?.(false);
@@ -257,14 +302,16 @@ export default function App() {
         return;
       }
       if (window.desktop?.getGatewayInfo) applyGatewayInfo(await window.desktop.getGatewayInfo());
-      const [providerData, keyData, settingsData, statusData, desktopData] = await Promise.all([
+      const [providerData, keyData, settingsData, statusData, desktopData, catalogData] = await Promise.all([
         request<{ providers: Provider[] }>("/admin/api/providers"),
         request<{ keys: ClientKey[] }>("/admin/api/client-keys"),
         request<GatewaySettings>("/admin/api/settings"),
         request<GatewayStatus>("/admin/api/status"),
         window.desktop?.getSettings?.() ?? Promise.resolve(null),
+        request<{records: CatalogEntry[]}>('/admin/api/catalog'),
       ]);
       setProviders(providerData.providers || []);
+      setCatalogRecords(catalogData.records || []);
       setKeys(keyData.keys || []);
       const nextForcedLevel = settingsData.forcedLevel || "unchanged";
       setSettings({ forcedLevel: nextForcedLevel, defaultProvider: settingsData.defaultProvider || "", reasoningLevels: settingsData.reasoningLevels });
@@ -336,10 +383,12 @@ export default function App() {
   };
 
   const toggleModelGroup = (providerId: string) => {
-    setCollapsedModelGroups((current) => {
-      const next = new Set(current);
-      if (next.has(providerId)) next.delete(providerId); else next.add(providerId);
-      localStorage.setItem("cherry-collapsed-model-groups", JSON.stringify([...next]));
+    setModelGroupPreferences(current => {
+      const previous = current || {version: 2, known: providers.map(provider => provider.id), expanded: []};
+      const expanded = previous.expanded.includes(providerId)
+        ? previous.expanded.filter(id => id !== providerId) : [...previous.expanded, providerId];
+      const next = {...previous, expanded};
+      try { localStorage.setItem("cherry-model-groups-v2", JSON.stringify(next)); } catch { /* Keep the current session usable. */ }
       return next;
     });
   };
@@ -509,6 +558,9 @@ export default function App() {
 
   const handleProviderSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (providerSavingRef.current) return;
+    providerSavingRef.current = true;
+    setProviderSaving(true);
     const form = new FormData(event.currentTarget);
     const draft = {
       id: String(form.get("id") || ""),
@@ -516,29 +568,30 @@ export default function App() {
       baseUrl: String(form.get("baseUrl") || ""),
       apiKey: String(form.get("apiKey") || ""),
     };
-    providerDraftRef.current = draft;
     const id = draft.id.trim();
     const isEditing = modal?.kind === "provider" && Boolean(modal.provider);
     try {
+      if (!/^[A-Za-z0-9_-]+$/.test(id)) throw new Error(tr('线路代号只能使用字母、数字、下划线或短横线', 'Route ID can only contain letters, numbers, underscores or hyphens'));
+      if (!isEditing && providers.some(provider => provider.id === id)) throw new Error(tr('线路代号已存在', 'Route ID already exists'));
       if (DEMO_MODE) {
         const current = modal?.kind === "provider" ? modal.provider : undefined;
         const nextProvider: Provider = {
-          ...(current || {}), id, name: String(form.get("name") || id), baseUrl: String(form.get("baseUrl") || "https://demo.example.invalid/custom"),
+          ...(current || {}), id, name: String(form.get("name") || id), baseUrl: String(form.get("baseUrl") || "https://demo.example.invalid/custom"), upstreamProtocol: String(form.get('upstreamProtocol') || 'passthrough'),
           models: current?.models || ["demo-custom-1", "demo-custom-2", "demo-custom-3"], modelCount: current?.modelCount || 3,
           enabled: true, hasApiKey: true, modelFetchedAt: current?.modelFetchedAt || "2026-09-19T02:05:00.000Z", lastTestStatus: "ok", lastTestAt: "2026-09-19T02:05:00.000Z", lastLatencyMs: current?.lastLatencyMs || 68,
           clientKeyCount: current?.clientKeyCount || 0,
         };
         setProviders((currentProviders) => currentProviders.some((provider) => provider.id === id) ? currentProviders.map((provider) => provider.id === id ? nextProvider : provider) : [...currentProviders, nextProvider]);
-        closeModal();
+        setModal(null);
         showToast(isEditing ? tr("演示线路已更新", "Demo route updated") : tr("演示线路已添加", "Demo route added"), "success");
         return;
       }
       await request("/admin/api/providers", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, name: form.get("name"), baseUrl: form.get("baseUrl"), apiKey: form.get("apiKey") }),
+        body: JSON.stringify({ id, name: form.get("name"), baseUrl: form.get("baseUrl"), apiKey: form.get("apiKey"), upstreamProtocol: form.get('upstreamProtocol'), createOnly: !isEditing }),
       });
-      closeModal();
+      setModal(null);
       try {
         await syncProvider(id, true);
         showToast(isEditing ? tr("线路已更新，模型目录已同步", "Route updated and model catalog synced") : tr("线路已添加，模型目录已同步", "Route added and model catalog synced"), "success");
@@ -547,6 +600,9 @@ export default function App() {
       }
     } catch (error) {
       showToast(error instanceof Error ? error.message : String(error), "error");
+    } finally {
+      providerSavingRef.current = false;
+      setProviderSaving(false);
     }
   };
 
@@ -719,7 +775,7 @@ export default function App() {
   // English: Reordering never rotates secrets; the backend rejects a stale list for a refresh.
   const moveClientKey = async (id: string, target: number, animateDrop = false) => {
     const from = keys.findIndex((item) => item.id === id);
-    if (keyOrderSaving || from < 0 || target < 0 || target >= keys.length || from === target) return;
+    if (keyOrderSaving || keyFiltersActive || from < 0 || target < 0 || target >= keys.length || from === target) return;
     const next = [...keys];
     const [moved] = next.splice(from, 1);
     next.splice(target, 0, moved);
@@ -775,11 +831,11 @@ export default function App() {
   };
   // 中文：配置加载/视图切换中止旧手势；新顺序渲染前清除偏移，避免落位闪跳。
   // English: Reload/navigation cancels stale gestures; remove offsets before painting the final order.
-  useLayoutEffect(() => { resetKeySortPreview(); setDraggingKeyId(null); }, [keys, view]);
+  useLayoutEffect(() => { resetKeySortPreview(); setDraggingKeyId(null); }, [keys, view, keyQuery, keyReasoning, keyProvider]);
   useEffect(() => () => { if (keyDragFrameRef.current !== null) cancelAnimationFrame(keyDragFrameRef.current); }, []);
 
   const startKeyDrag = (event: PointerEvent<HTMLButtonElement>, id: string) => {
-    if (keyOrderSaving || event.button !== 0) return;
+    if (keyOrderSaving || keyFiltersActive || event.button !== 0) return;
     const scroller = event.currentTarget.closest<HTMLElement>(".main-scroll");
     if (!scroller) return;
     const cards = [...document.querySelectorAll<HTMLElement>("[data-client-key-id]")].map((element) => { const rect = element.getBoundingClientRect(); return { id: element.dataset.clientKeyId!, element, top: rect.top, height: rect.height }; });
@@ -993,7 +1049,7 @@ export default function App() {
     return <article className={`route-card ${compact ? "route-card-compact" : ""}`}>
       <div className="route-card-main">
         <RouteAvatar provider={provider} />
-        <div className="route-title"><div className="route-name-line"><strong>{provider.name || provider.id}</strong><StatusBadge provider={provider} /></div><code>{provider.id}</code></div>
+        <div className="route-title"><div className="route-name-line"><strong>{provider.name || provider.id}</strong><StatusBadge provider={provider} /></div><code>{provider.id}</code>{!compact && <CatalogTags ids={routeCategories(catalogRecords,provider)} records={catalogRecords} empty={provider.modelFetchedAt ? tr("未分类","Unclassified") : tr("目录未同步","Catalog not synced")}/>}</div>
       </div>
       <div className="route-address" title={provider.baseUrl}><Icon name="globe" size={14} /><span>{provider.baseUrl}</span></div>
       <div className="route-facts">
@@ -1039,32 +1095,35 @@ export default function App() {
   }
 
   function ProvidersView() {
+    const visibleProviders = providers.filter(provider => matchesCategory(routeCategories(catalogRecords,provider),routeCategory) && `${provider.name} ${provider.id}`.toLowerCase().includes(routeQuery.trim().toLowerCase()));
     const actions = <div className="page-action-group">
       {providers.length > 0 && <button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("全部检测中", "Testing all") : tr("检测全部线路", "Test all routes")}</button>}
       <button className="button button-primary" onClick={() => openProviderModal()}><Icon name="plus" size={15} />{tr("添加线路", "Add route")}</button>
+      <button className="button button-secondary" onClick={() => setCatalogEditor({})}><Icon name="layers" size={15}/>{tr('管理分类','Manage categories')}</button>
     </div>;
     return <section className="page-view">
       <PageIntro kicker={tr("中转站线路", "UPSTREAM ROUTES")} description={tr("一条线路保存一个上游地址和 Key；创建客户端 Key 时必须绑定其中一条。", "Each route stores one upstream URL and key. Every client key must bind to one route.")} action={actions} />
       <div className="info-banner"><div className="banner-icon"><Icon name="shield" size={17} /></div><div><strong>{tr("先检测，再绑定", "Test before binding")}</strong><span>{tr("新增线路会自动检测；也可以随时单独检测或一次检测全部线路。", "New routes are tested automatically. You can also test one route or all routes at any time.")}</span></div><span className="banner-rule">{tr("一 Key 一线路", "1 key · 1 route")}</span></div>
       {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在检测 ${syncProgress.current}/${syncProgress.total}`, `Testing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
-      {providers.length ? <div className="route-list">{providers.map((provider) => <RouteCard provider={provider} key={provider.id} showSync />)}</div> : <EmptyState icon="route" title={tr("还没有中转站线路", "No upstream routes yet")} description={tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => openProviderModal()}>{tr("添加中转站线路", "Add upstream route")}</button>} />}
+      <div className="catalog-toolbar"><div className="select-control"><span>{tr('分类','Category')}</span><MenuSelect value={routeCategory} options={categoryOptions} onChange={setRouteCategory} ariaLabel={tr('线路分类','Route category')}/></div><label className="search-control"><Icon name="search" size={15}/><input value={routeQuery} onChange={e => setRouteQuery(e.target.value)} placeholder={tr('搜索线路名称或代号','Search route name or ID')}/></label><span className="result-count">{visibleProviders.length} {tr('条线路','routes')}</span></div>
+      {visibleProviders.length ? <div className="route-list">{visibleProviders.map((provider) => <RouteCard provider={provider} key={provider.id} showSync />)}</div> : <EmptyState icon="route" title={providers.length ? tr('没有匹配线路','No matching routes') : tr("还没有中转站线路", "No upstream routes yet")} description={providers.length ? tr('尝试更换分类或清空搜索词。','Change category or clear the search.') : tr("添加线路后才能生成绑定它的客户端 Key。", "Add a route before creating a bound client key.")} action={<button className="button button-primary" onClick={() => openProviderModal()}>{tr("添加中转站线路", "Add upstream route")}</button>} />}
     </section>;
   }
 
   function ModelsView() {
     const groups = providers.map((provider) => {
-      const models = (provider.models || []).filter((model) => !modelQuery.trim() || model.toLowerCase().includes(modelQuery.trim().toLowerCase()));
+      const models = (provider.catalogModels || provider.models || []).filter((model) => matchesCategory(modelCategories(catalogRecords,provider.id,model),modelCategory) && (!modelQuery.trim() || model.toLowerCase().includes(modelQuery.trim().toLowerCase())));
       return { provider, models };
-    }).filter(({ provider }) => modelFilter === "all" || provider.id === modelFilter);
+    }).filter(({ provider, models }) => (modelFilter === "all" || provider.id === modelFilter) && (!(modelCategory !== "all" || modelQuery.trim()) || models.length > 0));
     const visibleCount = groups.reduce((sum, group) => sum + group.models.length, 0);
     const failedNames = syncFailures.map((id) => providers.find((provider) => provider.id === id)?.name || id);
     return <section className="page-view">
       <PageIntro kicker={tr("模型目录", "MODEL CATALOG")} description={tr("按中转站分组显示上游模型；每个分组可以独立展开或折叠。", "Models are grouped by route; every group can expand or collapse independently.")} action={<button className="button button-secondary" onClick={() => void syncAll()} disabled={syncing === "all"}><Icon name="refresh" size={15} />{syncing === "all" ? tr("刷新中", "Refreshing") : tr("刷新全部模型", "Refresh all models")}</button>} />
       {syncProgress && <div className="sync-progress-banner" role="status"><Icon name="refresh" size={15} /><div><strong>{tr(`正在刷新 ${syncProgress.current}/${syncProgress.total}`, `Refreshing ${syncProgress.current}/${syncProgress.total}`)}</strong><span>{syncProgress.providerName}</span></div><div className="sync-progress-track"><span style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }} /></div></div>}
       {!syncProgress && syncFailures.length > 0 && <div className="sync-result-banner" role="status"><Icon name="shield" size={15} /><div><strong>{tr(`有 ${syncFailures.length} 条线路刷新失败`, `${syncFailures.length} route(s) failed`)}</strong><span>{failedNames.join("、")}</span></div><button className="button button-secondary button-small" onClick={() => void syncAll(syncFailures)} disabled={syncing === "all"}><Icon name="refresh" size={13} />{tr("重试失败线路", "Retry failed")}</button></div>}
-      <div className="catalog-toolbar"><div className="select-control"><span>{tr("线路", "Route")}</span><MenuSelect className="catalog-route-menu" value={modelFilter} options={[{ value: "all", label: tr("全部线路", "All routes") }, ...providers.map((provider) => ({ value: provider.id, label: provider.name || provider.id }))]} onChange={setModelFilter} ariaLabel={tr("选择线路", "Choose route")} /></div><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
+      <div className="catalog-toolbar"><div className="select-control"><span>{tr("分类", "Category")}</span><MenuSelect value={modelCategory} options={categoryOptions} onChange={setModelCategory} ariaLabel={tr("模型分类", "Model category")}/></div><button className="button button-secondary button-small" onClick={() => setCatalogEditor({})}>{tr("管理分类", "Manage categories")}</button><div className="select-control"><span>{tr("线路", "Route")}</span><MenuSelect className="catalog-route-menu" value={modelFilter} options={[{ value: "all", label: tr("全部线路", "All routes") }, ...providers.map((provider) => ({ value: provider.id, label: provider.name || provider.id }))]} onChange={setModelFilter} ariaLabel={tr("选择线路", "Choose route")} /></div><label className="search-control"><Icon name="search" size={15} /><input value={modelQuery} onChange={(event) => setModelQuery(event.target.value)} placeholder={tr("搜索模型名称", "Search model name")} /></label><span className="result-count">{visibleCount} {tr("个模型", "models")}</span></div>
       {groups.length ? <div className="model-groups">{groups.map(({ provider, models }) => {
-        const collapsed = collapsedModelGroups.has(provider.id) && !modelQuery.trim();
+        const collapsed = !modelGroupPreferences?.expanded.includes(provider.id) && !modelQuery.trim();
         return <section className={`model-group ${collapsed ? "is-collapsed" : ""}`} key={provider.id}>
           <header className="model-group-header">
             <button type="button" className="group-toggle" onClick={() => toggleModelGroup(provider.id)} aria-expanded={!collapsed} aria-label={collapsed ? tr("展开模型分组", "Expand model group") : tr("折叠模型分组", "Collapse model group")}><Icon name="chevron" size={15} /></button>
@@ -1084,6 +1143,16 @@ export default function App() {
   }
 
    function KeysView() {
+     const providerOptions = new Map(providers.map(provider => [provider.id, provider.name || provider.id]));
+     for (const key of keys) if (!providerOptions.has(key.providerId)) providerOptions.set(key.providerId, key.providerName || key.providerId);
+     const visibleKeys = keys.filter(key => {
+       const provider = providers.find(provider => provider.id === key.providerId);
+       const searchable = [key.name, provider?.name || key.providerName, key.providerId].join(" ").toLowerCase();
+       return searchable.includes(keyQuery.trim().toLowerCase())
+         && (keyReasoning === "all" || (key.reasoningLevel || "unchanged") === keyReasoning)
+         && (keyProvider === "all" || key.providerId === keyProvider);
+     });
+     const clearKeyFilters = () => { setKeyQuery(""); setKeyReasoning("all"); setKeyProvider("all"); };
      const canImport = (key: ClientKey) => key.enabled && key.hasSecret && providers.some((provider) => provider.id === key.providerId && provider.enabled);
      const importButton = (key: ClientKey, target: ClientImportTarget) => {
        const targetName = target === "cherry-studio" ? "Cherry Studio" : "CC Switch";
@@ -1106,11 +1175,19 @@ export default function App() {
        <PageIntro kicker={tr("客户端凭证", "LOCAL ACCESS TOKENS")} description={tr("给 Cherry 或其他客户端使用的本地凭证。真实上游 Key 永远不会暴露。", "Local credentials for Cherry and other clients. Upstream keys never leave this local connection service.")} action={<button className="button button-primary" onClick={() => setModal({ kind: "key" })} disabled={!providers.length}><Icon name="plus" size={15} />{tr("生成客户端 Key", "Create client key")}</button>} />
        <div className="key-banner"><div className="banner-icon"><Icon name="lock" size={17} /></div><div><strong>{tr("一个客户端 Key，只绑定一条线路", "One client key binds to one route")}</strong><span>{tr("创建时选择中转站线路和思考强度；之后每次请求都会按这个绑定转发。", "Choose a route and reasoning level at creation; every request follows that binding.")}</span></div><Icon name="shield" size={19} /></div>
        <div className="key-toolbar"><div className="key-toolbar-title"><span>{tr("本地访问凭证", "Local access credentials")} <small>{keys.length}</small></span><span>{tr("删除和停用都会立即生效", "Disable or delete takes effect immediately")}</span></div><div className="client-import-all-actions" aria-label={tr("批量导入客户端", "Bulk import to clients")}>{batchButton("cherry-studio")}{batchButton("ccswitch")}</div></div>
-       {keys.length ? <div className="key-list">{keys.map((key, index) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"} ${draggingKeyId === key.id ? "is-dragging" : ""}`} key={key.id} data-client-key-id={key.id}>
-         <div className="key-card-head"><button type="button" className="key-drag-handle" onPointerDown={(event) => startKeyDrag(event, key.id)} onPointerMove={moveKeyDrag} onPointerUp={finishKeyDrag} onPointerCancel={() => { resetKeySortPreview(); setDraggingKeyId(null); }} onKeyDown={(event) => { if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) { event.preventDefault(); void moveClientKey(key.id, index + (event.key === "ArrowUp" ? -1 : 1)); } }} disabled={keyOrderSaving} title={tr("拖动调整顺序（键盘：Alt + ↑ / ↓）", "Drag to reorder (keyboard: Alt + ↑ / ↓)")} aria-label={tr("拖动调整顺序", "Drag to reorder")}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">{[4, 8, 12].flatMap((y) => [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1" />))}</svg></button><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div>
-         <div className="key-card-details"><div><small>{tr("绑定线路", "Bound route")}</small><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div>
+       <div className="catalog-toolbar key-filter-toolbar">
+         <div className="select-control"><span>{tr("思考强度", "Reasoning")}</span><MenuSelect value={keyReasoning} options={[{value: "all", label: tr("全部思考强度", "All reasoning levels")}, ...levels.map(level => ({value: level, label: reasoningOptionLabel(level)}))]} onChange={setKeyReasoning} ariaLabel={tr("筛选思考强度", "Filter reasoning level")}/></div>
+         <div className="select-control"><span>{tr("供应商", "Provider")}</span><MenuSelect value={keyProvider} options={[{value: "all", label: tr("全部供应商", "All providers")}, ...[...providerOptions].map(([id, name]) => ({value: id, label: [...providerOptions.values()].filter(value => value === name).length > 1 ? `${name} (${id})` : name}))]} onChange={setKeyProvider} ariaLabel={tr("筛选供应商", "Filter provider")}/></div>
+         <label className="search-control"><Icon name="search" size={15}/><input aria-label={tr("搜索客户端 Key", "Search client keys")} value={keyQuery} onChange={event => setKeyQuery(event.target.value)} placeholder={tr("搜索 Key 名称、线路名称或代号", "Search key name, route name or ID")}/></label>
+         <span className="result-count" aria-live="polite">{visibleKeys.length} / {keys.length}</span>
+         {keyFiltersActive && <button className="button button-secondary button-small" onClick={clearKeyFilters}>{tr("清空筛选", "Clear filters")}</button>}
+       </div>
+       {keyFiltersActive && <div className="safe-note">{tr("清空筛选后可调整顺序；全部导入会处理全部有效 Key。", "Clear filters to reorder. Import all includes all eligible keys.")}</div>}
+       {visibleKeys.length ? <div className="key-list">{visibleKeys.map((key, index) => <article className={`client-key-card ${key.enabled ? "" : "is-disabled"} ${draggingKeyId === key.id ? "is-dragging" : ""}`} key={key.id} data-client-key-id={key.id}>
+         <div className="key-card-head"><button type="button" className="key-drag-handle" onPointerDown={(event) => startKeyDrag(event, key.id)} onPointerMove={moveKeyDrag} onPointerUp={finishKeyDrag} onPointerCancel={() => { resetKeySortPreview(); setDraggingKeyId(null); }} onKeyDown={(event) => { if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) { event.preventDefault(); void moveClientKey(key.id, index + (event.key === "ArrowUp" ? -1 : 1)); } }} disabled={keyOrderSaving || keyFiltersActive} title={tr("拖动调整顺序（键盘：Alt + ↑ / ↓）", "Drag to reorder (keyboard: Alt + ↑ / ↓)")} aria-label={tr("拖动调整顺序", "Drag to reorder")}><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">{[4, 8, 12].flatMap((y) => [5, 11].map((x) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1" />))}</svg></button><div className="key-symbol"><Icon name="key" size={17} /></div><div className="key-name"><strong>{key.name || tr("未命名客户端", "Unnamed client")}</strong><code>cg_••••••••••••</code></div><div className="key-quick-actions">{key.hasSecret && <button className="icon-text-button quick-copy-button" onClick={() => void copyClientKey(key)} disabled={copyingKeyId === key.id} title={tr("复制客户端 Key", "Copy client key")}><Icon name="copy" size={13} />{copyingKeyId === key.id ? tr("复制中", "Copying") : tr("复制 Key", "Copy key")}</button>}<button className="icon-text-button quick-copy-button" onClick={() => void copyApiAddress()} disabled={gatewayResetting} title={tr("复制本地 API 地址", "Copy local API URL")}><Icon name="copy" size={13} />{tr("复制地址", "Copy URL")}</button>{!key.hasSecret && <button className="icon-text-button quick-copy-button regenerate-key-button" onClick={() => void rotateClientKey(key)} title={tr("重新生成并替换旧 Key", "Regenerate and replace the old key")}><Icon name="refresh" size={13} />{tr("重新生成", "Regenerate")}</button>}</div><span className={`key-status ${key.enabled ? "active" : "disabled"}`}><span className="status-dot" />{key.enabled ? tr("有效", "Active") : tr("已停用", "Disabled")}</span></div>
+         <div className="key-card-details"><div className="key-bound-route"><small>{tr("绑定线路", "Bound route")}</small><div className="key-bound-route-value"><strong><Icon name="route" size={13} />{key.providerName || tr("未绑定", "Unbound")}</strong><CatalogTags ids={routeCategories(catalogRecords,providers.find(p => p.id === key.providerId) || {id:key.providerId,models:[]})} records={catalogRecords} empty={tr("目录未同步","Catalog not synced")}/></div></div><div><small>{tr("思考强度", "Reasoning")}</small><b className="level-chip">{levelLabel(key.reasoningLevel)}</b></div><div><small>{tr("创建时间", "Created")}</small><span>{key.createdAt}</span></div></div>
          <div className="key-card-actions"><div className="client-import-key-actions">{importButton(key, "cherry-studio")}{importButton(key, "ccswitch")}</div><button className="icon-text-button" onClick={() => void testClientKey(key)} disabled={!key.enabled || testingKeyId === key.id}><Icon name="check" size={14} />{testingKeyId === key.id ? tr("测试中", "Testing") : tr("测试连接", "Test connection")}</button><button className="icon-text-button" onClick={() => setModal({ kind: "key", key })}><Icon name="edit" size={14} />{tr("编辑", "Edit")}</button><button className="icon-text-button" onClick={() => void toggleKey(key)}><Icon name="power" size={14} />{key.enabled ? tr("停用", "Disable") : tr("启用", "Enable")}</button><button className="icon-text-button danger-text" onClick={() => void deleteKey(key)}><Icon name="trash" size={14} />{tr("删除", "Delete")}</button></div>
-       </article>)}</div> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}
+       </article>)}</div> : keys.length ? <EmptyState icon="search" title={tr("没有匹配的客户端 Key", "No matching client keys")} description={tr("尝试更换筛选条件或清空搜索词。", "Change filters or clear the search.")} action={<button className="button button-secondary" onClick={clearKeyFilters}>{tr("清空筛选", "Clear filters")}</button>}/> : <EmptyState icon="key" title={tr("还没有客户端 Key", "No client keys yet")} description={providers.length ? tr("生成一个绑定到线路的客户端 Key，填入 Cherry 的 API Key 位置。", "Create a route-bound key and put it in Cherry's API key field.") : tr("请先添加至少一条中转站线路。", "Add at least one upstream route first.")} action={<button className="button button-primary" onClick={() => providers.length ? setModal({ kind: "key" }) : navigate("providers")}>{providers.length ? tr("生成第一个 Key", "Create first key") : tr("先添加线路", "Add a route first")}</button>} />}
      </section>;
    }
 
@@ -1154,37 +1231,25 @@ export default function App() {
     </section>;
   }
 
-  function Modal() {
+  // Render helpers stay hook-free so their DOM identity survives App updates.
+  function renderModal() {
     if (!modal) return null;
     const close = closeModal;
-    const providerDraft = providerDraftRef.current || {
-      id: modal.kind === "provider" ? modal.provider?.id || "" : "",
-      name: modal.kind === "provider" ? modal.provider?.name || "" : "",
-      baseUrl: modal.kind === "provider" ? modal.provider?.baseUrl || "" : "",
-      apiKey: "",
-    };
-    return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-      <div className="modal" role="dialog" aria-modal="true">
+    return <DialogFrame close={close} busy={providerSaving}>
         {modal.kind === "provider" && <>
           <div className="modal-icon"><Icon name="route" size={19} /></div>
           <div className="modal-kicker">{modal.provider ? tr("EDIT UPSTREAM ROUTE", "EDIT UPSTREAM ROUTE") : tr("NEW UPSTREAM ROUTE", "NEW UPSTREAM ROUTE")}</div>
           <h2>{modal.provider ? tr("编辑中转站线路", "Edit upstream route") : tr("添加中转站线路", "Add upstream route")}</h2>
           <p>{tr("保存后会立即检测 /v1/models；上游 Key 只会加密保存在本机。", "Saving will test /v1/models. The upstream key is encrypted and kept on this PC.")}</p>
-          <form onSubmit={handleProviderSubmit}>
-            <Field label={tr("线路代号", "Route ID")} name="id" defaultValue={providerDraft.id} placeholder="router-luna" readOnly={Boolean(modal.provider)} required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.id = event.target.value; }} />
-            <Field label={tr("线路名称", "Route name")} name="name" defaultValue={providerDraft.name} placeholder={tr("例如 我的 Luna 线路", "e.g. My Luna route")} required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.name = event.target.value; }} />
-            <Field label="API URL" name="baseUrl" type="url" defaultValue={providerDraft.baseUrl} placeholder="https://example.com" required onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.baseUrl = event.target.value; }} />
-            <Field label={modal.provider ? tr("中转站 Key（留空保持不变）", "Upstream key (blank keeps it)") : tr("中转站 Key", "Upstream key")} name="apiKey" type="password" defaultValue={providerDraft.apiKey} placeholder="sk-..." onChange={(event) => { if (providerDraftRef.current) providerDraftRef.current.apiKey = event.target.value; }} />
-            <div className="form-tip"><Icon name="shield" size={14} />{tr("模型不手填，检测成功后自动读取。", "Models are read automatically after a successful test.")}</div>
-            <ModalActions cancel={tr("取消", "Cancel")} submit={modal.provider ? tr("保存并同步", "Save & sync") : tr("添加并同步", "Add & sync")} />
-          </form>
+          <ProviderForm key={modal.provider?.id || "new"} provider={modal.provider} language={language} busy={providerSaving} submit={handleProviderSubmit} close={close}/>
+
         </>}
         {modal.kind === "key" && <>
           <div className="modal-icon"><Icon name="key" size={19} /></div>
           <div className="modal-kicker">{modal.key ? tr("EDIT CLIENT KEY", "EDIT CLIENT KEY") : tr("NEW CLIENT KEY", "NEW CLIENT KEY")}</div>
           <h2>{modal.key ? tr("编辑客户端 Key", "Edit client key") : tr("生成客户端 Key", "Create client key")}</h2>
           <p>{tr("默认使用所绑定的线路名称；只有手动改名后才会停止同步。", "The key follows its route name until you customize it manually.")}</p>
-          <ClientKeyForm clientKey={modal.key} providers={providers} defaultLevel={settings.forcedLevel} language={language} onSubmit={handleKeySubmit} actions={<ModalActions cancel={tr("取消", "Cancel")} submit={modal.key ? tr("保存修改", "Save changes") : tr("生成 Key", "Create key")} disabled={!providers.length} />} />
+          <ClientKeyForm clientKey={modal.key} providers={providers} defaultLevel={settings.forcedLevel} language={language} onSubmit={handleKeySubmit} actions={<ModalActions close={closeModal} cancel={tr("取消", "Cancel")} submit={modal.key ? tr("保存修改", "Save changes") : tr("生成 Key", "Create key")} disabled={!providers.length} />} />
         </>}
         {modal.kind === "key-result" && <>
           <div className="modal-icon success-icon"><Icon name="check" size={20} /></div>
@@ -1197,8 +1262,7 @@ export default function App() {
           <div className="copy-guide"><span>2</span>{tr("API Key：粘贴上面的客户端 Key", "API key: paste the client key above")}</div>
           <div className="form-actions"><button className="button button-primary" onClick={close}>{tr("我已保存，完成", "I've saved it")}</button></div>
         </>}
-      </div>
-    </div>;
+    </DialogFrame>;
   }
 
   return <div className={`app-shell locale-${language}`}>
@@ -1222,21 +1286,10 @@ export default function App() {
       <header className="topbar"><div><div className="top-eyebrow">{tr("本地连接中心", "LOCAL CONNECTION CENTER")}</div><h1>{tr(pageTitle[view][0], pageTitle[view][1])}</h1></div><div className="top-actions"><button type="button" className={`endpoint-pill endpoint-copy-button ${gatewayResetting ? "is-restarting" : ""}`} onClick={() => void copyApiAddress()} disabled={gatewayResetting} aria-live="polite" title={tr("复制本地 API 地址", "Copy local API address")}><span className="status-dot" />{gatewayResetting ? tr("连接服务重启中…", "Connection service restarting…") : `127.0.0.1:${gatewayPort}`}<Icon name="copy" size={13} /></button><div className={`reasoning-control custom-reasoning-control ${reasoningMenuOpen ? "is-open" : ""} ${reasoningUpdating ? "is-updating" : ""}`} title={tr("修改默认思考强度；已有客户端 Key 保持独立设置", "Change the default reasoning level; existing client keys keep their own setting")}><Icon name="spark" size={14} /><span>{tr("默认思考", "Default")}</span><button type="button" className="reasoning-select-trigger" onClick={() => setReasoningMenuOpen((open) => !open)} disabled={reasoningUpdating || gatewayResetting} aria-haspopup="listbox" aria-expanded={reasoningMenuOpen} aria-label={tr("默认思考强度", "Default reasoning level")}><span>{reasoningOptionLabel(settings.forcedLevel, language)}</span><Icon name="chevron" size={12} /></button>{reasoningMenuOpen && <div className="reasoning-menu" role="listbox" aria-label={tr("默认思考强度选项", "Default reasoning level options")}>{levels.map((level) => <button type="button" role="option" aria-selected={settings.forcedLevel === level} className={settings.forcedLevel === level ? "selected" : ""} onClick={() => { setReasoningMenuOpen(false); void changeDefaultReasoning(level); }} key={level}><span>{reasoningOptionLabel(level, language)}</span>{settings.forcedLevel === level && <Icon name="check" size={13} />}</button>)}</div>}</div><button className="top-reset-button" onClick={() => void handleResetGateway()} disabled={loading || gatewayResetting} title={tr("重置连接服务并随机端口；旧 API 地址会失效", "Reset connection service and randomize port; the old API address will stop working")} aria-label={tr("重置连接服务并随机端口", "Reset and randomize connection service")}><Icon name="refresh" size={15} /><span>{tr("重置连接服务", "Reset connection service")}</span></button><div className="language-switcher"><button className={`language-pill ${languageMenuOpen ? "is-open" : ""}`} onClick={() => setLanguageMenuOpen((open) => !open)} title={tr("选择界面语言", "Choose interface language")} aria-haspopup="menu" aria-expanded={languageMenuOpen}>{language === "zh" ? "中" : "EN"}</button>{languageMenuOpen && <div className="language-menu" role="menu"><button type="button" className={language === "zh" ? "selected" : ""} onClick={() => void changeLanguage("zh")} role="menuitem">简体中文</button><button type="button" className={language === "en" ? "selected" : ""} onClick={() => void changeLanguage("en")} role="menuitem">English</button></div>}</div></div></header>
       <div className="content-wrap">{DEMO_MODE && <div className="demo-data-banner">演示数据：仅当前浏览器页面临时显示，不会写入本地或云端 · Demo data: browser-only, no local or cloud writes</div>}{renderView()}</div>
     </main>
-    <Modal />
-    <ConfirmDialog />
+    {renderModal()}
+    <ConfirmDialog dialog={confirmDialog} resolve={resolveConfirmation} language={language}/>
+    {catalogEditor && <CatalogEditor  records={catalogRecords} language={language} save={saveCatalog} close={() => setCatalogEditor(null)}/>}
     {toast && <div className={`toast toast-${toast.tone}`}><span className="toast-dot" /><span>{toast.message}</span></div>}
   </div>;
 
-  function ModalActions({ cancel, submit, disabled = false }: { cancel: string; submit: string; disabled?: boolean }) { return <div className="form-actions"><button type="button" className="button button-ghost" onClick={closeModal}>{cancel}</button><button type="submit" className="button button-secondary button-text-emphasis" disabled={disabled}><span className="button-action-label">{submit}</span></button></div>; }
-  function ConfirmDialog() {
-    if (!confirmDialog) return null;
-    const tone = confirmDialog.tone || "primary";
-    const icon = confirmDialog.icon || (tone === "danger" ? "trash" : "shield");
-    return <div className="confirm-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) resolveConfirmation(false); }}>
-      <section className={`confirm-dialog confirm-dialog-${tone}`} role="alertdialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-describedby="confirm-dialog-message">
-        <div className="confirm-dialog-header"><span className="confirm-icon"><Icon name={icon} size={18} /></span><div><div className="confirm-kicker">{tr("需要确认", "CONFIRM ACTION")}</div><h2 id="confirm-dialog-title">{confirmDialog.title}</h2><p id="confirm-dialog-message">{confirmDialog.message}</p></div></div>
-        <div className="confirm-actions"><button type="button" className="button button-ghost" onClick={() => resolveConfirmation(false)}>{confirmDialog.cancelLabel}</button><button type="button" className={`button confirm-submit confirm-submit-${tone}`} autoFocus onClick={() => resolveConfirmation(true)}>{confirmDialog.confirmLabel}</button></div>
-      </section>
-    </div>;
-  }
 }

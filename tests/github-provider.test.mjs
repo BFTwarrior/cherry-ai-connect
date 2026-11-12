@@ -21,6 +21,15 @@ test("GitHub authentication errors redact the access token", async () => {
     return true;
   });
 });
+test('read-only v2 discovery never creates a missing release',async()=>{
+ const methods=[];
+ const provider=new GitHubReleaseProvider({token:'test-token',owner:'test',releaseTag:'cherry-sync-v2',fetchImpl:async(url,options)=>{
+  methods.push(options.method || 'GET');
+  return String(url).includes('/releases/tags/')?json({message:'Not Found'},404):json({id:3,private:true});
+ }});
+ assert.deepEqual(await provider.listAssets({refresh:true,readOnly:true}),[]);
+ assert.ok(methods.every(method=>method==='GET'));
+});
 
 test("GitHub sync refuses a public repository before creating a release", async () => {
   const calls = [];

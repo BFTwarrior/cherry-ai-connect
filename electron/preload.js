@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("desktop", {
   getSyncStatus: () => ipcRenderer.invoke("get-sync-status"),
   connectGitHub: (value) => ipcRenderer.invoke("github-connect", value),
   syncNow: () => ipcRenderer.invoke("sync-now"),
+  previewSyncFormat: () => ipcRenderer.invoke('preview-sync-format'),
+  applySyncFormat: (value) => ipcRenderer.invoke('apply-sync-format', value),
   setSyncEnabled: (enabled) => ipcRenderer.invoke("set-sync-enabled", enabled),
   unlockSyncVault: (value) => ipcRenderer.invoke("unlock-sync-vault", value),
   resolveSyncConflict: (value) => ipcRenderer.invoke("resolve-sync-conflict", value),

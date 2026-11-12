@@ -105,7 +105,7 @@ async function downloadManifestCandidate(provider, asset) {
   }
 }
 
-async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog = null) {
+async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog = null, schemaVersion = SYNC_SCHEMA_VERSION) {
   // 中文：候选 manifest 必须逐个下载、解析、验证，损坏的最新候选不能遮蔽更早的完整代。
   // English: Download, parse, and validate every candidate. A damaged newest candidate must not
   // hide an earlier complete generation.
@@ -117,7 +117,7 @@ async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog
     const bytes = await downloadManifestCandidate(provider, asset);
     if (bytes === null) continue;
     try {
-      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
+      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")), "", schemaVersion);
       if (expectedDatasetId && manifest.datasetId !== expectedDatasetId) { datasetConflict = true; continue; }
       candidates.push({ manifest, bytes: Buffer.from(bytes), asset });
     } catch (error) {
@@ -145,6 +145,7 @@ async function readLatestManifest(provider, expectedDatasetId = "", assetCatalog
     // 中文：晚到的旧代分支也必须合并；只比较最大代会遗漏迟到的删除或记录。
     // English: Include late older forks too; max-generation comparison alone loses delayed edits/deletes.
     selected.siblings = candidates.filter((item) => item.manifest.datasetId === selected.manifest.datasetId && !included.has(sha256(item.bytes)));
+    selected.observedManifests = candidates.map(item => ({asset:item.asset,manifest:item.manifest,bytes:item.bytes}));
     selected.headHashes = [...byHash.keys()].sort();
     return selected;
   }
@@ -176,9 +177,10 @@ function revisionOrder(local, remote) {
 }
 
 export class SyncEngine {
-  constructor({ provider, source, vault, onState = () => {}, now = () => new Date(), lastSyncAt = "", generation = 0 }) {
+  constructor({ provider, source, vault, onState = () => {}, now = () => new Date(), lastSyncAt = "", generation = 0, schemaVersion = SYNC_SCHEMA_VERSION }) {
     if (!provider || !source) throw new Error("sync_provider_and_source_required");
     this.provider = provider;
+    this.schemaVersion = schemaVersion;
     this.source = source;
     this.vault = vault;
     this.onState = onState;
@@ -196,7 +198,32 @@ export class SyncEngine {
 
   status() { return { ...this.state }; }
 
-  inspectLatest() { return readLatestManifest(this.provider); }
+  inspectLatest() { return readLatestManifest(this.provider, "", null, this.schemaVersion); }
+
+  async inspectCommittedSet() {
+    const assets = await this.provider.listAssets({ refresh:true, readOnly:true });
+    const latest = await readLatestManifest(this.provider, '', assets, this.schemaVersion);
+    return { latest, assets, fingerprints:(latest?.observedManifests || []).map(item => `${item.asset.id}:${sha256(item.bytes)}`).sort() };
+  }
+
+  // A read-only preview: collect imported usage in memory instead of touching the ledger.
+  async previewCommittedSet(datasetId) {
+    const snapshot = await this.inspectCommittedSet();
+    const usages = [];
+    if (!snapshot.latest) return {...snapshot, branches:[], usages};
+    if (snapshot.latest.manifest.datasetId !== datasetId) throw new Error('sync_dataset_conflict');
+    if (snapshot.latest.observedManifests.some(item => item.manifest.datasetId !== datasetId)) throw new Error('sync_dataset_conflict');
+    const originalSource = this.source;
+    this.source = {...originalSource, mergeRemoteUsage: payload => usages.push(payload)};
+    const branches = [];
+    try {
+      for (const item of [...snapshot.latest.siblings, snapshot.latest]) {
+        const remote = await this.#pullRemote(item, datasetId, snapshot.assets);
+        branches.push(...remote.branches, remote);
+      }
+    } finally {this.source = originalSource;}
+    return {...snapshot,branches,usages};
+  }
 
   sync(reason = "manual", options = {}) {
     if (this.running) return this.running;
@@ -301,7 +328,7 @@ export class SyncEngine {
           await this.collectGarbage({ pressure: true });
           initialAssetCatalog = await this.provider.listAssets({ refresh: true });
         }
-        let latest = await readLatestManifest(this.provider, "", initialAssetCatalog);
+        let latest = await readLatestManifest(this.provider, "", initialAssetCatalog, this.schemaVersion);
         const initialHeads = stableJson(latest?.headHashes || []);
         if (latest && latest.manifest.datasetId !== datasetId) {
           if (!options.adoptRemoteIfPristine || !this.source.canAdoptSyncDataset?.()) throw new Error("sync_dataset_conflict");
@@ -452,7 +479,7 @@ export class SyncEngine {
         const assetTag = syncAssetTag(candidateSyncId, generatedAt);
         const summaryPayload = {
           format: SYNC_FORMAT,
-          schemaVersion: SYNC_SCHEMA_VERSION,
+          schemaVersion: this.schemaVersion,
           datasetId,
           generatedAtUtc,
           counters: snapshot.counters,
@@ -474,7 +501,7 @@ export class SyncEngine {
         if (currentVault) {
           const configBytes = gzipJson({
             format: SYNC_FORMAT,
-            schemaVersion: SYNC_SCHEMA_VERSION,
+            schemaVersion: this.schemaVersion,
             datasetId,
             ...publishPublicConfig,
           });
@@ -490,7 +517,7 @@ export class SyncEngine {
         // English: Force a fresh catalog before commit to preserve concurrent-write detection;
         // ordinary reads reuse the round-local cache.
         const commitAssetCatalog = await this.provider.listAssets({ refresh: true });
-        latest = await readLatestManifest(this.provider, datasetId, commitAssetCatalog);
+        latest = await readLatestManifest(this.provider, datasetId, commitAssetCatalog, this.schemaVersion);
         if ((automatic && stableJson(latest?.headHashes || []) !== initialHeads)
           || Number(latest?.manifest?.generation || 0) !== Number(parent?.generation || 0)
           || String(latest ? sha256(latest.bytes) : "") !== String(latest && parent ? sha256(jsonBuffer(parent)) : "")) {
@@ -540,7 +567,7 @@ export class SyncEngine {
         // 中文：上传期间的本地修改和远端并发提交必须重新合并，不能清除未提交的新变更。
         // English: Re-merge local edits and remote commits observed during upload before committing.
         if (automatic) {
-          const refreshed = await readLatestManifest(this.provider, datasetId, await this.provider.listAssets({ refresh: true }));
+          const refreshed = await readLatestManifest(this.provider, datasetId, await this.provider.listAssets({ refresh: true }), this.schemaVersion);
           const localNow = this.source.getSyncSnapshot();
           if (stableJson(refreshed?.headHashes || []) !== initialHeads
             || stableJson(localNow.publicConfig) !== stableJson(snapshot.publicConfig)
@@ -553,9 +580,9 @@ export class SyncEngine {
         const committedFiles = [...new Map([...inherited, ...reusable, ...uploads.map((item) => item.descriptor)].map((item) => [item.assetName, item])).values()];
         const manifest = {
           format: SYNC_FORMAT,
-          schemaVersion: SYNC_SCHEMA_VERSION,
-          minReaderVersion: SYNC_PRODUCT_VERSION,
-          minWriterVersion: SYNC_PRODUCT_VERSION,
+          schemaVersion: this.schemaVersion,
+          minReaderVersion: this.schemaVersion === 2 ? '2.0' : '1.2',
+          minWriterVersion: this.schemaVersion === 2 ? '2.0' : '1.2',
           datasetId,
           syncId: candidateSyncId,
           ...(automatic ? { mergedManifestSha256s: latest?.headHashes || [] } : {}),
@@ -582,7 +609,7 @@ export class SyncEngine {
           ? uploadedManifestResult
           : (await this.provider.listAssets()).find((item) => item.name === name);
         if (!uploadedManifest) throw new Error("sync_manifest_missing_after_upload");
-        validateManifest(JSON.parse(Buffer.from(await this.provider.downloadAsset(uploadedManifest)).toString("utf8")), datasetId);
+        validateManifest(JSON.parse(Buffer.from(await this.provider.downloadAsset(uploadedManifest)).toString("utf8")), datasetId, this.schemaVersion);
         // 中文：manifest-last 是提交点；从这里开始，这一代才对其他设备可见。
         // English: Manifest-last is the commit point; only after this line is the generation
         // visible as committed to other devices.
@@ -618,7 +645,7 @@ export class SyncEngine {
       // Its references may protect assets that would otherwise look like old orphans.
       const bytes = await downloadManifestCandidate(this.provider, asset);
       if (bytes === null) continue;
-      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")));
+      const manifest = validateManifest(JSON.parse(Buffer.from(bytes).toString("utf8")), "", this.schemaVersion);
       manifests.push({ asset, manifest, bytes });
     }
     const plan = retentionPlan(manifests, this.now().valueOf(), { pressure, keep: KEEP_GENERATIONS });

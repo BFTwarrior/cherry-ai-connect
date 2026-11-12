@@ -17,7 +17,7 @@ import { gunzipSync, gzipSync } from "node:zlib";
 
 export const SYNC_FORMAT = "cherry-ai-connect-sync";
 export const SYNC_SCHEMA_VERSION = 1;
-export const SYNC_PRODUCT_VERSION = "1.2";
+export const SYNC_PRODUCT_VERSION = "2.0";
 export const MAX_COMPRESSED_ASSET_BYTES = 24 * 1024 * 1024;
 export const MAX_DECOMPRESSED_ASSET_BYTES = 128 * 1024 * 1024;
 
@@ -150,12 +150,12 @@ export function versionAtLeast(current, required) {
   return true;
 }
 
-export function validateManifest(value, expectedDatasetId = "") {
+export function validateManifest(value, expectedDatasetId = "", schemaVersion = SYNC_SCHEMA_VERSION) {
   // 中文：manifest 是跨设备提交点；任何格式、数据集、版本或文件描述异常都必须拒绝。
   // English: The manifest is the cross-device commit point; reject any format, dataset, version,
   // or file-descriptor mismatch before using it.
   if (!value || typeof value !== "object") throw new Error("sync_invalid_manifest");
-  if (value.format !== SYNC_FORMAT || Number(value.schemaVersion) !== SYNC_SCHEMA_VERSION) throw new Error("sync_unsupported_schema");
+  if (value.format !== SYNC_FORMAT || Number(value.schemaVersion) !== schemaVersion) throw new Error("sync_unsupported_schema");
   if (value.state !== "committed") throw new Error("sync_manifest_not_committed");
   if (!/^ds_[0-9a-f-]{36}$/i.test(String(value.datasetId || ""))) throw new Error("sync_invalid_dataset");
   if (expectedDatasetId && value.datasetId !== expectedDatasetId) throw new Error("sync_dataset_conflict");

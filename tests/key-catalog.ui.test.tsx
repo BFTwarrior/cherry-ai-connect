@@ -1,0 +1,53 @@
+import {afterEach,beforeEach,it,expect,vi} from 'vitest';
+import {cleanup,fireEvent,render,screen,act} from '@testing-library/react';
+let App: typeof import('../renderer/src/App').default;
+beforeEach(async()=>{
+ localStorage.clear();
+ window.history.replaceState({},'', '/?demo=1');
+ HTMLElement.prototype.scrollTo=vi.fn();
+ App=(await import('../renderer/src/App')).default;
+});
+afterEach(cleanup);
+it('combines key search and provider filters, protects sorting and restores full order',async()=>{
+ const {container}=render(<App/>);
+ fireEvent.click(screen.getByRole('button',{name:'客户端 Key',exact:true}));
+ const order=()=>[...container.querySelectorAll('[data-client-key-id]')].map(el=>el.getAttribute('data-client-key-id'));
+ const original=order();
+ const search=screen.getByRole('textbox',{name:'搜索客户端 Key'});
+ search.focus();fireEvent.change(search,{target:{value:'客户端 1'}});
+ expect(order()).toEqual(['demo-key-1']);
+ expect(document.activeElement).toBe(search);
+ expect(container.querySelector<HTMLButtonElement>('.key-drag-handle')?.disabled).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'筛选供应商'}));
+ fireEvent.click(screen.getByRole('option',{name:'极光线路（演示）'}));
+ expect(screen.getByText('没有匹配的客户端 Key')).toBeTruthy();
+ fireEvent.click(screen.getAllByRole('button',{name:'清空筛选'})[0]);
+ expect(order()).toEqual(original);
+ fireEvent.click(screen.getByRole('button',{name:'筛选思考强度'}));
+ fireEvent.click(screen.getByRole('option',{name:'HIGH',exact:true}));
+ expect(order()).toHaveLength(0);
+ expect(screen.getByText('没有匹配的客户端 Key')).toBeTruthy();
+});
+it('starts collapsed, remembers expanded groups and temporarily expands search results',async()=>{
+ const {container,unmount}=render(<App/>);
+ fireEvent.click(screen.getByRole('button',{name:'模型目录',exact:true}));
+ expect(container.querySelectorAll('.model-item')).toHaveLength(0);
+ fireEvent.click(screen.getAllByRole('button',{name:'展开模型分组'})[0]);
+ expect(container.querySelectorAll('.model-item')).toHaveLength(24);
+ expect(container.querySelectorAll('.model-protocol-button')).toHaveLength(0);
+ const search=screen.getByPlaceholderText('搜索模型名称');
+ fireEvent.change(search,{target:{value:'demo-aurora'}});
+ expect(container.querySelectorAll('.model-item')).toHaveLength(18);
+ fireEvent.change(search,{target:{value:''}});
+ expect(container.querySelectorAll('.model-item')).toHaveLength(24);
+ unmount();render(<App/>);fireEvent.click(screen.getByRole('button',{name:'模型目录',exact:true}));
+ expect(document.querySelectorAll('.model-item')).toHaveLength(24);
+});
+it('migrates valid legacy preferences without resetting explicitly expanded groups',()=>{
+ localStorage.setItem('cherry-collapsed-model-groups',JSON.stringify(['DEMO-NORTH']));
+ render(<App/>);fireEvent.click(screen.getByRole('button',{name:'模型目录',exact:true}));
+ const saved=JSON.parse(localStorage.getItem('cherry-model-groups-v2')!);
+ expect(saved.known).toContain('DEMO-NORTH');
+ expect(saved.expanded).not.toContain('DEMO-NORTH');
+ expect(saved.expanded).toContain('DEMO-AURORA');
+});

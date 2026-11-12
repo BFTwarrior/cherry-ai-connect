@@ -23,8 +23,8 @@ const protect = (value) => Buffer.from(`test-protected:${value}`, "utf8");
 const unprotect = (value) => Buffer.from(value).toString("utf8").replace(/^test-protected:/, "");
 
 class FakeProvider {
-  constructor() { this.assets = new Map(); this.nextId = 1; this.operations = []; }
-  async ensureReady() { return { owner: "test", repository: "automatic-sync", private: true, account: { id: "test", login: "test" }, releaseTag: "cherry-sync" }; }
+  constructor(releaseTag = 'cherry-sync') { this.releaseTag=releaseTag;this.assets = new Map(); this.nextId = 1; this.operations = []; }
+  async ensureReady() { return { owner: "test", repository: "automatic-sync", private: true, account: { id: "test", login: "test" }, releaseTag: this.releaseTag }; }
   async listAssets() {
     return [...this.assets.values()].map((item) => ({ id: item.id, name: item.name, size: item.bytes.length, createdAt: item.createdAt }));
   }
@@ -112,6 +112,66 @@ async function initializeVault(fixture, password) {
     kdfOptions: { t: 1, m: 1024, p: 1 },
   });
 }
+
+test('v2 migration isolates releases, preserves secrets and metadata, detects late v1 edits, and rejects stale previews', async () => {
+  const a = await makeGateway('format-a'),b=await makeGateway('format-b'),restored=await makeGateway('format-restore');
+  const v1 = new FakeProvider(), v2 = new FakeProvider('cherry-sync-v2');
+  const manager = new SyncManager({dataDir:path.join(a.dataDir,'format-manager'), source:a.gateway, protect,unprotect,providerFactory:options=>options.releaseTag === 'cherry-sync-v2'?v2:v1});
+  const second = new SyncManager({dataDir:path.join(b.dataDir,'format-manager'), source:b.gateway, protect,unprotect,providerFactory:options=>options.releaseTag === 'cherry-sync-v2'?v2:v1});
+  const password='format-test-password';
+  try {
+    const key = await createRouteAndKey(a,'format-route');
+    await manager.vault.initialize({datasetId,secrets:a.gateway.getSyncSnapshot().secureConfig,password,kdfOptions:{t:1,m:1024,p:1}});
+    await manager.connect({token:'synthetic-token',password,syncUpstream:true});
+    await postJson(a,'/admin/api/catalog',{changes:[{kind:'route-protocol',providerId:'format-route',value:'messages'},{kind:'category',model:'custom-work',value:'工作'}]});
+    await manager.syncNow();
+    const legacyBefore=new Map([...v1.assets].map(([name,item])=>[name,Buffer.from(item.bytes)]));
+    const preview=await manager.previewFormatMigration();
+    assert.ok(preview.includesSettings);assert.ok(preview.includesKeyOrder);
+    await assert.rejects(manager.applyFormatMigration({token:preview.token}),/all_devices_upgrade_required/);
+    const result=await manager.applyFormatMigration({token:preview.token,allDevicesUpgraded:true,password});
+    assert.equal(result.status.syncFormat,2);assert.equal(result.status.legacyPending,false);
+    assert.ok(fs.existsSync(path.join(result.backup,'usage.db')));
+    // Restore the exact pre-migration files into an isolated gateway and boot
+    // them, rather than treating mere backup-file existence as recovery proof.
+    await restored.gateway.stopGateway();
+    for(const name of ['config.json','.gateway-secret','device.json','usage.db']) fs.copyFileSync(path.join(result.backup,name),path.join(restored.dataDir,name));
+    await reopen(restored);
+    assert.equal(restored.gateway.getSyncSnapshot().identity.datasetId,datasetId);
+    assert.equal(restored.gateway.getClientKeyImportDetails(key.id).apiKey,key.secret);
+    assert.equal(restored.gateway.getSyncSnapshot().secureConfig.providers.find(p=>p.id==='format-route').apiKey,key.apiKey);
+    const readOnlyVault=new LocalVaultStore({dataDir:path.join(restored.dataDir,'auth-only'),protect,unprotect});
+    await assert.rejects(readOnlyVault.authenticateEnvelope(Buffer.from(JSON.stringify(manager.vault.readEnvelope())),{password:'incorrect-password',datasetId}));
+    assert.equal(readOnlyVault.status().initialized,false,'failed preview authentication must not initialize or replace a local vault');
+    assert.equal(a.gateway.getClientKeyImportDetails(key.id).apiKey,key.secret);
+    const v2head=await readLatestManifest(v2,datasetId,null,2);
+    assert.equal(v2head.manifest.schemaVersion,2);
+    assert.ok(a.gateway.getSyncSnapshot().publicConfig.catalogMetadata.some(r=>r.kind==='route-protocol' && r.value==='messages'));
+    for(const [name,bytes] of legacyBefore) assert.deepEqual(v1.assets.get(name).bytes,bytes);
+    // An old device publishes a different route name after migration.
+    await postJson(a,'/admin/api/providers',{id:'format-route',name:'Late name',baseUrl:'https://format-route.example.invalid/v1'});
+    await engine(a,v1,manager.vault).sync('late-v1',{syncUpstream:true});
+    await manager.syncNow();
+    assert.equal(manager.status().legacyPending,true);
+    assert.equal(manager.status().state,'DIRTY');
+    const late=await manager.previewFormatMigration();
+    await postJson(a,'/admin/api/settings',{forcedLevel:'medium'});
+    await assert.rejects(manager.applyFormatMigration({token:late.token,password,allDevicesUpgraded:true}),/preview_changed/);
+    const fresh=await manager.previewFormatMigration();
+    await manager.applyFormatMigration({token:fresh.token,password,allDevicesUpgraded:true});
+    assert.equal(manager.status().legacyPending,false);
+    assert.equal(a.gateway.getClientKeyImportDetails(key.id).apiKey,key.secret);
+    // Fresh updated devices discover v2 without writing another v1 generation.
+    const oldCount=v1.assets.size;
+    const joined=await second.connect({token:'synthetic-token',password,syncUpstream:true});
+    assert.equal(joined.status.syncFormat,2);assert.equal(joined.status.releaseTag,'cherry-sync-v2');assert.equal(v1.assets.size,oldCount);
+    assert.ok(b.gateway.getSyncSnapshot().publicConfig.catalogMetadata.some(r=>r.kind==='category' && r.value==='工作'));
+    await postJson(b,'/admin/api/catalog',{kind:'category',model:'custom-second-device',value:'第二台设备'});
+    await second.syncNow();await manager.syncNow();
+    assert.ok(a.gateway.getSyncSnapshot().publicConfig.catalogMetadata.some(r=>r.kind==='category' && r.value==='第二台设备'));
+    assert.ok(a.gateway.getSyncSnapshot().publicConfig.catalogMetadata.some(r=>r.kind==='route-protocol' && r.value==='messages'));
+  } finally {clearTimeout(manager.timer);clearTimeout(second.timer);await dispose(a,b,restored);}
+});
 
 function engine(fixture, provider, vault = null) {
   return new SyncEngine({ provider, source: fixture.gateway, vault });
@@ -488,4 +548,30 @@ test("GitHub-only connection can enable encrypted sync later, and an existing se
     assert.equal(joined.status.state, "IDLE", JSON.stringify(joined.status));
     assert.deepEqual(new Set(b.gateway.getSyncSnapshot().secureConfig.providers.map((item) => item.id)), new Set(["manager-route-a", "manager-route-b"]));
   } finally { clearTimeout(ma.timer); clearTimeout(mb.timer); await dispose(a, b); }
+});
+
+test('late model overrides are backed up and retired before metadata sync persists', async () => {
+  const fixture = await makeGateway('retiredprotocol');
+  try {
+    const remote = fixture.gateway.getSyncSnapshot().publicConfig;
+    const record = {id: JSON.stringify(['model-protocol','A','model']), kind:'model-protocol', providerId:'A', model:'model', value:'messages', deleted:false, revision:{counter:100,deviceId:'old-device'}};
+    remote.catalogMetadata = [record];
+    fixture.gateway.mergeClientMetadataFromSync(remote, {validateOnly:true});
+    assert.equal(fs.existsSync(path.join(fixture.dataDir,'backups')),false);
+    fixture.gateway.mergeClientMetadataFromSync(remote);
+    let saved=JSON.parse(fs.readFileSync(path.join(fixture.dataDir,'config.json'),'utf8'));
+    assert.equal(saved.catalogMetadata[0].deleted,true);
+    assert.ok(saved.catalogMetadata[0].revision.counter>100);
+    const backups=fs.readdirSync(path.join(fixture.dataDir,'backups'));
+    assert.equal(backups.length,1);
+    const original=JSON.parse(fs.readFileSync(path.join(fixture.dataDir,'backups',backups[0]),'utf8'));
+    assert.equal(original.catalogMetadata[0].deleted,false);
+    fixture.gateway.mergeClientMetadataFromSync(remote);
+    assert.equal(fs.readdirSync(path.join(fixture.dataDir,'backups')).length,1);
+    remote.catalogMetadata=[{...record,revision:{counter:saved.syncClock+20,deviceId:'old-device'}}];
+    fixture.gateway.mergeClientMetadataFromSync(remote);
+    saved=JSON.parse(fs.readFileSync(path.join(fixture.dataDir,'config.json'),'utf8'));
+    assert.equal(saved.catalogMetadata[0].deleted,true);
+    assert.ok(saved.catalogMetadata[0].revision.counter>remote.catalogMetadata[0].revision.counter);
+  } finally { await dispose(fixture); }
 });

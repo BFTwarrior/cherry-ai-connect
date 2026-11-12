@@ -165,6 +165,7 @@
   cursor: pointer;
   white-space: nowrap;
 }
+.menu-select-menu.is-dropup {top:auto;bottom:calc(100% + 7px);}
 
 .menu-select-option:hover,
 .menu-select-option:focus-visible,
@@ -347,3 +348,34 @@
   .cloud-sync-card .sync-working > svg,
   .cloud-sync-card .sync-actions .sync-paused:disabled > svg { animation: none !important; transform: none !important; }
 }
+
+/* Primary actions reuse the existing glass pass with explicit, unclipped geometry. */
+.button-primary, .top-reset-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-size: 300% 100% !important;
+  animation: cherry-primary-surface-current 5.6s ease-in-out infinite !important;
+}
+.button-primary::before, .top-reset-button::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: -42% auto -42% -64% !important;
+  width: 34% !important;
+  height: auto !important;
+  z-index: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: linear-gradient(106deg, transparent 8%, rgb(255 255 255 / 3%) 25%, rgb(255 250 235 / 32%) 49%, rgb(225 203 255 / 12%) 62%, transparent 84%) !important;
+  pointer-events: none;
+  opacity: .55;
+  animation: ef-glass-pass 7.8s cubic-bezier(.42, .06, .58, .96) infinite !important;
+}
+.button-primary:hover:not(:disabled)::before,
+.button-primary:focus-visible:not(:disabled)::before,
+.top-reset-button:hover:not(:disabled)::before,
+.top-reset-button:focus-visible:not(:disabled)::before { animation-duration: 4.2s !important; }
+.button-primary > *, .top-reset-button > * { position: relative; z-index: 2; }
+.button-primary:disabled, .top-reset-button:disabled { opacity: .5; cursor: not-allowed; }
+.key-filter-toolbar .search-control { min-width: 200px; }
+.key-filter-toolbar .menu-select-menu { max-height: 280px; overflow-y: auto; }

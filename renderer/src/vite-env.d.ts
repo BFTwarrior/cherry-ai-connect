@@ -48,6 +48,8 @@ interface UpdateProgressSnapshot {
 }
 
 interface CloudSyncStatus {
+  syncFormat?: number;
+  legacyPending?: boolean;
   pausedForUpdate?: boolean;
   enabled: boolean;
   syncUpstream: boolean;
@@ -98,6 +100,8 @@ interface Window {
     getSyncStatus: () => Promise<CloudSyncStatus>;
     connectGitHub: (value: { token: string; repository: string; password: string; syncUpstream?: boolean }) => Promise<GitHubConnectResult>;
     syncNow: () => Promise<CloudSyncStatus>;
+    previewSyncFormat: () => Promise<{token:string;format:number;commits:number;routeNames:string[];events:number;includesSettings:boolean;includesKeyOrder:boolean}>;
+    applySyncFormat: (value:{token:string;password?:string;recoveryCode?:string;allDevicesUpgraded:boolean}) => Promise<{ok:boolean;status:CloudSyncStatus;recoveryCode?:string}>;
     setSyncEnabled: (enabled: boolean) => Promise<CloudSyncStatus>;
     unlockSyncVault: (value: { password?: string; recoveryCode?: string }) => Promise<{ ok: boolean; recoveryCode?: string; status: CloudSyncStatus }>;
     resolveSyncConflict: (value: { choice: "local" | "remote"; password?: string; recoveryCode?: string }) => Promise<SyncConflictResult>;

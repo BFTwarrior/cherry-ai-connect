@@ -10,6 +10,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { StringDecoder } from "node:string_decoder";
 import { SseObserver, streamSignal } from "./stream-observation.mjs";
+import { catalogCategories, catalogMutation, mergeCatalogMetadata, retireModelProtocols, PROTOCOLS, upstreamProtocol } from './catalog-metadata.mjs';
+import { sourceProtocol, convertedProxy } from './conversion-proxy.mjs';
+import { protocolWorker } from './protocol-worker.mjs';
 import { UsageLedger } from "./usage-ledger.mjs";
 import { clientMetadata, compareRevision, deletedIds, mergeOrder, mergeRecords, revision } from "../sync/config-merge.mjs";
 import { stableJson } from "../sync/sync-common.mjs";
@@ -24,7 +27,7 @@ const secretFile = path.join(dataDir, ".gateway-secret");
 // controlled by the environment; keep it on the local IPv4 loopback interface.
 const listenHost = "127.0.0.1";
 let listenPort = Number(process.env.GATEWAY_PORT || 27891);
-const gatewayVersion = "1.40.26";
+const gatewayVersion = "1.41.0";
 // 中文：unchanged 是显式的“不做更改”策略，不是上游 API 的 reasoning 值。 English: pass-through sentinel, never sent upstream.
 const supportedReasoningLevels = ["unchanged", "low", "medium", "high", "xhigh", "max"];
 let lastPersistedConfig = null;
@@ -263,7 +266,17 @@ function stampConfigChanges() {
   config.syncClock = next.counter;
 }
 
+function retireLegacyModelProtocols(candidate = config) {
+  if (!(candidate.catalogMetadata || []).some(entry => entry.kind === 'model-protocol' && !entry.deleted)) return;
+  const backupDirectory = path.join(dataDir, 'backups');
+  fs.mkdirSync(backupDirectory, { recursive: true });
+  writeJson(path.join(backupDirectory, `before-model-protocol-retirement-${Date.now()}-${crypto.randomUUID()}.json`), candidate);
+  candidate.catalogMetadata = retireModelProtocols(candidate.catalogMetadata, {counter: candidate.syncClock || 0, deviceId: usageLedger.identity.deviceId});
+  candidate.syncClock = Math.max(candidate.syncClock || 0, ...candidate.catalogMetadata.map(entry => entry.revision.counter));
+}
+
 function saveConfig({ bumpRevision = true } = {}) {
+  retireLegacyModelProtocols();
   const previousPersisted = lastPersistedConfig ? JSON.parse(JSON.stringify(lastPersistedConfig)) : null;
   if (bumpRevision) {
     stampConfigChanges();
@@ -297,6 +310,8 @@ function migrateConfig() {
   };
   config.forcedLevel = validReasoningLevel(config.forcedLevel) ? config.forcedLevel : "unchanged";
   config.providers = Array.isArray(config.providers) ? config.providers : [];
+  config.catalogMetadata = mergeCatalogMetadata(config.catalogMetadata || []);
+  retireLegacyModelProtocols();
   config.localModelStates = config.localModelStates && typeof config.localModelStates === "object" && !Array.isArray(config.localModelStates) ? config.localModelStates : {};
   config.clientKeys = Array.isArray(config.clientKeys) ? config.clientKeys : [];
   const requestStatus = ["never", "pending", "ok", "error"].includes(config.lastClientRequest?.status)
@@ -370,7 +385,7 @@ function makeClientKey() { return `cg_${crypto.randomBytes(24).toString("base64u
 
 function json(res, status, value) {
   if (status === 204) {
-    res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta", "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS" });
+    res.writeHead(204, { "access-control-allow-origin": "*", "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, x-goog-api-key, anthropic-version, anthropic-beta", "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS" });
     return res.end();
   }
   const body = Buffer.from(JSON.stringify(value));
@@ -379,7 +394,7 @@ function json(res, status, value) {
     "content-length": body.length,
     "cache-control": "no-store",
     "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta",
+    "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, x-goog-api-key, anthropic-version, anthropic-beta",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   });
   res.end(body);
@@ -413,6 +428,7 @@ function getClientKey(req) {
   const auth = String(req.headers.authorization || "");
   if (/^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, "").trim();
   const pathname = new URL(req.url || "/", "http://gateway.local").pathname;
+  if (sourceProtocol(req.url).protocol === 'gemini') return String(req.headers['x-goog-api-key'] || new URL(req.url, 'http://local').searchParams.get('key') || '').trim();
   return isAnthropicMessagesPath(pathname) ? String(req.headers["x-api-key"] || "").trim() : "";
 }
 
@@ -431,7 +447,9 @@ function providerView(provider) {
     id: provider.id,
     name: provider.name,
     baseUrl: provider.baseUrl,
+    upstreamProtocol: upstreamProtocol(config.catalogMetadata, provider.id),
     models,
+    catalogModels: uniqueModels(provider.models),
     disabledModels: disabledModelsFor(provider.id),
     modelCount: models.length,
     enabled: provider.enabled !== false,
@@ -513,22 +531,34 @@ async function proxyRequest(req, res, rawBody) {
   if (typeof payload !== "object" || Array.isArray(payload)) return json(res, 400, { error: "json_body_required" });
   const boundProvider = client.providerId ? findProvider(client.providerId) : null;
   if (client.providerId && !boundProvider) return json(res, 503, { error: "bound_provider_unavailable", provider: client.providerId });
-  const requestedModel = String(payload.model || "");
+  const source = sourceProtocol(req.url);
+  const requestedModel = String(source.model || payload.model || "");
   const boundModel = boundProvider && requestedModel.startsWith(`${boundProvider.id}/`)
     ? requestedModel.slice(boundProvider.id.length + 1)
     : requestedModel;
-  const selected = boundProvider ? { provider: boundProvider, model: boundModel } : selectProvider(payload.model);
+  const selected = boundProvider ? { provider: boundProvider, model: boundModel } : selectProvider(requestedModel);
   if (!selected.provider) return json(res, 503, { error: "no_provider_configured" });
   if (isModelDisabled(selected.provider.id, selected.model)) return json(res, 403, { error: "model_disabled", provider: selected.provider.id, model: selected.model });
   if (selected.model && payload.model) payload.model = selected.model;
   const pathname = new URL(req.url || "/", "http://gateway.local").pathname;
   forceReasoning(payload, pathname, client.reasoningLevel);
+  const targetProtocol = upstreamProtocol(config.catalogMetadata, selected.provider.id, selected.model);
+  if (!PROTOCOLS.includes(targetProtocol)) return json(res, 503, { error: 'configuration_unsupported' });
+  if (targetProtocol !== 'passthrough' || source.protocol === 'gemini') {
+    const key = decrypt(selected.provider.apiKeyEnc);
+    if (!key) return json(res, 503, { error: 'provider_key_missing' });
+    updateClientRequestStatus('pending', selected.model);
+    return convertedProxy({ req, res, provider:selected.provider, client, model:selected.model, payload, source, target:targetProtocol === 'passthrough' ? source.protocol : targetProtocol, apiKey:key, record:appendUsageRecord, normalizeUsage:normalizedUsage, updateStatus:updateClientRequestStatus });
+  }
   const body = Buffer.from(JSON.stringify(payload));
   const anthropicMessages = isAnthropicMessagesPath(pathname);
-  const target = targetUrl(selected.provider.baseUrl, req.url || "/");
+  const cleanUrl = new URL(req.url || '/', 'http://local');
+  for (const name of ['key','api_key','access_token']) cleanUrl.searchParams.delete(name);
+  const target = targetUrl(selected.provider.baseUrl, `${cleanUrl.pathname}${cleanUrl.search}`);
   const headers = { ...req.headers, host: target.host, "content-length": body.length };
   delete headers.authorization;
   delete headers["x-gateway-key"];
+  delete headers['x-goog-api-key'];
   delete headers.connection;
   delete headers["transfer-encoding"];
   const apiKey = decrypt(selected.provider.apiKeyEnc);
@@ -615,7 +645,7 @@ async function proxyRequest(req, res, rawBody) {
     res.writeHead(upstreamRes.statusCode || 502, {
       ...upstreamRes.headers,
       "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, anthropic-version, anthropic-beta",
+      "access-control-allow-headers": "content-type, authorization, x-gateway-key, x-api-key, x-goog-api-key, anthropic-version, anthropic-beta",
     });
     upstreamRes.on("data", (chunk) => {
       if (isSse) {
@@ -667,7 +697,7 @@ async function proxyRequest(req, res, rawBody) {
     else res.destroy();
   });
   upstreamReq.end(body);
-  console.log(`[转发] ${selected.provider.id} ${req.method} ${req.url} reasoning=${client.reasoningLevel || config.forcedLevel} client=${client.id}`);
+  console.log(`[转发] ${selected.provider.id} ${req.method} ${pathname} reasoning=${client.reasoningLevel || config.forcedLevel} client=${client.id}`);
 }
 
 function totalsView(totals) {
@@ -716,49 +746,40 @@ async function usageSnapshot(url) {
 }
 
 async function fetchProviderModels(provider) {
-  const target = targetUrl(provider.baseUrl, "/v1/models");
+  const protocol = upstreamProtocol(config.catalogMetadata, provider.id);
   const apiKey = decrypt(provider.apiKeyEnc);
   if (!apiKey) throw new Error("中转站 Key 未填写");
-  const headers = { accept: "application/json", authorization: `Bearer ${apiKey}` };
-  return new Promise((resolve, reject) => {
-    const started = Date.now();
-    const request = requestUpstream(target, "GET", headers, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => {
-        const data = bodyJson(Buffer.concat(chunks));
-        if (response.statusCode >= 200 && response.statusCode < 300) {
-          const rawModels = Array.isArray(data?.data) ? data.data : Array.isArray(data?.models) ? data.models : null;
-          if (!rawModels) return reject(providerModelsError("上游模型目录响应格式无效", "invalid-response", response.statusCode));
-          // 中文：兼容少数上游使用 model/slug 而不是标准 id 的目录项；否则模型明明可用却会被误判为空目录。
-          // English: Accept catalog entries that use model/slug instead of standard id; otherwise
-          // a usable upstream can be falsely classified as an empty catalog.
-          const models = uniqueModels(rawModels.map((item) => typeof item === "string" ? item : item?.id || item?.model || item?.slug || item?.name));
-          if (!models.length) return reject(providerModelsError("上游模型目录为空或不含有效模型", "invalid-response", response.statusCode));
-          resolve({ status: response.statusCode, latencyMs: Date.now() - started, models });
-        } else {
-          const statusCode = Number(response.statusCode || 0);
-          const modelListStatus = [404, 405, 501].includes(statusCode)
-            ? "unsupported"
-            : statusCode === 429
-              ? "rate_limited"
-              : [401, 403].includes(statusCode)
-                ? "auth"
-                : [408, 504].includes(statusCode)
-                  ? "timeout"
-                  : "error";
-          reject(providerModelsError(`HTTP ${statusCode}${data?.error?.message ? `: ${data.error.message}` : ""}`, modelListStatus, statusCode));
-        }
+  const headers = protocol === 'gemini' ? {accept:'application/json','x-goog-api-key':apiKey} : protocol === 'messages' ? {accept:'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'} : {accept:'application/json',authorization:`Bearer ${apiKey}`};
+  let target = targetUrl(provider.baseUrl, '/v1/models');
+  if(protocol === 'gemini') {
+    target = new URL(provider.baseUrl);
+    target.pathname = target.pathname.replace(/\/(v1|v1beta)\/?$/, '').replace(/\/+$/, '') + '/v1beta/models';
+    target.search='';
+  }
+  const started=Date.now(), result=[], seen=new Set();
+  for(let page=0;page<50;page++) {
+    const data = await new Promise((resolve,reject) => {
+      const upstream = requestUpstream(target,'GET',headers,response => {
+        const chunks=[];let size=0;
+        response.on('error',() => reject(providerModelsError('模型目录响应中断','network')));
+        response.on('data',chunk => {size+=chunk.length;if(size>8*1024*1024) {response.destroy();reject(providerModelsError('模型目录响应过大','invalid-response'));}else chunks.push(chunk);});
+        response.on('end',() => {
+          const status=Number(response.statusCode || 0);
+          if(status>=200 && status<300) {const body=bodyJson(Buffer.concat(chunks));if(!body || typeof body!=='object') reject(providerModelsError('上游模型目录响应格式无效','invalid-response',status));else resolve(body);}
+          else reject(providerModelsError(`HTTP ${status}`,[404,405,501].includes(status)?'unsupported':status===429?'rate_limited':[401,403].includes(status)?'auth':[408,504].includes(status)?'timeout':'error',status));
+        });
       });
+      upstream.on('error',error=>reject(providerModelsError('无法连接上游模型目录',error.message==='upstream_timeout'?'timeout':'network',0,error.code || '')));upstream.end();
     });
-    request.on("error", (error) => reject(providerModelsError(
-      error?.message || "无法连接上游模型目录",
-      error?.message === "upstream_timeout" ? "timeout" : "network",
-      0,
-      error?.code || (error?.message === "upstream_timeout" ? "ETIMEDOUT" : ""),
-    )));
-    request.end();
-  });
+    const raw=Array.isArray(data.data)?data.data:Array.isArray(data.models)?data.models:null;
+    if(!raw) throw providerModelsError('上游模型目录响应格式无效','invalid-response',200);
+    result.push(...raw.map(item => typeof item==='string'?item:item?.id || item?.model || item?.slug || (protocol==='gemini'?String(item?.name || '').replace(/^models\//,''):item?.name)).filter(Boolean));
+    const cursor=protocol==='gemini'?data.nextPageToken:protocol==='messages' && data.has_more?data.last_id:'';
+    if(!cursor) {const models=uniqueModels(result);if(!models.length) throw providerModelsError('上游模型目录为空或不含有效模型','invalid-response',200);return {status:200,latencyMs:Date.now()-started,models};}
+    if(seen.has(cursor)) throw providerModelsError('模型目录分页重复','invalid-response',200);
+    seen.add(cursor);target.searchParams.set(protocol==='gemini'?'pageToken':'after_id',cursor);
+  }
+  throw providerModelsError('模型目录分页超过限制','invalid-response',200);
 }
 
 function providerErrorMessage(error, provider) {
@@ -782,6 +803,29 @@ async function admin(req, res, url) {
     return res.end(fs.readFileSync(adminFile, "utf8"));
   }
   if (url.pathname === "/admin/api/providers" && req.method === "GET") return json(res, 200, { version: gatewayVersion, providers: config.providers.map(providerView) });
+  if (url.pathname === '/admin/api/catalog' && req.method === 'GET') return json(res, 200, { records: config.catalogMetadata, categories: catalogCategories(config.catalogMetadata) });
+  if (url.pathname === '/admin/api/catalog' && req.method === 'POST') {
+    const data = bodyJson(await readBody(req)) || {};
+    try {
+      const changes = data.changes || [data];
+      if (!Array.isArray(changes) || !changes.length || changes.length > 100) throw new Error('catalog_invalid_changes');
+      let records = config.catalogMetadata;
+      let counter = Math.max(Date.now(), config.syncClock + 1, ...records.map(r => r.revision.counter + 1));
+      for (const change of changes) {
+        if (change.kind !== 'category') {
+          const provider = config.providers.find(p => p.id === change.providerId);
+          if (!provider) throw new Error('catalog_provider_not_found');
+          if (String(change.kind).startsWith('model-') && !provider.models.includes(change.model)) throw new Error('catalog_model_not_found');
+        }
+        if (change.kind === 'category' && !change.deleted && catalogCategories(records).some(c => c.id !== change.model && c.name.toLowerCase() === String(change.value).trim().toLowerCase())) throw new Error('catalog_duplicate_category');
+        records = catalogMutation(records, change, { counter:counter++, deviceId: usageLedger.identity.deviceId });
+      }
+      config.catalogMetadata = records;
+      saveConfig();
+      notifySyncChange('catalog-change');
+      return json(res, 200, { records: config.catalogMetadata });
+    } catch (error) { return json(res, 400, { error: error.message }); }
+  }
   if (url.pathname === "/admin/api/settings" && req.method === "GET") return json(res, 200, { forcedLevel: config.forcedLevel || "unchanged", defaultProvider: config.defaultProvider || "", reasoningLevels: supportedReasoningLevels });
   if (url.pathname === "/admin/api/status" && req.method === "GET") return json(res, 200, { version: gatewayVersion, forcedLevel: config.forcedLevel || "unchanged", lastClientRequestAt, lastClientRequestStatus, lastClientRequestModel, ledger: usageLedger.status() });
   if (url.pathname === "/admin/api/usage" && req.method === "GET") return json(res, 200, await usageSnapshot(url));
@@ -803,6 +847,7 @@ async function admin(req, res, url) {
   }
   if (url.pathname === "/admin/api/providers" && req.method === "POST") {
     const data = bodyJson(await readBody(req)) || {};
+    if (data.upstreamProtocol !== undefined && !PROTOCOLS.includes(data.upstreamProtocol)) return json(res, 400, { error: 'catalog_invalid_protocol' });
     if (!data.id || !data.baseUrl) return json(res, 400, { error: "线路代号和 API URL 必填" });
     let baseUrl;
     try {
@@ -812,6 +857,7 @@ async function admin(req, res, url) {
     const id = String(data.id).trim().replace(/[^a-zA-Z0-9_-]/g, "");
     if (!id) return json(res, 400, { error: "线路代号只能使用字母、数字、下划线或短横线" });
     const old = config.providers.find((item) => item.id === id);
+    if (old && data.createOnly) return json(res, 409, { error: '线路代号已存在，请换一个代号或编辑已有线路。' });
     const normalizedUrl = baseUrl.toString().replace(/\/+$/, "");
     const preservesUpstreamIdentity = Boolean(old && old.baseUrl === normalizedUrl && !data.apiKey);
     const provider = {
@@ -833,6 +879,7 @@ async function admin(req, res, url) {
       lastError: preservesUpstreamIdentity ? (old.lastError || "") : "",
     };
     config.providers = old ? config.providers.map((item) => item.id === id ? provider : item) : [...config.providers, provider];
+    if (data.upstreamProtocol !== undefined) config.catalogMetadata = catalogMutation(config.catalogMetadata, { kind: 'route-protocol', providerId: id, value: data.upstreamProtocol }, { counter: Math.max(Date.now(), config.syncClock + 1, ...config.catalogMetadata.map(r => r.revision.counter + 1)), deviceId: usageLedger.identity.deviceId });
     if (old && old.name !== provider.name) {
       for (const item of config.clientKeys) if (item.providerId === id && item.nameCustomized !== true) item.name = provider.name;
     }
@@ -1013,6 +1060,8 @@ async function admin(req, res, url) {
     const deletedRevision = String(Date.now());
     const deletedAt = new Date().toISOString();
     config.providers = config.providers.filter((item) => item.id !== providerId);
+    const metadataRevision = {counter:Math.max(Date.now(),config.syncClock+1,...config.catalogMetadata.map(r=>r.revision.counter+1)),deviceId:usageLedger.identity.deviceId};
+    config.catalogMetadata = mergeCatalogMetadata(config.catalogMetadata, config.catalogMetadata.filter(entry=>entry.providerId===providerId).map(entry=>({...entry,deleted:true,revision:metadataRevision})));
     config.clientKeys = config.clientKeys.filter((item) => item.providerId !== providerId);
     config.clientKeyOrder.ids = config.clientKeyOrder.ids.filter((id) => !deletedKeys.some((item) => item.id === id));
     for (const key of deletedKeys) {
@@ -1093,6 +1142,7 @@ export function startGateway(options = {}) {
 }
 
 export function stopGateway() {
+  protocolWorker.stop();
   return new Promise((resolve, reject) => {
     if (!server.listening) { usageLedger?.close(); return resolve(); }
     for (const socket of activeSockets) socket.destroy();
@@ -1130,6 +1180,7 @@ export function getClientKeyImportDetails(id) {
 export function getSyncSnapshot() {
   const publicConfig = {
     schemaVersion: 1,
+    catalogMetadata: mergeCatalogMetadata(config.catalogMetadata || []),
     configRevision: { ...config.configRevision },
     forcedLevel: config.forcedLevel,
     defaultProvider: config.defaultProvider,
@@ -1283,6 +1334,7 @@ function prepareConfigFromSync(publicConfig, secureConfig, options = {}) {
   }
   return {
     ...config,
+    catalogMetadata: mergeCatalogMetadata(config.catalogMetadata || [], publicConfig.catalogMetadata || []),
     schemaVersion: 1,
     version: 1,
     configRevision: {
@@ -1310,6 +1362,7 @@ export function validateConfigFromSync(publicConfig, secureConfig, options = {})
 // English: Called only after the user explicitly chooses the cloud copy; secure URLs and upstream keys never change silently.
 export function replaceConfigFromSync(publicConfig, secureConfig, options = {}) {
   const nextConfig = prepareConfigFromSync(publicConfig, secureConfig, options);
+  retireLegacyModelProtocols(nextConfig);
   writeJson(configFile, nextConfig);
   config = nextConfig;
   lastPersistedConfig = JSON.parse(JSON.stringify(config));
@@ -1382,7 +1435,7 @@ function prepareAutomaticMerge(remote, secure, { metadataOnly = false, tombstone
   clientKeys.sort((a, b) => order.ids.indexOf(a.id) - order.ids.indexOf(b.id));
   const settingsNewer = !metadataOnly && compareRevision(revision(remote.settingsRevision, remote.configRevision), revision(config.settingsRevision, config.configRevision)) > 0;
   const observed = [config.configRevision, remote.configRevision, config.settingsRevision, remote.settingsRevision, order.revision, ...providers.map((item) => item.syncRevision), ...clientKeys.map((item) => item.syncRevision)];
-  return { ...config, providers, clientKeys, clientKeyOrder: order, defaultProvider: providerIds.has(config.defaultProvider) ? config.defaultProvider : (providers.find((item) => !item.syncPending && item.enabled)?.id || ""),
+  return { ...config, catalogMetadata:mergeCatalogMetadata(config.catalogMetadata || [], remote.catalogMetadata || []), providers, clientKeys, clientKeyOrder: order, defaultProvider: providerIds.has(config.defaultProvider) ? config.defaultProvider : (providers.find((item) => !item.syncPending && item.enabled)?.id || ""),
     configRevision: compareRevision(config.configRevision, remote.configRevision) >= 0 ? config.configRevision : revision(remote.configRevision),
     syncClock: Math.max(Number(config.syncClock || 0), ...observed.map((item) => Number(item?.counter || 0))),
     ...(settingsNewer ? { forcedLevel: validReasoningLevel(remote.forcedLevel) ? remote.forcedLevel : "unchanged", defaultProvider: providerIds.has(remote.defaultProvider) ? remote.defaultProvider : "", settingsRevision: revision(remote.settingsRevision, remote.configRevision) } : {}),
@@ -1392,6 +1445,7 @@ function prepareAutomaticMerge(remote, secure, { metadataOnly = false, tombstone
 export function mergeConfigFromSync(remote, secure, options = {}) {
   const next = prepareAutomaticMerge(remote, secure, options);
   if (options.validateOnly) return true;
+  retireLegacyModelProtocols(next);
   if (stableJson(next) !== stableJson(config)) {
     writeJson(configFile, next);
     config = next;
@@ -1406,4 +1460,14 @@ export function mergeClientMetadataFromSync(remote, options = {}) {
 
 export function getClientMetadataSnapshot() {
   return clientMetadata(getSyncSnapshot().publicConfig, usageLedger.identity.datasetId);
+}
+export function getMigrationEvents() { return usageLedger.migrationEvents(); }
+
+export function createSyncMigrationBackup() {
+  const directory = path.join(dataDir, 'backups', `sync-v2-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`);
+  fs.mkdirSync(directory, {recursive:true});
+  for (const file of [configFile,secretFile,usageLedger.deviceFile]) if(fs.existsSync(file)) fs.copyFileSync(file,path.join(directory,path.basename(file)));
+  usageLedger.db.prepare('VACUUM INTO ?').run(path.join(directory,'usage.db'));
+  writeJson(path.join(directory,'backup.json'), {schemaVersion:1,datasetId:usageLedger.identity.datasetId,createdAt:new Date().toISOString(),purpose:'sync-v2-migration'});
+  return directory;
 }

@@ -207,6 +207,8 @@ function unprotectLocalSecret(value) {
 function syncSource() {
   return {
     getSyncSnapshot: () => gatewayModule.getSyncSnapshot(),
+    getMigrationEvents: () => gatewayModule.getMigrationEvents(),
+    createSyncMigrationBackup: () => gatewayModule.createSyncMigrationBackup(),
     mergeRemoteUsage: (payload) => gatewayModule.mergeRemoteUsage(payload),
     markSyncEvents: (ids) => gatewayModule.markSyncEvents(ids),
     markSyncTombstones: (entries, tombstones) => gatewayModule.markSyncTombstones(entries, tombstones),
@@ -880,6 +882,8 @@ ipcMain.handle("github-connect", async (_event, value) => (await initializeSyncM
   syncUpstream: value?.syncUpstream === true,
 }));
 ipcMain.handle("sync-now", async () => (await initializeSyncManager()).syncNow("manual"));
+ipcMain.handle('preview-sync-format', async () => (await initializeSyncManager()).previewFormatMigration());
+ipcMain.handle('apply-sync-format', async (_event,value) => (await initializeSyncManager()).applyFormatMigration({token:String(value?.token || ''),password:String(value?.password || ''),recoveryCode:String(value?.recoveryCode || ''),allDevicesUpgraded:value?.allDevicesUpgraded === true}));
 ipcMain.handle("set-sync-enabled", async (_event, enabled) => (await initializeSyncManager()).setEnabled(Boolean(enabled)));
 ipcMain.handle("unlock-sync-vault", async (_event, value) => (await initializeSyncManager()).unlockVault({ password: String(value?.password || ""), recoveryCode: String(value?.recoveryCode || "") }));
 ipcMain.handle("resolve-sync-conflict", async (_event, value) => (await initializeSyncManager()).resolveConflict({ choice: String(value?.choice || ""), password: String(value?.password || ""), recoveryCode: String(value?.recoveryCode || "") }));

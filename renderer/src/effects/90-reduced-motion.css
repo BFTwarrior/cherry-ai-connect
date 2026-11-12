@@ -5,6 +5,12 @@
  */
 
 @media (prefers-reduced-motion: reduce) {
+  .button-primary,
+  .button-primary::before,
+  .button-primary::after,
+  .top-reset-button,
+  .top-reset-button::before,
+  .top-reset-button::after,
   .nav-item.active,
   .client-key-card::before,
   .client-key-card::after,

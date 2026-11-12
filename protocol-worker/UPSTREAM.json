@@ -1,0 +1,30 @@
+{
+  "repository": "https://github.com/router-for-me/CLIProxyAPI",
+  "commit": "8bba7a77c6bcbfd993516d26606bfecaa4ff49d0",
+  "go": "go1.27.4",
+  "modules": [
+    "github.com/MoeForge/moego",
+    "github.com/cespare/xxhash/v2",
+    "github.com/gabriel-vasile/mimetype",
+    "github.com/gin-contrib/sse",
+    "github.com/gin-gonic/gin",
+    "github.com/go-playground/locales",
+    "github.com/go-playground/universal-translator",
+    "github.com/go-playground/validator/v10",
+    "github.com/google/uuid",
+    "github.com/leodido/go-urn",
+    "github.com/mattn/go-isatty",
+    "github.com/pelletier/go-toml/v2",
+    "github.com/redis/go-redis/v9",
+    "github.com/sirupsen/logrus",
+    "github.com/ugorji/go/codec",
+    "go.etcd.io/bbolt",
+    "go.uber.org/atomic",
+    "golang.org/x/crypto",
+    "golang.org/x/net",
+    "golang.org/x/sys",
+    "golang.org/x/text",
+    "google.golang.org/protobuf",
+    "gopkg.in/yaml.v3"
+  ]
+}

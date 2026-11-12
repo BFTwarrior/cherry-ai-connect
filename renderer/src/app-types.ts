@@ -11,10 +11,12 @@ export type ModelListStatus = "ok" | "unsupported" | "rate_limited" | "auth" | "
 export type ClientRequestStatus = "never" | "pending" | "ok" | "error";
 
 export type Provider = {
+  upstreamProtocol?: string;
   id: string;
   name: string;
   baseUrl: string;
   models: string[];
+  catalogModels?: string[];
   disabledModels?: string[];
   modelCount: number;
   enabled: boolean;

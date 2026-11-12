@@ -138,9 +138,11 @@ function redactCredential(value, credential) {
 }
 
 export class GitHubReleaseProvider {
-  constructor({ token, owner = "", repository = "cherry-ai-connect-sync", fetchImpl = globalThis.fetch, timeoutMs = 15000, readCache = createGitHubReadCache() } = {}) {
+  constructor({ token, owner = "", repository = "cherry-ai-connect-sync", fetchImpl = globalThis.fetch, timeoutMs = 15000, releaseTag = RELEASE_TAG, readCache = createGitHubReadCache() } = {}) {
     if (!token) throw new Error("github_token_required");
     if (typeof fetchImpl !== "function") throw new Error("github_fetch_required");
+    if (!["cherry-sync", "cherry-sync-v2"].includes(releaseTag)) throw new Error("github_sync_tag_invalid");
+    this.releaseTag = releaseTag;
     this.token = String(token);
     this.owner = String(owner || "");
     this.repository = safeRepositoryName(repository);
@@ -270,13 +272,13 @@ export class GitHubReleaseProvider {
 
   async #ensureRelease() {
     try {
-      this.release = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/tags/${RELEASE_TAG}`);
+      this.release = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/tags/${this.releaseTag}`);
     } catch (error) {
       if (error.status !== 404) throw error;
       this.release = await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases`, {
         method: "POST",
         body: {
-          tag_name: RELEASE_TAG,
+          tag_name: this.releaseTag,
           name: "Cherry AI Connect private sync data",
           body: "Managed automatically by Cherry AI Connect. Do not edit or delete individual assets.",
           draft: false,
@@ -299,7 +301,7 @@ export class GitHubReleaseProvider {
       repositoryId: String(repository.id || ""),
       private: true,
       releaseId: String(this.release.id),
-      releaseTag: RELEASE_TAG,
+      releaseTag: this.releaseTag,
       htmlUrl: String(repository.html_url || ""),
     };
   }
@@ -311,8 +313,16 @@ export class GitHubReleaseProvider {
     return this.release;
   }
 
-  async listAssets({ refresh = false } = {}) {
+  async listAssets({ refresh = false, readOnly = false } = {}) {
     if (!refresh && this.assetCache) return this.assetCache.map((item) => ({ ...item }));
+    if(readOnly && !this.release?.id) {
+      if(!this.owner) await this.getAuthenticatedUser();
+      const repository=await this.#getRepository();
+      if(!repository) return [];
+      if(repository.private!==true) throw new GitHubProviderError('github_repository_public','The sync repository is public');
+      try {this.release=await this.#request(`/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repository)}/releases/tags/${this.releaseTag}`);}
+      catch(error) {if(error.status===404) return [];throw error;}
+    }
     const release = await this.#readyRelease();
     const assets = [];
     for (let page = 1; page <= 100; page += 1) {

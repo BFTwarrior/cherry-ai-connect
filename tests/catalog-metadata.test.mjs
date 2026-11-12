@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { inferModelCategories, catalogMutation, mergeCatalogMetadata, routeCategories, modelCategories, upstreamProtocol, retireModelProtocols, metadataId } from '../gateway/catalog-metadata.mjs';
+const revision=(counter,deviceId='A')=>({counter,deviceId});
+test('catalog families derive from every actual model, not the key or route name',()=>{
+ const provider={id:'Claude-only-key',name:'GPT',models:['GPT-5','claude-sonnet-4','deepseek-chat','kimi-k2','gemini-2.5','vendor/qwen3-32b','GLM-4','unrecognized']};
+ assert.deepEqual(routeCategories([],provider),['gpt','claude','deepseek','kimi','gemini','qwen','glm','other']);
+ assert.deepEqual(routeCategories([],{...provider,models:[]}),[]);
+ assert.deepEqual(inferModelCategories('mygpt-price'),['other']);
+ assert.deepEqual(inferModelCategories('ccs-dingji-ai-3-5/gpt-5'),['gpt']);
+});
+test('independent exact-model overrides, restore-auto and category deletion converge',()=>{
+ let records=catalogMutation([],{kind:'category',model:'custom-test',value:'工作'},revision(1));
+ records=catalogMutation(records,{kind:'model-category',providerId:'A',model:'Model/One',value:['custom-test','gpt']},revision(2));
+ assert.deepEqual(modelCategories(records,'A','Model/One'),['custom-test','gpt']);
+ assert.deepEqual(modelCategories(records,'B','Model/One'),['other']);
+ assert.deepEqual(modelCategories(records,'A','model/one'),['other']);
+ const old=records;
+ records=catalogMutation(records,{kind:'category',model:'custom-test',value:'工作',deleted:true},revision(3));
+ assert.deepEqual(modelCategories(mergeCatalogMetadata(records,old),'A','Model/One'),['gpt']);
+ records=catalogMutation(records,{kind:'model-category',providerId:'A',model:'Model/One',value:[]},revision(4));
+ assert.deepEqual(modelCategories(records,'A','Model/One'),[]);
+ records=catalogMutation(records,{kind:'model-category',providerId:'A',model:'Model/One',value:null},revision(5));
+ assert.deepEqual(modelCategories(records,'A','Model/One'),['other']);
+ assert.deepEqual(mergeCatalogMetadata(records,old),mergeCatalogMetadata(old,records));
+});
+test('route protocol wins and retired model records converge after late imports',()=>{
+ let records=catalogMutation([],{kind:'route-protocol',providerId:'A',value:'chat'},revision(1));
+ const old={id:metadataId('model-protocol','A','claude-4'),kind:'model-protocol',providerId:'A',model:'claude-4',value:'messages',deleted:false,revision:revision(3,'OLD')};
+ records=mergeCatalogMetadata(records,[old]);
+ assert.equal(upstreamProtocol(records,'A','claude-4'),'chat');
+ const retired=retireModelProtocols(records,revision(4));
+ assert.equal(retired.find(r=>r.kind==='model-protocol').deleted,true);
+ assert.deepEqual(retireModelProtocols(retired,revision(90)),retired);
+ assert.deepEqual(mergeCatalogMetadata(retired,[old]),retired);
+ const late={...old,revision:revision(100,'OLD')};
+ const again=retireModelProtocols(mergeCatalogMetadata(retired,[late]),revision(5));
+ assert.equal(again.find(r=>r.kind==='model-protocol').revision.counter,101);
+ assert.equal(again.find(r=>r.kind==='model-protocol').deleted,true);
+ assert.throws(()=>catalogMutation(records,{kind:'model-protocol',providerId:'A',model:'claude-4',value:'messages'},revision(8)),/model_protocol_retired/);
+});

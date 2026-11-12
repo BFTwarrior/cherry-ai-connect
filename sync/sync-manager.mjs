@@ -20,6 +20,7 @@ import path from "node:path";
 import { GitHubReleaseProvider, GitHubProviderError, createGitHubReadCache, githubRetryAt } from "./github-provider.mjs";
 import { LocalVaultStore } from "./local-vault-store.mjs";
 import { SyncEngine } from "./sync-engine.mjs";
+import { stableJson } from './sync-common.mjs';
 
 const INTERVAL_MS = 60 * 1000;
 
@@ -95,6 +96,7 @@ export class SyncManager {
     this.providerFactory = providerFactory || ((options) => new GitHubReleaseProvider(options));
     this.stateFile = path.join(dataDir, "sync-state.json");
     this.credentialFile = path.join(dataDir, ".github-token");
+    this.migrationSeedFile = path.join(dataDir, 'sync-v2-seed.json');
     this.vault = new LocalVaultStore({ dataDir, protect, unprotect });
     this.timer = null;
     this.engine = null;
@@ -108,6 +110,10 @@ export class SyncManager {
       account: null,
       repositoryPrivate: false,
       releaseTag: "cherry-sync",
+      syncFormat: 1,
+      legacyProcessed: [],
+      legacyPending: false,
+      v2SeedPending: false,
       state: "DISABLED",
       generation: 0,
       pendingCount: 0,
@@ -148,23 +154,35 @@ export class SyncManager {
     catch { return false; }
   }
 
-  #provider(token = this.#readToken()) {
+  #provider(token = this.#readToken(), format = this.state.syncFormat || 1) {
     if (!token) throw new Error("github_auth_required");
     const key = crypto.createHash("sha256").update(JSON.stringify([token, this.state.owner, this.state.repository])).digest("hex");
     if (key !== this.#readCacheKey) {
       this.#readCacheKey = key;
       this.#readCache = createGitHubReadCache();
     }
-    return this.providerFactory({ token, owner: this.state.owner, repository: this.state.repository, readCache: this.#readCache });
+    return this.providerFactory({ token, owner: this.state.owner, repository: this.state.repository, releaseTag:format === 2 ? 'cherry-sync-v2' : 'cherry-sync', readCache: this.#readCache });
   }
 
-  #makeEngine(provider) {
+  #makeEngine(provider, format = this.state.syncFormat || 1) {
     // 中文：所有同步状态通过回调回写，避免 engine 和 manager 各自维护一份不同步状态。
     // English: All sync status flows through one callback so the engine and manager cannot drift
     // into two conflicting state copies.
     return new SyncEngine({
       provider,
-      source: this.source,
+      source: new Proxy(this.source, {get:(source,key) => key === 'getSyncSnapshot' ? () => {
+        const snapshot = this.source.getSyncSnapshot();
+        if (format === 1) delete snapshot.publicConfig.catalogMetadata;
+        if (format === 2 && this.state.v2SeedPending) {
+          // Keep ALL legacy segment events until a v2 commit is verified. The
+          // local display ledger may evict history under its size policy.
+          const seed=JSON.parse(fs.readFileSync(this.migrationSeedFile,'utf8'));
+          if(seed.datasetId!==snapshot.identity.datasetId || !Array.isArray(seed.events)) throw new Error('sync_migration_seed_invalid');
+          snapshot.events=[...new Map([...seed.events,...(this.source.getMigrationEvents?.() || []),...snapshot.events].map(event=>[event.eventId || event.id,event])).values()];
+        }
+        return snapshot;
+      } : typeof source[key] === 'function' ? source[key].bind(source) : source[key]}),
+      schemaVersion: format,
       vault: this.vault,
       // Carry the last completed round into a fresh engine; starting or failing must not erase it.
       lastSyncAt: this.state.lastSyncAt,
@@ -195,6 +213,9 @@ export class SyncManager {
     const snapshot = this.source.getSyncSnapshot();
     return {
       ...this.state,
+      syncFormat: this.state.syncFormat || 1,
+      state: this.state.legacyPending && this.state.state === 'IDLE' ? 'DIRTY' : this.state.state,
+      warning: this.state.legacyPending ? (this.state.warning || 'sync_legacy_updates_pending') : this.state.warning,
       // The update pause is transient: expose it to every page, never persist a lock.
       pausedForUpdate: this.#updatePaused,
       nextSyncAt: this.#updatePaused ? "" : this.state.nextSyncAt,
@@ -224,6 +245,10 @@ export class SyncManager {
     const candidate = String(token || "").trim();
     if (!candidate) throw new Error("github_token_required");
     this.state.repository = String(repository || "cherry-ai-connect-sync").trim();
+    if(this.state.syncFormat!==2) {
+      const existingV2=await this.#makeEngine(this.#provider(candidate,2),2).inspectCommittedSet();
+      if(existingV2.latest) this.#publish({syncFormat:2,releaseTag:'cherry-sync-v2'});
+    }
     const provider = this.#provider(candidate);
     const ready = await provider.ensureReady();
     this.engine = this.#makeEngine(provider);
@@ -319,10 +344,17 @@ export class SyncManager {
       // 中文：每次真正开始的同步都重新创建 Provider/Engine，读取最新凭据和本地 vault 状态。
       // English: Recreate the provider/engine for each actual round so it reads the latest
       // credential and local vault state.
+      // A new or reconnecting updated device must never write v1 once this
+      // dataset has a committed v2 release, even if its local profile is old.
+      if(this.state.syncFormat!==2) {
+        const existingV2=await this.#makeEngine(this.#provider(undefined,2),2).inspectCommittedSet();
+        if(existingV2.latest) this.#publish({syncFormat:2,releaseTag:'cherry-sync-v2'});
+      }
       const provider = this.#provider();
       this.engine = this.#makeEngine(provider);
       const result = await this.engine.sync(reason, { syncUpstream: Boolean(this.state.account && this.state.syncUpstream !== false), ...options });
       this.#publish({ ...result, enabled: this.state.enabled, retryAt: "", retryFailures: 0 });
+      await this.#checkLegacyUpdates();
       return this.status();
     } catch (error) {
       const engineStatus = this.engine?.status() || {};
@@ -369,6 +401,97 @@ export class SyncManager {
   syncNow(reason = "manual", options = {}) {
     if (this.#updatePaused) return Promise.reject(new Error("sync_paused_for_update"));
     return this.#startSync(reason, options);
+  }
+
+  async previewFormatMigration() {
+    if (this.#updatePaused) throw new Error('sync_paused_for_update');
+    const release = this.#acquireControlOperation();
+    try {
+      if (this.#syncInFlight) await this.#syncInFlight;
+      const provider = this.#provider(undefined,1);
+      const legacy = this.#makeEngine(provider,1);
+      const snapshot = await legacy.previewCommittedSet(this.source.getSyncSnapshot().identity.datasetId);
+      const token = crypto.randomUUID();
+      const local = stableJson(this.source.getSyncSnapshot().publicConfig);
+      this.formatPreview = {token,snapshot,local,createdAt:Date.now()};
+      const branches = snapshot.branches;
+      const routes = [...new Set(branches.flatMap(b => b.remoteConfig?.providers || b.remoteMetadata?.providers || []).map(p => p.name || p.id))];
+      return {token,format:this.state.syncFormat || 1,commits:snapshot.fingerprints.length,routeNames:routes,events:snapshot.usages.reduce((n,p)=>n+(p.events?.length || 0),0),includesSettings:branches.some(b=>b.remoteConfig),includesKeyOrder:branches.some(b=>b.remoteConfig?.clientKeyOrder || b.remoteMetadata?.clientKeyOrder)};
+    } finally {release();}
+  }
+
+  async applyFormatMigration({token,password='',recoveryCode='',allDevicesUpgraded=false} = {}) {
+    if (this.#updatePaused) throw new Error('sync_paused_for_update');
+    const release = this.#acquireControlOperation();
+    try {
+      if (this.#syncInFlight) await this.#syncInFlight;
+      const preview = this.formatPreview;
+      if (!preview || preview.token!==token || Date.now()-preview.createdAt>10*60*1000) throw new Error('sync_migration_preview_expired');
+      if (this.state.syncFormat!==2 && !allDevicesUpgraded) throw new Error('sync_all_devices_upgrade_required');
+      const legacy = this.#makeEngine(this.#provider(undefined,1),1);
+      const current = await legacy.inspectCommittedSet();
+      if (stableJson(current.fingerprints)!==stableJson(preview.snapshot.fingerprints) || stableJson(this.source.getSyncSnapshot().publicConfig)!==preview.local) {
+        this.formatPreview=null;throw new Error('sync_migration_preview_changed');
+      }
+      const datasetId=this.source.getSyncSnapshot().identity.datasetId;
+      const authenticated=[];
+      for (const branch of preview.snapshot.branches) {
+        let secrets=null;
+        if (branch.remoteConfig?.providers?.length) {
+          if(!branch.remoteVault) throw new Error('sync_remote_vault_missing');
+          secrets=await this.vault.authenticateEnvelope(branch.remoteVault,{password,recoveryCode,datasetId});
+          for(const route of branch.remoteConfig.providers) if(!secrets?.providers?.some(p=>p.id===route.id && p.apiKey && p.baseUrl)) throw new Error('sync_remote_vault_incomplete');
+        }
+        if (branch.remoteConfig) this.source.mergeConfigFromSync(branch.remoteConfig,secrets || {schemaVersion:1,datasetId,providers:[]},{validateOnly:true,tombstones:branch.tombstones});
+        authenticated.push({branch,secrets});
+      }
+      // Recheck after the potentially expensive credential validation, before any commit.
+      const before = await legacy.inspectCommittedSet();
+      if(stableJson(before.fingerprints)!==stableJson(current.fingerprints) || stableJson(this.source.getSyncSnapshot().publicConfig)!==preview.local) {this.formatPreview=null;throw new Error('sync_migration_preview_changed');}
+      if(typeof this.source.createSyncMigrationBackup!=='function') throw new Error('sync_migration_backup_unavailable');
+      const backup = this.source.createSyncMigrationBackup();
+      for (const file of [this.stateFile,this.vault.vaultFile,this.vault.localKeyFile,this.credentialFile]) if(fs.existsSync(file)) fs.copyFileSync(file,path.join(backup,path.basename(file)));
+      let recovery = '';
+      if (!this.vault.status().unlocked) {
+        const existing = authenticated.find(item => item.branch.remoteVault);
+        if (existing) await this.vault.importEnvelope(existing.branch.remoteVault,{password,recoveryCode,expectedDatasetId:datasetId});
+        else if (this.vault.status().initialized) await this.vault.unlock({password,recoveryCode});
+        else if (this.state.syncUpstream !== false) {
+          const initialized = await this.vault.initialize({datasetId,secrets:this.source.getSyncSnapshot().secureConfig,password});
+          recovery = initialized.recoveryCode;
+        }
+      }
+      for (const {branch,secrets} of authenticated) {
+        if(branch.remoteConfig) this.source.mergeConfigFromSync(branch.remoteConfig,secrets || {schemaVersion:1,datasetId,providers:[]},{tombstones:branch.tombstones});
+        else if(branch.remoteMetadata) this.source.mergeClientMetadataFromSync(branch.remoteMetadata,{tombstones:branch.tombstones});
+      }
+      for (const payload of preview.snapshot.usages) this.source.mergeRemoteUsage(payload);
+      atomicJson(this.migrationSeedFile,{datasetId,events:[...new Map(preview.snapshot.usages.flatMap(payload=>payload.events || []).map(event=>[event.eventId || event.id,event])).values()]});
+      this.#publish({syncFormat:2,releaseTag:'cherry-sync-v2',v2SeedPending:true,legacyPending:true,warning:'sync_v2_migration_pending',migrationBackup:backup});
+      this.formatPreview=null;
+      const provider=this.#provider(undefined,2);await provider.ensureReady();
+      this.engine=this.#makeEngine(provider,2);
+      const result=await this.engine.sync('format-v2-migration',{syncUpstream:this.state.syncUpstream !== false,password,recoveryCode});
+      if(result.errorCode || result.warning==='sync_vault_unavailable_usage_only') throw new Error(result.errorCode || 'vault_unlock_required');
+      const processed=[...new Set([...(this.state.legacyProcessed || []),...current.fingerprints])];
+      this.#publish({...result,syncFormat:2,v2SeedPending:false,legacyProcessed:processed,legacyPending:false,warning:''});
+      await this.#checkLegacyUpdates();
+      this.#schedule();
+      return {ok:true,status:this.status(),backup,recoveryCode:recovery};
+    } catch(error) {
+      if(this.state.syncFormat===2) this.#publish({state:'ERROR_RECOVERABLE',legacyPending:true,errorCode:String(error.message),error:String(error.message),warning:'sync_v2_migration_pending'});
+      throw error;
+    } finally {release();}
+  }
+
+  async #checkLegacyUpdates() {
+    if(this.state.syncFormat!==2) return;
+    try {
+      const result=await this.#makeEngine(this.#provider(undefined,1),1).inspectCommittedSet();
+      const processed=new Set(this.state.legacyProcessed || []);
+      const pending=result.fingerprints.some(id=>!processed.has(id));
+      this.#publish({legacyPending:pending || this.state.v2SeedPending,warning:pending?'sync_legacy_updates_pending':this.state.v2SeedPending?'sync_v2_migration_pending':/^sync_legacy_/.test(this.state.warning)?'':this.state.warning,...(pending?{state:'DIRTY'}:{})});
+    } catch {this.#publish({legacyPending:true,warning:'sync_legacy_check_failed',state:'DIRTY'});}
   }
 
   async pauseForUpdate({ signal, tolerateSyncError = () => false } = {}) {

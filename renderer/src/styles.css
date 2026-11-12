@@ -7607,3 +7607,17 @@ select:focus-visible { outline-color: var(--gold); }
 @media (prefers-reduced-motion: reduce) {
   .key-drag-handle, .key-list.is-reordering .client-key-card, .key-list.is-reordering .client-key-card.is-dragging { transition: none; scale: 1; }
 }
+
+/* Catalog controls reuse the existing card, badge and button surfaces. */
+.catalog-tags {display:flex;gap:5px;flex-wrap:wrap;align-items:center;min-width:0;}
+.catalog-tags .result-count {margin:0;font-size:10px;padding:3px 7px;white-space:nowrap;border:1px solid rgb(92 62 138 / 50%);border-radius:999px;background:rgb(55 35 83 / 24%);color:#ad9bc6;}
+.route-title > .catalog-tags {margin-top:5px;}
+.key-bound-route {min-width:0;}
+.key-bound-route-value {display:flex;flex-wrap:wrap;align-items:center;gap:7px 10px;margin-top:5px;}
+.key-card-details .key-bound-route-value strong {margin:0;min-width:0;}
+.key-bound-route-value .catalog-tags {gap:4px;}
+.key-bound-route-value .catalog-tags .result-count {font-size:9px;padding:2px 6px;}
+.catalog-category-list {max-height:34vh;overflow:auto;}
+.catalog-category-list .setting-line {gap:8px;}
+.catalog-category-list .field-control {min-width:0;flex:1;}
+.catalog-toolbar {flex-wrap:wrap;}

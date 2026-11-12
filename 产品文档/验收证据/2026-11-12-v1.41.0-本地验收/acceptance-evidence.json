@@ -1,0 +1,33 @@
+{
+  "version": "1.41.0",
+  "nodeTests": {
+    "passed": 247,
+    "failed": 0
+  },
+  "uiTests": {
+    "passed": 4,
+    "failed": 0
+  },
+  "types": "passed",
+  "rendererBuild": "passed",
+  "independentReview": {
+    "score": 4.3,
+    "outOf": 5,
+    "unresolvedHighRisk": 0
+  },
+  "packagedWorkerSmoke": "passed",
+  "worker": {
+    "bytes": 14789632,
+    "sha256": "1fafc335482e0ffb2c1b47dd90cae87b785c7da2d1d0f3271725ba420954b882"
+  },
+  "installer": {
+    "path": "H:\\shared\\Codex\\Cherry多线路网关桌面版\\软件\\开发文件\\dist\\current-build\\Cherry-AI-Connect-Setup-1.41.0.exe",
+    "bytes": 103891782,
+    "sha256": "9e31f93b39d2c110250e3263407ef571d457bb1b448dae08e3a7f4faaab7344c",
+    "limit": 105000000,
+    "previousBytes": 99937369,
+    "deltaBytes": 3954413
+  },
+  "unpackedBytes": 328760386,
+  "githubPublished": false
+}

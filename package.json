@@ -1,6 +1,6 @@
 {
   "name": "cherry-ai-connect",
-  "version": "1.40.26",
+  "version": "1.41.0",
   "description": "Cherry AI 连接中心 / Cherry AI Connect — 本地 AI 线路、客户端凭证、统计与加密同步",
   "main": "electron/main.js",
   "author": "BFTwarrior",
@@ -11,18 +11,24 @@
     "check": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs tests/*.test.cjs",
     "start": "npm run renderer:build && electron .",
-    "dist": "node scripts/prepare-dist.mjs && npm run check && npm run renderer:build && electron-builder --win nsis && node scripts/verify-dist-size.mjs"
+    "dist": "node scripts/prepare-dist.mjs && npm run protocol:build && npm run check && npm run renderer:build && electron-builder --win nsis && node scripts/verify-dist-size.mjs",
+    "protocol:build": "node scripts/build-protocol-worker.mjs",
+    "test:ui": "vitest run --config vitest.config.mts"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.9",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.4.0",
     "electron-builder": "^26.0.12",
+    "jsdom": "^31.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "vitest": "^5.1.0"
   },
   "build": {
     "appId": "com.bftwarrior.cherry-ai-connect",
@@ -41,7 +47,9 @@
       "!electron/assets/codex-*.zip",
       "gateway/*.mjs",
       "sync/*.mjs",
-      "renderer/dist/**/*"
+      "renderer/dist/**/*",
+      "!electron/assets/cherry-translator.exe",
+      "!electron/assets/cherry-translator.exe.json"
     ],
     "directories": {
       "output": "dist/current-build"
@@ -54,6 +62,14 @@
       {
         "from": "electron/assets/codex-usage-windows-amd64.exe.tar.xz",
         "to": "codex-usage-windows-amd64.exe.tar.xz"
+      },
+      {
+        "from": "electron/assets/cherry-translator.exe",
+        "to": "cherry-translator.exe"
+      },
+      {
+        "from": "electron/assets/cherry-translator.exe.json",
+        "to": "cherry-translator.exe.json"
       }
     ],
     "electronDist": "node_modules/electron/dist",

@@ -58,6 +58,19 @@ export class LocalVaultStore {
     catch { throw new Error("vault_local_file_invalid"); }
   }
 
+  async authenticateEnvelope(bytes, {password = '', recoveryCode = '', datasetId} = {}) {
+    const envelope = validateVaultEnvelope(JSON.parse(Buffer.from(bytes).toString('utf8')), datasetId);
+    const localDek = this.#readDek();
+    try {
+      if (localDek) {
+        try {return openVaultWithDek(envelope, localDek);}
+        catch { /* Different devices can carry different authenticated DEKs. */ }
+      }
+      const result = await unlockVault(envelope, {password,recoveryCode});
+      try {return result.secrets;} finally {result.dek.fill(0);}
+    } finally {localDek?.fill(0);}
+  }
+
   #readDek() {
     if (!fs.existsSync(this.localKeyFile)) return null;
     try {

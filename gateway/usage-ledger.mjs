@@ -108,6 +108,9 @@ function rowToRecord(row) {
 }
 
 export class UsageLedger {
+  migrationEvents() {
+    return this.db.prepare('SELECT * FROM usage_events ORDER BY occurred_at_utc').all().map(rowToRecord);
+  }
   constructor(dataDir, options = {}) {
     this.dataDir = dataDir;
     this.databaseFile = path.join(dataDir, "usage.db");

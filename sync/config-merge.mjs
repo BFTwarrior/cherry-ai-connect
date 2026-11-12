@@ -64,6 +64,7 @@ export function mergeOrder(local, remote, keys) {
 export function clientMetadata(publicConfig, datasetId) {
   return {
     schemaVersion: 1, datasetId,
+    catalogMetadata: publicConfig.catalogMetadata || [],
     configRevision: publicConfig.configRevision,
     // 中文：公开引用只有 ID 和显示名称，不包含线路地址、上游 Key 或本机密文。
     // English: Public route references carry only ID/name, never URLs, upstream keys or ciphertext.
